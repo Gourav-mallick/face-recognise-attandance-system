@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
+import com.example.login.utility.AntiSpoofHelper
 import com.example.login.utility.FaceNetHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -51,6 +52,23 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private var lastRightProb = -1f
     private var blinkDetected = false
 
+
+    private lateinit var antiSpoof: AntiSpoofHelper
+
+    // Tune these after testing
+    private val LIVE_SCORE_THRESHOLD = 0.65f
+    private val LIVE_SCORE_WINDOW = 10   // number of recent frames to average
+
+
+    private var lastSpoofRunTime = 0L
+    private val SPOOF_INTERVAL_MS = 150L
+    private var spoofPassed = false
+    private val SPOOF_THRESHOLD = 0.19f
+
+
+    private val liveScores = ArrayDeque<Float>()
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_face_recognise)
@@ -65,6 +83,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
         faceNet = FaceNetHelper(this)
         cameraExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+        antiSpoof =AntiSpoofHelper(this)
 
         if (allPermissionsGranted()) startCamera()
         else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
@@ -161,6 +181,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         faceGuide.background.setTint(Color.RED)
                         faceStableStart = 0L
                         prevFace = null
+                        liveScores.clear()
+                        isVerifying = false
 
                     } else {
                         val face = faces[0]
@@ -169,8 +191,10 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         if (!isLiveFace(face, prevFace)) {
                             faceGuide.background.setTint(Color.RED)
                             faceStableStart = 0L
-                            imageProxy.close()
+                           // imageProxy.close()
                             prevFace = face
+                            liveScores.clear()
+                            isVerifying = false
                             return@addOnSuccessListener
                         }
 
@@ -185,24 +209,66 @@ class FaceRecogniseActivity : AppCompatActivity() {
                             val elapsed = System.currentTimeMillis() - faceStableStart
                             faceGuide.background.setTint(if (elapsed >= 300) Color.GREEN else Color.YELLOW)
 
-                            if (elapsed >= 1000 && !isVerifying) {
-                                isVerifying = true
+                            val ts = System.currentTimeMillis()
+                            if (elapsed >= 300 && ts - lastSpoofRunTime >= SPOOF_INTERVAL_MS && !isVerifying) {
+                                lastSpoofRunTime = ts
 
                                 lifecycleScope.launch(Dispatchers.Default) {
                                     val crop = cropWithScale(mirrored, face.boundingBox, CROP_SCALE)
-                                    val emb = faceNet.getFaceEmbedding(crop)
+
+                                    val res = antiSpoof.analyze(crop)
+                                    val spoof = res.spoofScore.coerceIn(0f, 1f) // avoid -0.000 issues
+
+                                    pushLiveScore(spoof)
+                                    val avgSpoof = avgLiveScore()
 
                                     withContext(Dispatchers.Main) {
-                                        verifyFace(emb)
-                                        faceStableStart = 0L
-                                        isVerifying = false
+                                        android.util.Log.d(
+                                            "PAD_GATE",
+                                            "spoof=${"%.3f".format(spoof)} avg=${"%.3f".format(avgSpoof)} " +
+                                                    "count=${liveScores.size}/$LIVE_SCORE_WINDOW maxVal=${"%.3f".format(res.maxVal)}"
+                                        )
+
+                                        tvExtraInfo.text = "Spoof avg: ${"%.2f".format(avgSpoof)} (${liveScores.size}/$LIVE_SCORE_WINDOW)"
+
+                                        // When window full, decide once
+                                        if (liveScores.size >= LIVE_SCORE_WINDOW) {
+                                            if (avgSpoof > SPOOF_THRESHOLD) {
+                                                tvMatchStatus.text = "Replay/Video Detected"
+                                                faceStableStart = 0L
+                                                liveScores.clear()
+                                            } else {
+                                                tvMatchStatus.text = "Liveness OK"
+                                                isVerifying = true // lock, then do FaceNet next
+                                            }
+                                        }
+                                    }
+
+                                    // If liveness passed, do FaceNet once
+                                    if (isVerifying && liveScores.isEmpty()) return@launch
+                                    if (isVerifying && liveScores.size == 0) return@launch
+                                    if (isVerifying && liveScores.size < LIVE_SCORE_WINDOW) return@launch
+
+                                    if (isVerifying) {
+                                        val emb = faceNet.getFaceEmbedding(crop)
+                                        withContext(Dispatchers.Main) {
+                                            verifyFace(emb)
+                                            isVerifying = false
+                                            liveScores.clear()
+                                        }
                                     }
                                 }
                             }
+
                         } else {
                             faceGuide.background.setTint(Color.RED)
                             faceStableStart = 0L
+
+                            // important: clear spoof buffer when not centered
+                            liveScores.clear()
+                            isVerifying = false
                         }
+
 
                         prevFace = face
                     }
@@ -413,6 +479,17 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
         val m = Matrix().apply { postRotate(rotation) }
         return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+    }
+
+
+    private fun pushLiveScore(score: Float) {
+        liveScores.addLast(score)
+        while (liveScores.size > LIVE_SCORE_WINDOW) liveScores.removeFirst()
+    }
+
+    private fun avgLiveScore(): Float {
+        if (liveScores.isEmpty()) return 0f
+        return liveScores.sum() / liveScores.size
     }
 
 
