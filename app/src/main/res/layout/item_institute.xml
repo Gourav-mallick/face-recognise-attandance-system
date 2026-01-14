@@ -3,10 +3,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="4dp"
-    app:cardBackgroundColor="#FFFFFF">
+    android:layout_marginBottom="2dp"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="3dp"
+    app:cardBackgroundColor="@color/white">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -24,7 +24,7 @@
             android:layout_gravity="center_vertical"
             android:focusable="false"
             android:focusableInTouchMode="false"
-            android:buttonTint="#1E5EFF"
+            android:buttonTint="@color/blue_primary"
             android:paddingEnd="12dp" />
 
         <LinearLayout
@@ -39,8 +39,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="School Name"
-                android:textColor="#111111"
-                android:textSize="16sp"
+                android:textColor="@color/text_dark"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end" />
@@ -51,13 +51,12 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="ID: "
-                android:textColor="#6B6B6B"
+                android:textColor="@color/text_gray"
                 android:textSize="13sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
 
-        <!-- Optional right-side indicator (simple dot) -->
         <View
             android:layout_width="8dp"
             android:layout_height="8dp"

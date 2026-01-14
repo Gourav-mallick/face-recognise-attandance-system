@@ -608,8 +608,4 @@ class StudentScanFragment : Fragment() {
 
     }
 
-
-
-
-
 }

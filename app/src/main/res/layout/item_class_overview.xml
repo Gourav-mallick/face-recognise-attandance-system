@@ -22,7 +22,8 @@
             android:textSize="20sp"
             android:layout_width="0dp"
             android:paddingBottom="8dp"
-            android:textColor="@color/white"
+
+            android:textColor="@color/text_dark"
             android:layout_height="wrap_content"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -31,7 +32,8 @@
         <TextView
             android:id="@+id/textTotal"
             android:layout_width="wrap_content"
-            android:textColor="@color/white"
+            android:textColor="@color/text_dark"
+
             android:textSize="18sp"
             android:layout_height="wrap_content"
             app:layout_constraintTop_toBottomOf="@id/textClassName"
@@ -41,8 +43,9 @@
             android:id="@+id/textPresent"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+
             android:textSize="18sp"
-            android:textColor="@color/white"
+            android:textColor="@color/text_dark"
             app:layout_constraintTop_toBottomOf="@id/textClassName"
             app:layout_constraintStart_toEndOf="@id/textTotal"
             android:layout_marginStart="16dp"/>

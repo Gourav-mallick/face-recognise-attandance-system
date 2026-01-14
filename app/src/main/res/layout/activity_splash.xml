@@ -9,46 +9,89 @@
     android:paddingTop="22dp"
     android:paddingBottom="22dp">
 
-    <!-- Center Group -->
+    <!-- Center Group (ID preserved) -->
     <LinearLayout
         android:id="@+id/centerGroup"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:gravity="center"
-        app:layout_constraintTop_toTopOf="parent"
+        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.46">
 
-        <ImageView
-            android:id="@+id/logo"
-            android:layout_width="100dp"
-            android:layout_height="100dp"
-            android:src="@drawable/splsh_logo"
-            android:contentDescription="App Logo" />
+        <!-- Logo card like in image -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="10dp"
+            app:cardUseCompatPadding="true"
+            app:cardBackgroundColor="@color/white">
+
+            <ImageView
+                android:id="@+id/logo"
+                android:layout_width="160dp"
+                android:layout_height="160dp"
+                android:layout_gravity="center"
+                android:padding="0dp"
+                android:contentDescription="@string/app_name"
+                android:scaleType="fitCenter"
+                android:src="@drawable/splsh_logo" />
+        </androidx.cardview.widget.CardView>
 
         <TextView
             android:id="@+id/tvAppName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text=" Face Attendance"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
+            android:layout_marginTop="18dp"
+            android:text="Face Attendance"
+            android:textColor="@color/text_dark"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvTagline"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Fast, secure and contactless attendance"
-            android:textColor="#E6FFFFFF"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="Fast, Secure &amp; Contactless Attendance"
+            android:textColor="@color/text_gray"
             android:textSize="13sp" />
 
     </LinearLayout>
 
+    <!-- Bottom "Powered by" block (new views; safe to add) -->
+    <LinearLayout
+        android:id="@+id/poweredByGroup"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
+        <TextView
+            android:id="@+id/tvPoweredBy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Powered by"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tvCompany"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="DigitalEdu IT Solutions Pvt. Ltd."
+            android:textColor="@color/blue_primary"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

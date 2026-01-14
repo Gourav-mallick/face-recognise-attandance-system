@@ -26,6 +26,12 @@ interface ApiService {
 
 
     @GET("sims-services/digitalsims/")
+    suspend fun getUserAssignedAccessPrivileges(
+        @Query("r") r: String = "api/v1/User/GetUserAssignedAccessPrivileges",
+        @Query(value = "data", encoded = true) data: String
+    ): Response<ResponseBody>
+
+    @GET("sims-services/digitalsims/")
     suspend fun getSchoolList(
         @Query("r") r: String = "api/v1/School/SchoolList"
     ): Response<ResponseBody>

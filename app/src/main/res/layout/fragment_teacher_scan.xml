@@ -6,113 +6,122 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_gradient"
-    android:padding="16dp">
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp"
+    android:paddingTop="22dp"
+    android:paddingBottom="22dp">
 
-    <!-- INNER CONTAINER (consistent with classroom fragment) -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:padding="12dp"
-        android:background="@android:color/transparent">
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Start Session"
+        android:textColor="@color/text_dark"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingTop="8dp"
+        android:paddingBottom="10dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- HEADER -->
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:text="Start Session"
-            android:textColor="@color/white"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:layout_marginTop="20dp"
-            android:paddingVertical="12dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+    <androidx.cardview.widget.CardView
+        android:id="@+id/layoutCameraCard"
+        android:layout_width="0dp"
+        android:layout_height="450dp"
+        android:layout_marginTop="10dp"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="10dp"
 
-        <!-- CAMERA CARD (Rounded Transparent Box like classroom cards) -->
+        app:cardBackgroundColor="@color/white"
+        app:layout_constraintTop_toBottomOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_default="percent"
+        app:layout_constraintHeight_percent="0.52">
+
         <LinearLayout
-            android:id="@+id/layoutCameraCard"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:background="@drawable/white_transparent_card"
-            android:elevation="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="12dp"
-            app:layout_constraintBottom_toTopOf="@id/tvClassCard"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHeight_default="percent"
-            app:layout_constraintHeight_percent="0.65"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/tvTitle">
+            android:padding="12dp">
 
-            <!-- CAMERA PREVIEW -->
             <FrameLayout
                 android:id="@+id/frameLayout"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:background="#000000">
+                android:background="@drawable/bg_preview_rounded">
 
                 <androidx.camera.view.PreviewView
                     android:id="@+id/viewFinder"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
 
-                <!-- CIRCLE OVERLAY -->
                 <View
                     android:id="@+id/faceGuide"
-                    android:layout_width="250dp"
-                    android:layout_height="250dp"
+                    android:layout_width="240dp"
+                    android:layout_height="240dp"
                     android:layout_gravity="center"
                     android:background="@drawable/circle_overlay" />
 
-                <!-- LIGHT WARNING -->
                 <TextView
                     android:id="@+id/tvLightWarning"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="top|center_horizontal"
-                    android:padding="8dp"
+                    android:layout_marginTop="10dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
                     android:text="Ensure proper lighting"
                     android:textColor="#FFEB3B"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
+                    android:background="@drawable/bg_warning_pill"
                     android:visibility="gone" />
             </FrameLayout>
 
+            <TextView
+                android:id="@+id/tvHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="Please align your face inside the circle"
+                android:textColor="@color/text_gray"
+                android:textSize="13sp" />
+
         </LinearLayout>
 
-        <!-- CLASSROOM LABEL -->
-        <TextView
-            android:id="@+id/tvClassCard"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:paddingTop="12dp"
-            android:text="ClassRoom : "
-            android:textColor="@color/white"
-            android:textSize="18sp"
-            app:layout_constraintBottom_toTopOf="@+id/tvStart"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+    </androidx.cardview.widget.CardView>
 
-        <!-- STATUS LABEL -->
-        <TextView
-            android:id="@+id/tvStart"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:gravity="center"
-            android:paddingTop="8dp"
-            android:paddingBottom="16dp"
-            android:text="Awaiting teacher face verification"
-            android:textColor="@color/white"
-            android:textSize="18sp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+    <TextView
+        android:id="@+id/tvClassCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="ClassRoom :"
+        android:textColor="@color/text_gray"
+        android:textSize="13sp"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/layoutCameraCard"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    <TextView
+        android:id="@+id/tvStart"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Awaiting teacher face verification"
+        android:textColor="@color/text_dark"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/tvClassCard"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

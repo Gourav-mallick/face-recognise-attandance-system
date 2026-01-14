@@ -31,6 +31,12 @@ import com.example.login.api.ApiService
 import com.example.login.db.entity.Session
 
 
+import java.net.URLEncoder
+import org.json.JSONObject
+import android.util.Log
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 
 class ClassroomScanFragment : Fragment() {
 
@@ -116,6 +122,7 @@ class ClassroomScanFragment : Fragment() {
             simulateClassroomCard()
         }
 
+        applyFeaturePrivileges(btnStartClass, tvFaceRegistration)
 
         val btnFaceVerify = view.findViewById<Button>(R.id.btnFaceVerify)
         btnFaceVerify.setOnClickListener {
@@ -449,6 +456,183 @@ class ClassroomScanFragment : Fragment() {
 
 
 
+
+
+    private fun applyFeaturePrivileges(
+        btnStartClass: Button,
+        btnFaceRegister: Button
+    ) {
+        val TAG = "PRIVILEGE_API"
+        val prefs = requireContext().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
+
+        val baseUrl = prefs.getString("baseUrl", "") ?: ""
+        val userId = prefs.getString("loggedStaffId", "") ?: ""
+        val userType = prefs.getString("loggedUserType", "admin") ?: "admin"
+
+        Log.d(TAG, "STEP-0: baseUrl=$baseUrl, userId=$userId, userType=$userType")
+
+        if (baseUrl.isBlank() || userId.isBlank()) {
+            Log.e(TAG, "STEP-0-FAIL: baseUrl or userId missing -> hiding both buttons")
+            btnStartClass.visibility = View.GONE
+            btnFaceRegister.visibility = View.GONE
+            return
+        }
+
+        val normalizedBaseUrl = if (baseUrl.endsWith("/")) {
+            baseUrl.removeSuffix("/") + "///"
+        } else {
+            "$baseUrl///"
+        }
+
+        Log.d(TAG, "STEP-1: normalizedBaseUrl=$normalizedBaseUrl")
+
+        val HASH = "trr36pdthb9xbhcppyqkgbpkq"
+        val rParam = "api/v1/User/GetUserAssignedAccessPrivileges"
+
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "STEP-2: Creating retrofit client...")
+
+                val retrofit = ApiClient.getClient(normalizedBaseUrl, HASH)
+                val service = retrofit.create(ApiService::class.java)
+
+                // Build JSON as per backend
+                val dataObj = JSONObject().apply {
+                    put(
+                        "userPrivilegeParamData",
+                        JSONObject().apply {
+                            put("userType", userType)
+                            put("userId", userId)
+                            put("schoolId", "")
+                            put("featureId", "")
+                            put("syear", "")
+                        }
+                    )
+                }
+
+                val rawData = dataObj.toString()
+                val encodedData = URLEncoder.encode(rawData, "UTF-8")
+
+                Log.d(TAG, "STEP-3: REQUEST r=$rParam")
+                Log.d(TAG, "STEP-3: REQUEST rawData=$rawData")
+                Log.d(TAG, "STEP-3: REQUEST encodedDataLength=${encodedData.length}")
+
+                val resp = service.getUserAssignedAccessPrivileges(
+                    r = rParam,
+                    data = encodedData
+                )
+
+                Log.d(TAG, "STEP-4: HTTP code=${resp.code()} message=${resp.message()}")
+
+                if (!resp.isSuccessful || resp.body() == null) {
+                    val errorBody = resp.errorBody()?.string()
+                    Log.e(TAG, "STEP-4-FAIL: API failed. errorBody=$errorBody")
+
+                    withContext(Dispatchers.Main) {
+                        btnStartClass.visibility = View.GONE
+                        btnFaceRegister.visibility = View.GONE
+                    }
+                    return@launch
+                }
+
+                // IMPORTANT: body.string() can be read only once
+                val rawResponse = resp.body()!!.string()
+
+                // Print full response (it can be long)
+                Log.d(TAG, "STEP-5: RAW_RESPONSE_START")
+                Log.d(TAG, rawResponse)
+                Log.d(TAG, "STEP-5: RAW_RESPONSE_END")
+
+                val json = JSONObject(rawResponse)
+                val responseObj = json.optJSONObject("collection")?.optJSONObject("response")
+
+                if (responseObj == null) {
+                    Log.e(TAG, "STEP-6-FAIL: responseObj is null -> hiding buttons")
+
+                    withContext(Dispatchers.Main) {
+                        btnStartClass.visibility = View.GONE
+                        btnFaceRegister.visibility = View.GONE
+                    }
+                    return@launch
+                }
+
+                val status = responseObj.optString("dataServiceStatus", "FAIL")
+                Log.d(TAG, "STEP-6: dataServiceStatus=$status")
+
+                if (!status.equals("SUCCESS", ignoreCase = true)) {
+                    Log.e(TAG, "STEP-6-FAIL: status not SUCCESS -> hiding buttons")
+
+                    withContext(Dispatchers.Main) {
+                        btnStartClass.visibility = View.GONE
+                        btnFaceRegister.visibility = View.GONE
+                    }
+                    return@launch
+                }
+
+                val arr = responseObj.optJSONArray("privilegesDataArr")
+                Log.d(TAG, "STEP-7: privilegesDataArr count=${arr?.length() ?: 0}")
+
+                // Debug each privilege row (to find correct shortName)
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.optJSONObject(i) ?: continue
+                        val shortName = obj.optString("featureShortName", "")
+                        val name = obj.optString("featureName", "")
+                        val canSee = obj.optString("canSee", "N")
+                        Log.d(TAG, "ROW[$i]: featureShortName=$shortName, featureName=$name, canSee=$canSee")
+                    }
+                }
+
+                // Now match your two features
+                val canSeeFace = getCanSeeByFeatureShortName(arr, "Manage Personal Info")
+                val canSeeStartClass = getCanSeeByFeatureShortName(arr, "Manage Personal Info")
+
+                Log.d(TAG, "STEP-8: FINAL canSeeFace=$canSeeFace (faceRegistration)")
+                Log.d(TAG, "STEP-8: FINAL canSeeStartClass=$canSeeStartClass (subject-list)")
+
+                withContext(Dispatchers.Main) {
+                    btnFaceRegister.visibility = if (canSeeFace) View.VISIBLE else View.GONE
+                    btnStartClass.visibility = if (canSeeStartClass) View.VISIBLE else View.GONE
+
+                    Log.d(
+                        TAG,
+                        "STEP-9: UI APPLIED -> Face=${btnFaceRegister.visibility}, StartClass=${btnStartClass.visibility}"
+                    )
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "EXCEPTION: ${e.message}", e)
+
+                withContext(Dispatchers.Main) {
+                    btnStartClass.visibility = View.GONE
+                    btnFaceRegister.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private fun getCanSeeByFeatureShortName(arr: org.json.JSONArray?, shortName: String): Boolean {
+        val TAG = "PRIVILEGE_API"
+        if (arr == null) {
+            Log.e(TAG, "getCanSeeByFeatureShortName: arr is null for shortName=$shortName")
+            return false
+        }
+
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val featureShortName = obj.optString("featureShortName", "")
+            val canSee = obj.optString("canSee", "N")
+
+            if (featureShortName.equals(shortName, ignoreCase = true)) {
+                val result = canSee.equals("Y", ignoreCase = true)
+                Log.d(TAG, "MATCH FOUND: shortName=$shortName -> canSee=$canSee -> result=$result")
+                return result
+            }
+        }
+
+        Log.e(TAG, "NO MATCH: shortName=$shortName not found in privilegesDataArr")
+        return false
+    }
 
 }
 

@@ -6,183 +6,203 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_gradient"
-    android:padding="16dp">
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp"
+    android:paddingTop="22dp"
+    android:paddingBottom="22dp">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:padding="8dp"
-        tools:layout_editor_absoluteX="16dp"
-        tools:layout_editor_absoluteY="-2dp">
+    <!-- Title (same id) -->
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Capture Attendance"
+        android:textColor="@color/text_dark"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingTop="8dp"
+        android:paddingBottom="10dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Camera Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cameraCard"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="10dp"
+        app:cardBackgroundColor="@color/white"
+        app:layout_constraintTop_toBottomOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_default="percent"
+        app:layout_constraintHeight_percent="0.46">
 
-        <!-- Top: Camera Preview with Overlay -->
-        <FrameLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_marginTop="10dp"
-            android:layout_weight="3"
-            android:background="#000000"
-            app:layout_constraintBottom_toTopOf="@+id/tvInstruction"
-            app:layout_constraintTop_toBottomOf="@+id/tvTitle"
-            tools:layout_editor_absoluteX="8dp">
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <!-- Transparent Circular Overlay -->
-
-            <androidx.camera.view.PreviewView
-                android:id="@+id/viewFinder"
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_gravity="center" />
+                android:background="@drawable/bg_preview_rounded">
+
+                <androidx.camera.view.PreviewView
+                    android:id="@+id/viewFinder"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <View
+                    android:id="@+id/faceGuide"
+                    android:layout_width="240dp"
+                    android:layout_height="240dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/circle_overlay" />
+
+                <TextView
+                    android:id="@+id/tvLightWarning"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|center_horizontal"
+                    android:layout_marginTop="10dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:text="Ensure proper lighting"
+                    android:textColor="#FFEB3B"
+                    android:textSize="14sp"
+                    android:background="@drawable/bg_warning_pill"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Instruction (same id) -->
+    <TextView
+        android:id="@+id/tvInstruction"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="Please align your face inside the circle"
+        android:textColor="@color/text_gray"
+        android:textSize="13sp"
+        app:layout_constraintTop_toBottomOf="@id/cameraCard"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Info Card (Teacher / Student / Count) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/infoCard"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="14dp"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="8dp"
+        app:cardUseCompatPadding="true"
+        app:cardBackgroundColor="@color/white"
+        app:layout_constraintTop_toBottomOf="@id/tvInstruction"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingTop="10dp"
+            android:paddingBottom="12dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <!-- Teacher section -->
+            <TextView
+                android:id="@+id/tvTeacherLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Teacher Name"
+                android:textColor="@color/text_gray"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvTeacherName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="—"
+                android:textColor="@color/text_dark"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
             <View
-                android:id="@+id/faceGuide"
-                android:layout_width="250dp"
-                android:layout_height="250dp"
-                android:layout_gravity="center"
-                android:background="@drawable/circle_overlay" />
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="12dp"
+                android:background="#E5E7EB" />
 
-            <!-- Lighting or Status Message -->
+            <!-- Student section -->
             <TextView
-                android:id="@+id/tvLightWarning"
-                android:layout_width="wrap_content"
+                android:id="@+id/tvLatestCardTapStudentLabel"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="top|center_horizontal"
-                android:padding="8dp"
-                android:text="Ensure proper lighting"
-                android:textColor="#FFEB3B"
-                android:textSize="16sp"
-                android:visibility="gone" />
-        </FrameLayout>
+                android:gravity="center"
+                android:text="Student Name"
+                android:textColor="@color/text_gray"
+                android:textSize="12sp" />
 
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="Capture Attendance"
-            android:textColor="@color/white"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp"
-            android:gravity="center"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            <TextView
+                android:id="@+id/tvLastStudent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="—"
+                android:textColor="@color/text_dark"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/tvInstruction"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:gravity="center"
-            android:padding="12dp"
-            android:text="Please align your face inside the circle"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            app:layout_constraintBottom_toTopOf="@+id/tvTeacherName"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="1.0"
-            app:layout_constraintStart_toStartOf="parent" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="12dp"
+                android:background="#E5E7EB" />
 
-        <TextView
-            android:id="@+id/tvTeacherName"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text=""
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            app:layout_constraintBottom_toTopOf="@+id/tvTeacherLabel"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.508"
-            app:layout_constraintStart_toStartOf="parent" />
+            <!-- Present count section -->
+            <TextView
+                android:id="@+id/tvPresentCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="0"
+                android:textColor="@color/blue_primary"
+                android:textSize="28sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/tvTeacherLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:gravity="center"
-            android:text="Teacher Name"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:layout_constraintBottom_toTopOf="@+id/tvPresentCount"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            <TextView
+                android:id="@+id/tvTotalStudentLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="Total Present Students"
+                android:textColor="@color/text_gray"
+                android:textSize="12sp" />
 
-        <TextView
-            android:id="@+id/tvPresentCount"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="0"
-            android:textColor="@color/white"
-            android:textSize="24sp"
-            app:layout_constraintBottom_toTopOf="@+id/tvTotalStudentLabel"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.497"
-            app:layout_constraintStart_toStartOf="parent" />
+        </LinearLayout>
 
-        <!-- Instruction Text -->
+    </androidx.cardview.widget.CardView>
 
-        <TextView
-            android:id="@+id/tvTotalStudentLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:gravity="center"
-            android:text="Total Present Student"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:layout_constraintBottom_toTopOf="@+id/tvLastStudent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <TextView
-            android:id="@+id/tvLastStudent"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:gravity="center"
-            android:padding="8dp"
-            android:text=""
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            app:layout_constraintBottom_toTopOf="@+id/tvLatestCardTapStudentLabel"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.5"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <TextView
-            android:id="@+id/tvLatestCardTapStudentLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="32dp"
-            android:gravity="center"
-            android:text=""
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.5"
-            app:layout_constraintStart_toStartOf="parent" />
-
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
-
-
-
-
-
-
-
-
-
-
-
-

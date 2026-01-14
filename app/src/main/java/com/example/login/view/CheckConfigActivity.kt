@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import com.example.login.R
 import kotlin.jvm.java
 import kotlin.text.isNullOrEmpty
@@ -17,7 +18,7 @@ class CheckConfigActivity : AppCompatActivity() {
 
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
-    private lateinit var layoutContainer: LinearLayout
+    private lateinit var layoutContainer: ConstraintLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

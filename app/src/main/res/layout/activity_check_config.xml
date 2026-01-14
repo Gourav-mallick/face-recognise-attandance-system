@@ -1,26 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/layoutCheckContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="32dp"
-    android:background="@drawable/bg_gradient">
+    android:background="@drawable/bg_gradient"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="22dp"
+    android:paddingBottom="22dp">
 
-    <ProgressBar
-        android:id="@+id/progressBarCheck"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:indeterminate="true" />
-
-    <TextView
-        android:id="@+id/textStatus"
-        android:layout_width="wrap_content"
+    <!-- Center block -->
+    <LinearLayout
+        android:id="@+id/centerBlock"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Checking configuration..."
-        android:textSize="16sp"
-        android:textColor="@android:color/white" />
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.55">
 
-</LinearLayout>
+        <ProgressBar
+            android:id="@+id/progressBarCheck"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/blue_primary"
+            android:indeterminateTintMode="src_in" />
+
+        <TextView
+            android:id="@+id/textStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Checking Configuration"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_dark" />
+
+        <TextView
+            android:id="@+id/textSubStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="Please wait while we prepare your workspace"
+            android:textSize="12sp"
+            android:textColor="@color/text_gray" />
+
+    </LinearLayout>
+
+    <!-- Bottom block -->
+    <LinearLayout
+        android:id="@+id/bottomBlock"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/textSecureInit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Secure initialization by"
+            android:textSize="12sp"
+            android:textColor="@color/text_gray" />
+
+        <TextView
+            android:id="@+id/textBrand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="DigitalEdu"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="@color/blue_primary" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

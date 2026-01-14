@@ -292,7 +292,9 @@ class LoginActivity : AppCompatActivity() {
 
                         prefs.edit()
                             .putString("loggedStaffId", staffId)
-                            .apply()
+                            //todo leter admin replace with user enter username
+                            .putString("loggedUserType", "admin")
+                        .apply()
 
                         // 2) CALL SCHOOL LIST API
                         val schoolResponse = service.getSchoolList()

@@ -198,7 +198,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     private fun setupSearchDropdown() {
 
-        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, filteredNames)
+        adapter = ArrayAdapter(this, R.layout.list_item_user_dropdown, android.R.id.text1, filteredNames)
+
         listUsers.adapter = adapter
 
         editSearchId.addTextChangedListener {

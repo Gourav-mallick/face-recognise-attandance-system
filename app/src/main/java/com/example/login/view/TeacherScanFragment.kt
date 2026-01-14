@@ -269,9 +269,10 @@ class TeacherScanFragment : Fragment() {
 
                         Toast.makeText(
                             requireContext(),
-                            "Face not recognized.\nYou are not enrolled any class.\nPlease contact authority to Enroll.",
+                            "Face not recognized.\nFace may not be registered or you may not be enrolled in any class.\nPlease contact the authorities.",
                             Toast.LENGTH_LONG
-                        ).show()
+                        ).show();
+
 
                         // OPTIONAL: stop scanning for 3 seconds
                         isVerifying = true
