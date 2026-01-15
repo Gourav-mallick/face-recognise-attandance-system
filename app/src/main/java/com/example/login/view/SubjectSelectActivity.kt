@@ -195,8 +195,22 @@ class SubjectSelectActivity : ComponentActivity() {
             val session = db.sessionDao().getSessionById(sessionId)
             val teacherId = session?.teacherId ?: ""
 
+            Log.d("LOAD_COURSES", "sessionId = $sessionId")
+            Log.d("LOAD_COURSES", "teacherId = $teacherId")
+            Log.d("LOAD_COURSES", "selectedClasses = $selectedClasses")
+
             // 1️⃣ All course periods
             val allCoursePeriods = db.coursePeriodDao().getAllCoursePeriods()
+
+            Log.d("LOAD_COURSES", "allCoursePeriods size = ${allCoursePeriods.size}")
+
+            // Detailed CP log (optional but useful)
+            allCoursePeriods.forEach { cp ->
+                Log.d(
+                    "LOAD_COURSES_CP",
+                    "cpId=${cp.cpId}, courseId=${cp.courseId}, classId=${cp.classId}, teacherId=${cp.teacherId}, mpId=${cp.mpId}, mpLongTitle=${cp.mpLongTitle}"
+                )
+            }
 
             // 2️⃣ Only CPs for the teacher AND selected classes
             val assignedCoursePeriods = allCoursePeriods.filter { cp ->
@@ -204,14 +218,34 @@ class SubjectSelectActivity : ComponentActivity() {
                         selectedClasses.contains(cp.classId)   // class must match
             }
 
+
+            Log.d("LOAD_COURSES", "assignedCoursePeriods size = ${assignedCoursePeriods.size}")
+
+            assignedCoursePeriods.forEach { cp ->
+                Log.d(
+                    "ASSIGNED_CP",
+                    "cpId=${cp.cpId}, courseId=${cp.courseId}, classId=${cp.classId}, teacherId=${cp.teacherId}"
+                )
+            }
+
             // 3️⃣ Load all courses
             val allCourses = db.courseDao().getAllCourses()
+
+
+            Log.d("LOAD_COURSES", "allCourses size = ${allCourses.size}")
+
+            allCourses.forEach { c ->
+                Log.d("ALL_COURSES", "courseId=${c.courseId}, title=${c.courseTitle}, short=${c.courseShortName}")
+            }
 
             // 4️⃣ Convert CP → Course
             val assignedCourses = assignedCoursePeriods.mapNotNull { cp ->
                 allCourses.firstOrNull { it.courseId == cp.courseId }
             }
 
+            assignedCourses.forEach { c ->
+                Log.d("ASSIGNED_COURSES", "courseId=${c.courseId}, title=${c.courseTitle}, short=${c.courseShortName}")
+            }
             // 5️⃣ Update UI
             withContext(Dispatchers.Main) {
                 updateCourseUI(assignedCourses)

@@ -34,13 +34,15 @@ import com.example.login.db.entity.Session
 import java.net.URLEncoder
 import org.json.JSONObject
 import android.util.Log
+import android.widget.LinearLayout
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 
 class ClassroomScanFragment : Fragment() {
 
-    private lateinit var tvSyncStatus: TextView
+    private lateinit var tvSyncStatus: LinearLayout
+
 
 //    private val updateReceiver = object : BroadcastReceiver() {
 //        override fun onReceive(context: Context?, intent: Intent?) {
@@ -122,7 +124,8 @@ class ClassroomScanFragment : Fragment() {
             simulateClassroomCard()
         }
 
-        applyFeaturePrivileges(btnStartClass, tvFaceRegistration)
+        //Todo when give previlages permission
+       // applyFeaturePrivileges(btnStartClass, tvFaceRegistration)
 
         val btnFaceVerify = view.findViewById<Button>(R.id.btnFaceVerify)
         btnFaceVerify.setOnClickListener {

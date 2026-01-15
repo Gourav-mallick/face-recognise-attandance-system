@@ -54,6 +54,11 @@ class TeacherScanFragment : Fragment() {
     private var blinkDetected = false
 
 
+    private var sessionTeacherId: String? = null
+    private var sessionTeacherName: String? = null
+    private var sessionDialogShown = false
+    private var scanningPaused = false
+
 
     private val DIST_THRESHOLD = 0.60f     // keep same as activity
     private val CROP_SCALE = 1.1f
@@ -130,6 +135,12 @@ class TeacherScanFragment : Fragment() {
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
+
+        if (scanningPaused) {
+            imageProxy.close()
+            return
+        }
+
         val now = System.currentTimeMillis()
         if (now - lastProcessTime < 130) {
             imageProxy.close(); return
@@ -223,6 +234,11 @@ class TeacherScanFragment : Fragment() {
                 if (bestId != null && minDist < DIST_THRESHOLD) {
                     isVerifying = true
 
+                    blinkDetected = false
+                    lastLeftProb = -1f
+                    lastRightProb = -1f
+                    prevFace = null
+                    faceStableStart = 0L
                     // 🔥 1) Check assigned classes
                     val hasClasses = withContext(Dispatchers.IO) { hasAssignedClasses(bestId!!) }
 
@@ -253,14 +269,27 @@ class TeacherScanFragment : Fragment() {
                     // 🔥 CALL NEW FUNCTION HERE
                   //  logTeacherAssignedClasses(bestId!!)
 
-                    sessionCreated = true
-                    //  Valid teacher recognized
-                    Toast.makeText(requireContext(), "Welcome, $bestName", Toast.LENGTH_LONG).show()
+//                    sessionCreated = true
+//                    //  Valid teacher recognized
+//                    Toast.makeText(requireContext(), "Welcome, $bestName", Toast.LENGTH_LONG).show()
+//
+//                    //  Wait 5 seconds, then navigate to StudentScanFragment
+//                    view?.postDelayed({
+//                        (requireActivity() as AttendanceActivity).simulateTeacherScan(bestId!!)
+//                    }, 2000)
 
-                    //  Wait 5 seconds, then navigate to StudentScanFragment
-                    view?.postDelayed({
-                        (requireActivity() as AttendanceActivity).simulateTeacherScan(bestId!!)
-                    }, 2000)
+                    sessionCreated = true
+                    sessionTeacherId = bestId
+                    sessionTeacherName = bestName
+
+// Prevent repeated dialogs
+                    if (!sessionDialogShown) {
+                        sessionDialogShown = true
+                        scanningPaused = true  // stop analyzer while dialog is open
+
+                        showStartStudentAttendanceDialog(bestId!!, bestName!!)
+                    }
+
                 } else {
 
                     failCount++
@@ -456,6 +485,27 @@ class TeacherScanFragment : Fragment() {
                 Log.e("TEACHER_CLASSES", "Error fetching assigned classes: ${e.message}")
             }
         }
+    }
+
+
+    private fun showStartStudentAttendanceDialog(teacherId: String, teacherName: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Session Started")
+            .setMessage("Teacher: $teacherName\n\nStart student attendance capturing now?")
+            .setCancelable(false)
+            .setPositiveButton("Yes") { _, _ ->
+                // Move to Student Scan only when user confirms
+                (requireActivity() as AttendanceActivity).simulateTeacherScan(teacherId)
+                scanningPaused = false
+            }
+//            .setNegativeButton("No") { _, _ ->
+//                // Keep teacher screen active, allow scanning again if needed
+//                scanningPaused = false
+//                sessionDialogShown = false
+//                isVerifying = false
+//                faceStableStart = 0L
+//            }
+            .show()
     }
 
 

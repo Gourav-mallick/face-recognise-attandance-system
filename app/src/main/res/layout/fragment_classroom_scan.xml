@@ -72,7 +72,7 @@
 
         <!-- Keeping your existing IDs inside this clickable row -->
         <LinearLayout
-            android:id="@+id/layoutSyncStatus"
+            android:id="@+id/tvSyncStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -115,11 +115,11 @@
                     android:textStyle="bold" />
 
             </LinearLayout>
-            <TextView
-                android:id="@+id/tvSyncStatus"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
+<!--            <TextView-->
+<!--                android:id="@+id/tvSyncStatus"-->
+<!--                android:layout_width="0dp"-->
+<!--                android:layout_height="0dp"-->
+<!--                android:visibility="gone" />-->
 
         </LinearLayout>
 
@@ -185,7 +185,7 @@
         android:layout_height="54dp"
         android:layout_marginTop="18dp"
         android:background="@drawable/btn_rounded"
-        android:text="START CLASS"
+        android:text="Capture Attandance"
         android:textAllCaps="true"
         android:textColor="@color/white"
         android:textStyle="bold"
@@ -254,7 +254,7 @@
                 android:background="@drawable/btn_pill_light"
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
-                android:text="REGISTER STUDENT"
+                android:text="REGISTER USER"
                 android:textAllCaps="true"
                 android:textColor="@color/text_dark"
                 android:textStyle="bold"

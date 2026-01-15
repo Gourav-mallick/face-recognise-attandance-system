@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.login.R
@@ -433,7 +434,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 when (action) {
                     "add" -> {
                         if (!existingEmbedding.isNullOrEmpty()) {
-                            showMainToast("Face already exists.")
+                            showMainToast("Face is already registered. Would you like to update it?");
                             return@launch
                         }
                         if (embedding == null) return@launch
@@ -442,7 +443,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
                     "update" -> {
                         if (existingEmbedding.isNullOrEmpty()) {
-                            showMainToast("No existing face found.")
+                            showMainToast("No face registered yet. Please register first.");
                             return@launch
                         }
                         if (embedding == null) return@launch
@@ -450,7 +451,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                         val distSelf = FaceNetHelper(this@FaceRegistrationActivity)
                             .calculateDistance(storedEmbedding, embedding)
                         if (distSelf >= DIST_THRESHOLD) {
-                            showMainToast("Face does not match the existing face.")
+                            showMainToast("Verification failed: The face doesn't belong to the registered user.");
                             return@launch
                         }
                         sendFaceToServer(id, userType, embedStr)
@@ -475,7 +476,20 @@ class FaceRegistrationActivity : AppCompatActivity() {
                     else db.teachersDao().getTeacherById(id)
 
                 Log.d("EnrollActivity", "Updated Record → $updated")
-                showMainToast("User Registration $action successfully.")
+
+                val name = when {
+                    userType == "student" -> (updated as? Student)?.studentName
+                    else -> (updated as? Teacher)?.staffName
+                } ?: "User"
+
+                runOnUiThread {
+                    AlertDialog.Builder(this@FaceRegistrationActivity)
+                        .setTitle("Success")
+                        .setMessage("Thank you $name, you are $action successfully.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
             } catch (e: Exception) {
                 Log.e("EnrollActivity", "saveFace error", e)
                 showMainToast(" some error occurred, please try again")
