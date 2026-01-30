@@ -44,6 +44,10 @@ class SubjectSelectActivity : ComponentActivity() {
 
     private val selectedCourseIds = mutableListOf<String>()
 
+    private var validCpsForSelection: List<CoursePeriod> = emptyList()
+
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityPeriodCourseSelectBinding.inflate(layoutInflater)
@@ -269,146 +273,380 @@ class SubjectSelectActivity : ComponentActivity() {
         binding.recyclerViewCourses.adapter = adapter
     }
 
-
-
-    //  Handle "Continue" button click
     private fun handleContinue() {
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
+
             val db = AppDatabase.getDatabase(this@SubjectSelectActivity)
-            val isMultiClass = selectedClasses.size > 1
 
+            val session = db.sessionDao().getSessionById(sessionId)
+            val teacherId = session?.teacherId ?: ""
 
+            Log.d("HANDLE_CONTINUE", "---------------- START ----------------")
+            Log.d("HANDLE_CONTINUE", "sessionId=$sessionId")
+            Log.d("HANDLE_CONTINUE", "teacherId=$teacherId")
+            Log.d("HANDLE_CONTINUE", "selectedClasses=$selectedClasses")
+            Log.d("HANDLE_CONTINUE", "selectedCourseIds=$selectedCourseIds")
 
-            val teacherId = db.sessionDao().getSessionById(sessionId)?.teacherId ?: ""
-
-           // All CPs for this teacher for selected courses
-            val validTeacherCps = db.coursePeriodDao().getAllCoursePeriods()
-                .filter { cp ->
-                    cp.teacherId == teacherId && selectedCourseIds.contains(cp.courseId)
-                }
-                .map { it.cpId }
-                .toSet()
-
-            // 1) Get selected CPIDs from selected courses
-            val selectedCourseInfo = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
-                .filter { info ->
-                    info.cpId != null && validTeacherCps.contains(info.cpId)
-                }
-            val selectedCpIds = selectedCourseInfo
-                .mapNotNull { it.cpId }
-                .toSet()
-
-
-            // 2) Get only present students for this session (FIX: mapNotNull)
-            val sessionAttendances = db.attendanceDao().getAttendancesForSession(sessionId)
-            val studentsInSession = sessionAttendances.mapNotNull { att ->
-                db.studentsDao().getStudentById(att.studentId)
+            // 0) Basic validations
+            if (teacherId.isBlank()) {
+                Log.e("HANDLE_CONTINUE", "teacherId empty -> stop")
+                withContext(Dispatchers.Main) { showToast("Teacher not found") }
+                return@launch
             }
 
-           // 3) Load all student schedules
-            val schedules = db.studentScheduleDao().getAll()
+            if (selectedCourseIds.isEmpty()) {
+                Log.e("HANDLE_CONTINUE", "No courses selected -> stop")
+                withContext(Dispatchers.Main) { showToast("Please select or add a course") }
+                return@launch
+            }
 
-          // 4) Correct match logic
+            if (selectedClasses.isEmpty()) {
+                Log.e("HANDLE_CONTINUE", "No classes selected -> stop")
+                withContext(Dispatchers.Main) { showToast("Please select class first") }
+                return@launch
+            }
+
+            // 1) ✅ Get ONLY valid CP rows for this Teacher + Selected Classes + Selected Courses
+            // IMPORTANT: this DAO must exist
+            // getValidCoursePeriods(teacherId, classIds, courseIds)
+            val validCps = db.coursePeriodDao().getValidCoursePeriods(
+                teacherId = teacherId,
+                classIds = selectedClasses,
+                courseIds = selectedCourseIds
+            )
+
+            validCpsForSelection = validCps
+
+            Log.d("HANDLE_CONTINUE", "validCps size = ${validCps.size}")
+            validCps.forEach {
+                Log.d(
+                    "HANDLE_VALID_CP",
+                    "cpId=${it.cpId}, courseId=${it.courseId}, classId=${it.classId}, teacherId=${it.teacherId}, mpId=${it.mpId}, mpLongTitle=${it.mpLongTitle}"
+                )
+            }
+
+            if (validCps.isEmpty()) {
+                Log.e("HANDLE_CONTINUE", "No valid CP found for selected courses/classes for this teacher")
+                withContext(Dispatchers.Main) {
+                    showToast("No course periods found for your selection")
+                }
+                return@launch
+            }
+
+            // 2) Get present students for this session
+            val sessionAttendances = db.attendanceDao().getAttendancesForSession(sessionId)
+            Log.d("HANDLE_CONTINUE", "sessionAttendances size = ${sessionAttendances.size}")
+
+            val studentsInSession = sessionAttendances.mapNotNull { att ->
+                try {
+                    db.studentsDao().getStudentById(att.studentId)
+                } catch (e: Exception) {
+                    Log.e("HANDLE_CONTINUE", "Student not found in DB: ${att.studentId}")
+                    null
+                }
+            }
+
+            Log.d("HANDLE_CONTINUE", "studentsInSession size = ${studentsInSession.size}")
+            studentsInSession.forEach {
+                Log.d("HANDLE_CONTINUE_STUDENT", "id=${it.studentId}, name=${it.studentName}, classId=${it.classId}, instId=${it.instId}")
+            }
+
+            // 3) Load all schedules (local)
+            val schedules = db.studentScheduleDao().getAll()
+            Log.d("HANDLE_CONTINUE", "student_schedule rows = ${schedules.size}")
+
+            // 4) ✅ Find students NOT scheduled for the selected course(s)
+            // Logic: for each student -> requiredCpIds = validCps filtered by student.classId
+            // If student's saved schedules have no intersection with requiredCpIds -> not scheduled
             val notScheduleStudents = studentsInSession.filter { student ->
+
+                val requiredCpIdsForStudent = validCps
+                    .filter { it.classId == student.classId }   // ✅ per-student class filter
+                    .map { it.cpId }
+                    .toSet()
 
                 val studentCpIds = schedules
                     .filter { it.studentId == student.studentId }
                     .map { it.cpId }
                     .toSet()
-                // Student is NOT enrolled if intersection is empty
-                (studentCpIds.intersect(selectedCpIds)).isEmpty()
+
+                val isNotEnrolled = (studentCpIds.intersect(requiredCpIdsForStudent)).isEmpty()
+
+                Log.d(
+                    "HANDLE_CONTINUE_CHECK",
+                    "student=${student.studentId} classId=${student.classId} " +
+                            "requiredCpIds=$requiredCpIdsForStudent " +
+                            "studentCpIds=$studentCpIds " +
+                            "NOT_ENROLLED=$isNotEnrolled"
+                )
+
+                isNotEnrolled
             }
 
+            Log.d("HANDLE_CONTINUE", "notScheduleStudents size = ${notScheduleStudents.size}")
 
-            //  5) Show popup BUT do not stop flow
-
+            // 5) If not scheduled students exist -> show checkbox popup
             if (notScheduleStudents.isNotEmpty()) {
-            // NEW CHECKBOX POPUP
-                val inflater = LayoutInflater.from(this@SubjectSelectActivity)
-                val view = inflater.inflate(R.layout.dialog_student_not_schedule_checkbox_list, null)
-                val container = view.findViewById<LinearLayout>(R.id.containerStudents)
 
-            // Temp selection set
-                val tempSelected = mutableSetOf<String>()
-                notScheduleStudents.forEach { s ->
-                    tempSelected.add(s.studentId)
+                withContext(Dispatchers.Main) {
 
-                    val cb = CheckBox(this@SubjectSelectActivity)
-                    cb.text = "${s.studentName} (${s.studentId})"
-                    cb.isChecked = true
+                    val inflater = LayoutInflater.from(this@SubjectSelectActivity)
+                    val view = inflater.inflate(R.layout.dialog_student_not_schedule_checkbox_list, null)
+                    val container = view.findViewById<LinearLayout>(R.id.containerStudents)
 
-                    cb.setOnCheckedChangeListener { _, isChecked ->
-                        if (isChecked) tempSelected.add(s.studentId)
-                        else tempSelected.remove(s.studentId)
+                    val tempSelected = mutableSetOf<String>()
+
+                    notScheduleStudents.forEach { s ->
+                        tempSelected.add(s.studentId)
+
+                        val cb = CheckBox(this@SubjectSelectActivity)
+                        cb.text = "${s.studentName} (${s.studentId})"
+                        cb.isChecked = true
+
+                        cb.setOnCheckedChangeListener { _, isChecked ->
+                            if (isChecked) tempSelected.add(s.studentId)
+                            else tempSelected.remove(s.studentId)
+                        }
+
+                        container.addView(cb)
                     }
 
-                    container.addView(cb)
-                }
+                    AlertDialog.Builder(this@SubjectSelectActivity)
+                        .setTitle("Students Not Schedule : (${notScheduleStudents.size})")
+                        .setView(view)
+                        .setPositiveButton("OK") { _, _ ->
 
-                AlertDialog.Builder(this@SubjectSelectActivity)
-                    .setTitle("Students Not Schedule : (${notScheduleStudents.size})")
-                    .setView(view)
-                    .setPositiveButton("OK") { _, _ ->
-                        lifecycleScope.launch {
+                            lifecycleScope.launch(Dispatchers.IO) {
 
-                            var removedCount = 0
-                            // REMOVE UNCHECKED STUDENTS FROM ATTENDANCE
-                            notScheduleStudents.forEach { s ->
-                                if (!tempSelected.contains(s.studentId)) {
-                                    removedCount++
-                                    Log.d(
-                                        "AttendanceLog",
-                                        "DELETED → Student ${s.studentId} (${s.studentName}) removed from session $sessionId"
-                                    )
-                                    db.attendanceDao().deleteAttendanceForStudent(sessionId, s.studentId)
+                                var removedCount = 0
+
+                                // remove unchecked students from attendance
+                                notScheduleStudents.forEach { s ->
+                                    if (!tempSelected.contains(s.studentId)) {
+                                        removedCount++
+                                        Log.d(
+                                            "HANDLE_CONTINUE_DELETE",
+                                            "Removing attendance for studentId=${s.studentId} name=${s.studentName} session=$sessionId"
+                                        )
+                                        db.attendanceDao().deleteAttendanceForStudent(sessionId, s.studentId)
+                                    }
+                                }
+
+                                Log.d("HANDLE_CONTINUE", "removedCount=$removedCount")
+
+                                if (removedCount > 0) {
+                                    withContext(Dispatchers.Main) {
+                                        showToast("Unchecked $removedCount students, their attendance ignored by the system.")
+                                    }
+                                }
+
+                                // ✅ Scheduling call (IMPORTANT)
+                                // You should update your scheduling function to use validCps per student class.
+                                // Example:
+                                // scheduleStudentsForSelectedCoursesV2(tempSelected, validCps, selectedCourseIds)
+
+                                Log.d("HANDLE_CONTINUE", "Calling scheduling API for selected students = ${tempSelected.size}")
+                                // TODO: replace with your updated scheduling function
+                                scheduleStudentsForSelectedCourses(tempSelected, validCps)
+
+                                // continue flow
+                                val remainingAttendance = db.attendanceDao().getAttendancesForSession(sessionId)
+                                Log.d("HANDLE_CONTINUE", "remainingAttendance size after delete = ${remainingAttendance.size}")
+
+                                withContext(Dispatchers.Main) {
+                                    continueAndSaveSelectedCourse()
                                 }
                             }
-
-                            //  SHOW TOAST IF ANY STUDENTS WERE REMOVED
-                            if (removedCount > 0) {
-                                showToast("Unchecked $removedCount students, their attendance ignored by the system.")
-                            }
-
-
-                            // 2. NEW → Schedule students (server-first → local sync)
-                            scheduleStudentsForSelectedCourses(tempSelected, selectedCourseInfo)
-
-
-
-                            // Log - Count how many students are still saved AFTER deletion
-                            val remainingAttendance = db.attendanceDao().getAttendancesForSession(sessionId)
-                            val remainingCount = remainingAttendance.size
-                            Log.d("ATTENDANCE_LOG", "Saved Attendance After Delete: $remainingCount")
-
-                            //add api call if need to scheduling first then save attandance....
-                            continueAndSaveSelectedCourse()
                         }
-                    }
-                    .setNegativeButton("Cancel") { dialog, _ ->
-                        dialog.dismiss()
-                    }
-                    .setCancelable(false)
-                    .show()
+                        .setNegativeButton("Cancel") { dialog, _ ->
+                            dialog.dismiss()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
 
+                Log.d("HANDLE_CONTINUE", "Popup shown -> stop until OK")
                 return@launch
-             // STOP UNTIL OK
             }
 
-             //  NOT ENROLLED = ZERO → flow continues automatically
-            continueAndSaveSelectedCourse()
+            // 6) If all students scheduled -> continue directly
+            Log.d("HANDLE_CONTINUE", "All students are scheduled -> continue")
+            withContext(Dispatchers.Main) {
+                continueAndSaveSelectedCourse()
+            }
 
+            Log.d("HANDLE_CONTINUE", "---------------- END ----------------")
         }
-
-
     }
 
 
+//    private fun continueAndSaveSelectedCourse() {
+//
+//        lifecycleScope.launch {
+//
+//            val db = AppDatabase.getDatabase(this@SubjectSelectActivity)
+//            val isMultiCourse = selectedCourseIds.size > 1
+//            val isNoCourse = selectedCourseIds.isEmpty()
+//
+//            try {
+//
+//                when {
+//                    isNoCourse -> {
+//                        showToast("Please select or add a course")
+//
+//                    }
+//
+//                    isMultiCourse -> {
+//
+//                        val teacherId = db.sessionDao().getSessionById(sessionId)?.teacherId ?: ""
+//
+//                        val validCps = validCpsForSelection
+//                            .filter { cp ->
+//                                cp.teacherId == teacherId &&
+//                                        selectedCourseIds.contains(cp.courseId) &&
+//                                        selectedClasses.contains(cp.classId)
+//                            }
+//
+//                        Log.d("ATT_UPDATE", "validCpsForSelection size=${validCpsForSelection.size}")
+//                        Log.d("ATT_UPDATE", "validCps used size=${validCps.size}")
+//                        validCps.forEach {
+//                            Log.d("ATT_UPDATE_CP", "cpId=${it.cpId}, courseId=${it.courseId}, classId=${it.classId}, teacherId=${it.teacherId}")
+//                        }
+//
+//                        if (validCps.isEmpty()) {
+//                            showToast("No valid CP found for selected courses")
+//                            return@launch
+//                        }
+//
+//                        // ✅ cpId/mp must come from validCps
+//                        val combinedCpIds = validCps.map { it.cpId }.distinct().joinToString(",")
+//                        val combinedCourseIds = validCps.map { it.courseId }.distinct().joinToString(",")
+//                        val combinedMpIds = validCps.mapNotNull { it.mpId }.distinct().joinToString(",")
+//                        val combinedMpLongTitles = validCps.mapNotNull { it.mpLongTitle }.distinct().joinToString(",")
+//
+//                        // titles can still come from courseDetails (but DO NOT use its cpId)
+//                        val courseDetails = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
+//
+//                        val combinedCourseTitles = courseDetails.mapNotNull { it.courseTitle }.distinct().joinToString(",")
+//                        val combinedCourseShortNames = courseDetails.mapNotNull { it.courseShortName }.distinct().joinToString(",")
+//                        val combinedSubjectIds = courseDetails.mapNotNull { it.subjectId }.distinct().joinToString(",")
+//                        val combinedSubjectTitles = courseDetails.mapNotNull { it.subjectTitle }.distinct().joinToString(",")
+//                        val combinedClassShortNames = courseDetails.mapNotNull { it.classShortName }.distinct().joinToString(",")
+//
+//                        Log.d("ATT_UPDATE_FINAL",
+//                            "combinedCpIds=$combinedCpIds | combinedCourseIds=$combinedCourseIds | mpIds=$combinedMpIds"
+//                        )
+//
+//                        db.attendanceDao().updateAttendanceWithCourseDetails(
+//                            sessionId = sessionId,
+//                            cpId = combinedCpIds,
+//                            courseId = combinedCourseIds,
+//                            courseTitle = combinedCourseTitles,
+//                            subjectId = combinedSubjectIds,
+//                            courseShortName = combinedCourseShortNames,
+//                            subjectTitle = combinedSubjectTitles,
+//                            classShortName = combinedClassShortNames,
+//                            mpId = combinedMpIds,
+//                            mpLongTitle = combinedMpLongTitles
+//                        )
+//
+//                        db.sessionDao().updateSessionPeriodAndSubject(sessionId, combinedCourseIds)
+//
+//                        val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+//                        intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+//                        intent.putExtra("SESSION_ID", sessionId)
+//                        startActivity(intent)
+//
+//                        kotlinx.coroutines.delay(500)
+//                        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+//                        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+//                        finish()
+//                    }
+//
+//
+//                    else -> {
+//
+//                        val courseId = selectedCourseIds.first()
+//                        val teacherId = db.sessionDao().getSessionById(sessionId)?.teacherId ?: ""
+//
+//                        // titles etc. can still come from CourseFullInfo (SAFE)
+//                        val courseDetails = db.courseDao().getCourseDetailsForIds(listOf(courseId)).firstOrNull()
+//                        if (courseDetails == null) {
+//                            showToast("Course details not found")
+//                            return@launch
+//                        }
+//
+//                        // ✅ cpId / mp must come from VALID CoursePeriod (teacher + selectedClasses + courseId)
+//                        val validCps = validCpsForSelection
+//                            .filter { cp ->
+//                                cp.teacherId == teacherId &&
+//                                        cp.courseId == courseId &&
+//                                        selectedClasses.contains(cp.classId)
+//                            }
+//
+//                        if (validCps.isEmpty()) {
+//                            showToast("No valid course period found for this course")
+//                            Log.e("ATT_UPDATE_SINGLE", "No valid CP found for teacher=$teacherId course=$courseId classes=$selectedClasses")
+//                            return@launch
+//                        }
+//
+//                        // If multiple classes selected, you may get multiple CPs -> join them
+//                        val correctCpIds = validCps.map { it.cpId }.distinct().joinToString(",")
+//                        val correctMpIds = validCps.mapNotNull { it.mpId }.distinct().joinToString(",")
+//                        val correctMpLongTitles = validCps.mapNotNull { it.mpLongTitle }.distinct().joinToString(",")
+//
+//                        Log.d("ATT_UPDATE_SINGLE", "courseId=$courseId teacherId=$teacherId")
+//                        validCps.forEach {
+//                            Log.d("ATT_UPDATE_SINGLE_CP", "cpId=${it.cpId} classId=${it.classId} mpId=${it.mpId}")
+//                        }
+//                        Log.d("ATT_UPDATE_SINGLE_FINAL", "cpIds=$correctCpIds mpIds=$correctMpIds")
+//
+//                        // ⚠️ Your DAO updates by sessionId only, so looping classes is not needed
+//                        db.attendanceDao().updateAttendanceWithCourseDetails(
+//                            sessionId = sessionId,
+//                            cpId = correctCpIds,                 // ✅ FIXED
+//                            courseId = courseDetails.courseId,
+//                            courseTitle = courseDetails.courseTitle,
+//                            subjectId = courseDetails.subjectId,
+//                            courseShortName = courseDetails.courseShortName,
+//                            subjectTitle = courseDetails.subjectTitle,
+//                            classShortName = courseDetails.classShortName,
+//                            mpId = correctMpIds,                 // ✅ FIXED
+//                            mpLongTitle = correctMpLongTitles    // ✅ FIXED
+//                        )
+//
+//                        db.sessionDao().updateSessionPeriodAndSubject(sessionId, courseId)
+//
+//                        val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+//                        intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+//                        intent.putExtra("SESSION_ID", sessionId)
+//                        startActivity(intent)
+//
+//                        kotlinx.coroutines.delay(500)
+//                        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+//                        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+//                        finish()
+//                    }
+//
+//                }
+//
+//            } catch (e: Exception) {
+//                e.printStackTrace()
+//            }
+//        }
+//    }
+
+    // =========================================
+// 2) SubjectSelectActivity - FULL FUNCTION
+//    continueAndSaveSelectedCourse()
+// =========================================
     private fun continueAndSaveSelectedCourse() {
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
 
             val db = AppDatabase.getDatabase(this@SubjectSelectActivity)
+
             val isMultiCourse = selectedCourseIds.size > 1
             val isNoCourse = selectedCourseIds.isEmpty()
 
@@ -416,189 +654,295 @@ class SubjectSelectActivity : ComponentActivity() {
 
                 when {
                     isNoCourse -> {
-                        showToast("Please select or add a course")
-
+                        withContext(Dispatchers.Main) {
+                            showToast("Please select or add a course")
+                        }
+                        return@launch
                     }
 
                     isMultiCourse -> {
-                        val courseDetails = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
 
-                        if (courseDetails.isEmpty()) {
-                            showToast("No course details found")
-
+                        val teacherId = db.sessionDao().getSessionById(sessionId)?.teacherId ?: ""
+                        if (teacherId.isBlank()) {
+                            withContext(Dispatchers.Main) { showToast("Teacher not found") }
                             return@launch
                         }
 
-                        val combinedCpIds = courseDetails.mapNotNull { it.cpId }.joinToString(",")
-                        val combinedCourseIds = courseDetails.mapNotNull { it.courseId }.joinToString(",")
-                        val combinedCourseTitles = courseDetails.mapNotNull { it.courseTitle }.joinToString(",")
-                        val combinedCourseShortNames = courseDetails.mapNotNull { it.courseShortName }.joinToString(",")
-                        val combinedSubjectIds = courseDetails.mapNotNull { it.subjectId }.joinToString(",")
-                        val combinedSubjectTitles = courseDetails.mapNotNull { it.subjectTitle }.joinToString(",")
-                        val combinedClassShortNames = courseDetails.mapNotNull { it.classShortName }.distinct().joinToString(",")
-                        val combinedMpIds = courseDetails.mapNotNull { it.mpId }.distinct().joinToString(",")
-                        val combinedMpLongTitles = courseDetails.mapNotNull { it.mpLongTitle }.distinct().joinToString(",")
+                        // ✅ Use validCpsForSelection (already computed in handleContinue())
+                        // Re-filter just to be safe
+                        val validCps = validCpsForSelection.filter { cp ->
+                            cp.teacherId == teacherId &&
+                                    selectedCourseIds.contains(cp.courseId) &&
+                                    selectedClasses.contains(cp.classId)
+                        }
 
-                        for (classId in selectedClasses) {
-                            db.attendanceDao().updateAttendanceWithCourseDetails(
+                        if (validCps.isEmpty()) {
+                            withContext(Dispatchers.Main) { showToast("No valid course periods found") }
+                            return@launch
+                        }
+
+                        // ✅ Pull CourseFullInfo once (titles, subjectTitle, classShortName)
+                        val courseInfoList = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
+                        val courseInfoMap = courseInfoList
+                            .filter { !it.courseId.isNullOrBlank() }
+                            .associateBy { it.courseId!! }
+
+                        // ✅ cpId -> CoursePeriod (for mpId/mpLongTitle/classId)
+                        val cpMap = validCps.associateBy { it.cpId }
+
+                        // ✅ Get session attendance rows (each student)
+                        val attendances = db.attendanceDao().getAttendancesForSession(sessionId)
+
+                        // ✅ Load schedules once
+                        val allSchedules = db.studentScheduleDao().getAll()
+
+                        // We want deterministic selection order (UI order)
+                        val selectedCourseOrder = selectedCourseIds.toList()
+
+                        // ✅ For each attendance/student: pick correct cp/course and update attendance row
+                        for (att in attendances) {
+
+                            val studentId = att.studentId
+                            val student = db.studentsDao().getStudentById(studentId)
+                            val studentClassId = student.classId
+
+                            val studentSchedules = allSchedules.filter { it.studentId == studentId }
+
+                            // ✅ find schedule that matches:
+                            // - course is one of selectedCourseIds
+                            // - cpId exists in validCps
+                            // - cp.classId matches student's class (important)
+                            val matchedSchedule: StudentSchedule? = selectedCourseOrder
+                                .asSequence()
+                                .mapNotNull { selectedCourseId ->
+                                    studentSchedules.firstOrNull { sch ->
+                                        sch.courseId == selectedCourseId &&
+                                                cpMap.containsKey(sch.cpId) &&
+                                                (cpMap[sch.cpId]?.classId == studentClassId)
+                                    }
+                                }
+                                .firstOrNull()
+
+                            if (matchedSchedule == null) {
+                                // No match -> skip update (or you can clear fields if you want)
+                                Log.w("ATT_PER_STUDENT", "No schedule match for student=$studentId class=$studentClassId")
+                                continue
+                            }
+
+                            val matchedCp = cpMap[matchedSchedule.cpId]
+                            val matchedInfo = courseInfoMap[matchedSchedule.courseId]
+
+                            // class short name should come from class table (more accurate per student class)
+                            val classShortName = db.classDao().getClassById(studentClassId)?.classShortName
+                                ?: matchedInfo?.classShortName
+
+                            // ✅ Update ONLY this student's attendance row
+                            db.attendanceDao().updateAttendanceWithCourseDetailsForStudent(
                                 sessionId = sessionId,
-                                cpId = combinedCpIds,
-                                courseId = combinedCourseIds,
-                                courseTitle = combinedCourseTitles,
-                                subjectId = combinedSubjectIds,
-                                courseShortName = combinedCourseShortNames,
-                                subjectTitle = combinedSubjectTitles,
-                                classShortName = combinedClassShortNames,
-                                mpId = combinedMpIds,
-                                mpLongTitle = combinedMpLongTitles
+                                studentId = studentId,
+                                cpId = matchedSchedule.cpId,
+                                courseId = matchedSchedule.courseId,
+                                courseTitle = matchedInfo?.courseTitle,
+                                courseShortName = matchedInfo?.courseShortName,
+                                subjectId = matchedInfo?.subjectId,
+                                subjectTitle = matchedInfo?.subjectTitle,
+                                classShortName = classShortName,
+                                mpId = matchedCp?.mpId,
+                                mpLongTitle = matchedCp?.mpLongTitle
+                            )
+
+                            Log.d(
+                                "ATT_PER_STUDENT",
+                                "UPDATED student=$studentId course=${matchedSchedule.courseId} cpId=${matchedSchedule.cpId} mpId=${matchedCp?.mpId}"
                             )
                         }
 
+                        // ✅ Session field is not truly single now (multi-course); store comma list for display only
+                        val combinedCourseIds = selectedCourseIds.distinct().joinToString(",")
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, combinedCourseIds)
 
-                        val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
-                        intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                        intent.putExtra("SESSION_ID", sessionId)
-                        startActivity(intent)
+                        // ✅ Navigate
+                        withContext(Dispatchers.Main) {
+                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+                            intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                            intent.putExtra("SESSION_ID", sessionId)
+                            startActivity(intent)
+                        }
 
+                        // Cleanup prefs + finish
                         kotlinx.coroutines.delay(500)
                         getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
                         getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
-                        finish()
+
+                        withContext(Dispatchers.Main) { finish() }
                     }
 
                     else -> {
+
                         val courseId = selectedCourseIds.first()
-                        val courseDetails = db.courseDao().getCourseDetailsForIds(listOf(courseId)).firstOrNull()
+                        val teacherId = db.sessionDao().getSessionById(sessionId)?.teacherId ?: ""
+
+                        val courseDetails = db.courseDao()
+                            .getCourseDetailsForIds(listOf(courseId))
+                            .firstOrNull()
 
                         if (courseDetails == null) {
-                            showToast("Course details not found")
-
+                            withContext(Dispatchers.Main) { showToast("Course details not found") }
                             return@launch
                         }
 
-                        for (classId in selectedClasses) {
-                            db.attendanceDao().updateAttendanceWithCourseDetails(
-                                sessionId = sessionId,
-                                cpId = courseDetails.cpId,
-                                courseId = courseDetails.courseId,
-                                courseTitle = courseDetails.courseTitle,
-                                subjectId = courseDetails.subjectId,
-                                courseShortName = courseDetails.courseShortName,
-                                subjectTitle = courseDetails.subjectTitle,
-                                classShortName = courseDetails.classShortName,
-                                mpId = courseDetails.mpId,
-                                mpLongTitle = courseDetails.mpLongTitle
-                            )
+                        // ✅ Only valid CPs for this teacher + course + selected classes
+                        val validCps = validCpsForSelection.filter { cp ->
+                            cp.teacherId == teacherId &&
+                                    cp.courseId == courseId &&
+                                    selectedClasses.contains(cp.classId)
                         }
 
+                        if (validCps.isEmpty()) {
+                            withContext(Dispatchers.Main) { showToast("No valid course period found for this course") }
+                            return@launch
+                        }
+
+                        // ✅ Map classId -> cp (so each class gets its own single CP)
+                        val cpByClass = validCps.associateBy { it.classId }
+
+                        // ✅ Update attendance per student with correct cpId based on student's class
+                        val attendances = db.attendanceDao().getAttendancesForSession(sessionId)
+
+                        for (att in attendances) {
+
+                            val studentId = att.studentId
+                            val student = try { db.studentsDao().getStudentById(studentId) } catch (e: Exception) { null }
+                            if (student == null) continue
+
+                            val studentClassId = student.classId
+                            val matchedCp = cpByClass[studentClassId]
+
+                            if (matchedCp == null) {
+                                Log.w("ATT_SINGLE", "No CP for student=$studentId class=$studentClassId")
+                                continue
+                            }
+
+                            val classShortName = db.classDao().getClassById(studentClassId)?.classShortName
+                                ?: courseDetails.classShortName
+
+                            db.attendanceDao().updateAttendanceWithCourseDetailsForStudent(
+                                sessionId = sessionId,
+                                studentId = studentId,
+                                cpId = matchedCp.cpId,           // ✅ SINGLE cpId
+                                courseId = courseId,             // ✅ SINGLE courseId
+                                courseTitle = courseDetails.courseTitle,
+                                courseShortName = courseDetails.courseShortName,
+                                subjectId = courseDetails.subjectId,
+                                subjectTitle = courseDetails.subjectTitle,
+                                classShortName = classShortName,
+                                mpId = matchedCp.mpId,
+                                mpLongTitle = matchedCp.mpLongTitle
+                            )
+
+                            Log.d("ATT_SINGLE", "UPDATED student=$studentId cpId=${matchedCp.cpId} class=$studentClassId")
+                        }
+
+                        // Session can keep courseId for display
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, courseId)
 
-                        val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
-                        intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                        intent.putExtra("SESSION_ID", sessionId)
-                        startActivity(intent)
+                        withContext(Dispatchers.Main) {
+                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+                            intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                            intent.putExtra("SESSION_ID", sessionId)
+                            startActivity(intent)
+                        }
 
                         kotlinx.coroutines.delay(500)
                         getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
                         getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
-                        finish()
+                        withContext(Dispatchers.Main) { finish() }
                     }
+
                 }
 
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("CONTINUE_SAVE", "Error: ${e.message}", e)
+                withContext(Dispatchers.Main) { showToast("Something went wrong") }
             }
         }
     }
 
 
-
-
-    // Add inside SubjectSelectActivity class
+    // ✅ FIXED VERSION (cpId will be correct per student class + teacher + selected course)
     private suspend fun scheduleStudentsForSelectedCourses(
         tempSelected: Set<String>,
-        selectedCourseInfo: List<com.example.login.db.entity.CourseFullInfo>
+        validCps: List<CoursePeriod>
     ) = withContext(Dispatchers.IO) {
+
         val db = AppDatabase.getDatabase(this@SubjectSelectActivity)
 
-        // 1) Build actionData array for every selected student × courseInfo pair
-        val actionArray = JSONArray()
         val session = db.sessionDao().getSessionById(sessionId)
         val teacherId = session?.teacherId ?: ""
-        val teacherName = session?.teacherId?.let { db.teachersDao().getTeacherNameById(it) } ?: "UNKNOWN"
+        val teacherName = teacherId.let { db.teachersDao().getTeacherNameById(it) } ?: "UNKNOWN"
         val todayDate = session?.date ?: java.text.SimpleDateFormat("yyyy-MM-dd").format(java.util.Date())
 
-        // if a field is missing from CourseFullInfo (classId etc.) we fallback to safe values
+        Log.d("SCHEDULER", "START scheduleStudentsForSelectedCourses")
+        Log.d("SCHEDULER", "teacherId=$teacherId selectedClasses=$selectedClasses tempSelected=${tempSelected.size}")
+        Log.d("SCHEDULER", "validCps=${validCps.size}")
 
-        // KEEP ONLY CPIDs where:
-// 1) teacher matches
-// 2) courseId matches selected course
-// 3) classId matches selectedClasses
-        val validTeacherCpIds = db.coursePeriodDao().getAllCoursePeriods()
-            .filter { cp ->
-                cp.teacherId == teacherId &&
-                        selectedCourseInfo.any { it.courseId == cp.courseId } &&
-                        selectedClasses.contains(cp.classId)
-            }
-            .map { it.cpId }
-            .toSet()
-
-        val teacherSelectedInfo = selectedCourseInfo.filter { info ->
-            info.cpId != null && validTeacherCpIds.contains(info.cpId)
-        }
+        val actionArray = JSONArray()
 
         tempSelected.forEach { studentId ->
-            teacherSelectedInfo.forEach { info ->
-                // skip invalid cp/course rows
-                if (info.cpId.isNullOrBlank() || info.courseId.isNullOrBlank()) {
-                    Log.d("SCHEDULER", "Skipping invalid info for student=$studentId cpId=${info.cpId} courseId=${info.courseId}")
-                    return@forEach
-                }
 
-                val student =db.studentsDao().getStudentById(studentId)
-                val student_classId=student?.classId
-                val student_inst=student?.instId
+            val student = try { db.studentsDao().getStudentById(studentId) } catch (e: Exception) { null }
+            if (student == null) {
+                Log.e("SCHEDULER", "Student not found: $studentId")
+                return@forEach
+            }
 
-                val syear= student_inst?.let {db.instituteDao().getInstituteYearById(it)}
+            val studentClassId = student.classId
+            val instId = student.instId
+            val syear = db.instituteDao().getInstituteYearById(instId) ?: ""
+            val classTitle = db.classDao().getClassById(studentClassId)?.classShortName ?: ""
 
+            // ✅ only cp rows for THIS student class
+            val cpsForStudent = validCps.filter { it.classId == studentClassId }
 
-                var Student_className = ""
-                if (!student_classId.isNullOrBlank()) {
-                    val classTable = db.classDao().getClassById(student_classId)
-                    Student_className = classTable?.classShortName ?: ""
-                }
+            Log.d("SCHEDULER_STUDENT", "student=$studentId class=$studentClassId cpsForStudent=${cpsForStudent.size}")
+
+            cpsForStudent.forEach { cp ->
 
                 val obj = JSONObject()
-                // Keep these fields similar to sample payload you provided.
-                obj.put("school_id", student_inst)
-                obj.put("syear", syear?:"")
-                obj.put("marking_period_id", info.mpId ?: "")
-                obj.put("mp", info.mpLongTitle ?: "")
-                obj.put("class_id", student_classId ?: "")
-                obj.put("class_title", Student_className ?: "")
-                obj.put("subjectId", info.subjectId ?: "")
-                obj.put("headId", "") // keep blank if unknown
-                obj.put("course_id", info.courseId ?: "")
-                obj.put("course_period_id", info.cpId ?: "")
-                obj.put("cp_title", info.courseTitle ?: info.courseShortName ?: "")
-                obj.put("teacher_id", teacherId)
-                obj.put("teacher_name", teacherName ?: "")
-                obj.put("student_id", studentId)
+                obj.put("school_id", instId)
+                obj.put("syear", syear)
+                obj.put("marking_period_id", cp.mpId ?: "")
+                obj.put("mp", cp.mpLongTitle ?: "")
 
-                obj.put("student_name", student?.studentName ?: "")
+                obj.put("class_id", studentClassId)
+                obj.put("class_title", classTitle)
+
+                obj.put("subjectId", "") // optional
+                obj.put("headId", "")
+
+                obj.put("course_id", cp.courseId)
+                obj.put("course_period_id", cp.cpId) // ✅ correct cpId
+
+                obj.put("cp_title", "") // optional (fill if you want)
+                obj.put("teacher_id", teacherId)
+                obj.put("teacher_name", teacherName)
+
+                obj.put("student_id", studentId)
+                obj.put("student_name", student.studentName ?: "")
+
                 obj.put("start_date", todayDate)
                 obj.put("created_by", "1")
                 obj.put("isCreateScheduling", "Y")
                 obj.put("isUpdateScheduling", "N")
 
                 actionArray.put(obj)
+
+                Log.d("SCHEDULER_ROW", "ADD student=$studentId course=${cp.courseId} cpId=${cp.cpId}")
             }
         }
 
-        // nothing to send
         if (actionArray.length() == 0) {
-            Log.d("SCHEDULER", "No valid student-course pairs to schedule.")
+            Log.d("SCHEDULER", "No rows to send.")
             return@withContext
         }
 
@@ -610,50 +954,41 @@ class SubjectSelectActivity : ComponentActivity() {
         }
 
         val jsonString = bodyObj.toString()
-        Log.d("SCHEDULER", "Prepared scheduling payload: $jsonString")
-
-        // 2) Check network
+        Log.d("SCHEDULER_PAYLOAD", jsonString)
+        // Network checks
         val hasNetwork = CheckNetworkAndInternetUtils.isNetworkAvailable(this@SubjectSelectActivity)
         val hasInternet = if (hasNetwork) CheckNetworkAndInternetUtils.hasInternetAccess() else false
+        Log.d("SCHEDULER_NET", "hasNetwork=$hasNetwork hasInternet=$hasInternet")
 
-        // 3) Attempt to post to server if internet available
         var serverSuccess = false
+
         if (hasNetwork && hasInternet) {
             try {
                 val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
                 val baseUrl = prefs.getString("baseUrl", "")!!
                 val hash = prefs.getString("hash", "")!!
 
-              //  Log.d("SCHEDULER_API", "Base URL = $baseUrl")
-               // Log.e("SCHEDULER_API", "HASH = $hash")
-             //   Log.e("SCHEDULER_API", "Posting to endpoint: api/v1/SubjectManager/ManageStudentSubjectScheduling")
-
-
-                val apiService = ApiClient.getClient(baseUrl, hash)
-                    .create(ApiService::class.java)
+                val apiService = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
 
                 val mediaType = okhttp3.MediaType.parse("application/json")
                 val requestBody = okhttp3.RequestBody.create(mediaType, jsonString)
 
-                Log.d("SCHEDULER_REQUEST", "JSON Length = ${jsonString.length}")
-
+                Log.d("SCHEDULER_REQUEST", "Posting schedules count=${actionArray.length()}")
 
                 val response = apiService.postStudentSubjectSchedule(body = requestBody)
 
                 if (response.isSuccessful && response.body() != null) {
-                    val respStr = response.body()!!.string()
 
+                    val respStr = response.body()!!.string()
                     Log.d("SCHEDULER", "Server response: $respStr")
+
                     val respJson = JSONObject(respStr)
                     val status = respJson.optJSONObject("collection")
                         ?.optJSONObject("response")
                         ?.optString("status")
 
-                    Log.w("SCHEDULER_RESPONSE", "Raw: $respStr")
-
                     if (status.equals("SUCCESS", ignoreCase = true)) {
                         serverSuccess = true
-
 
                         val msgArr = respJson
                             .optJSONObject("collection")
@@ -661,32 +996,25 @@ class SubjectSelectActivity : ComponentActivity() {
                             ?.optJSONArray("msgArr")
 
                         val successMsg = if (msgArr != null && msgArr.length() > 0) {
-                            msgArr.getString(0)   // <-- your required message
+                            msgArr.getString(0)
                         } else {
                             "Students scheduled successfully"
                         }
+
                         showToast(successMsg)
 
-                        Log.e("SCHEDULER_SUCCESS", "----- SERVER SUCCESS: STUDENT SCHEDULES SENT -----")
-                        tempSelected.forEach { studentId ->
-                            selectedCourseInfo.forEach { info ->
-                                Log.e(
-                                    "SCHEDULER_SUCCESS",
-                                    "StudentId=$studentId | cpId=${info.cpId} | courseId=${info.courseId}"
-                                )
-                            }
-                        }
-                        Log.e("SCHEDULER_SUCCESS", "--------------------------------------------------")
-
-
+                        Log.e("SCHEDULER_SUCCESS", "----- SERVER SUCCESS -----")
+                        Log.e("SCHEDULER_SUCCESS", "sentRows=${actionArray.length()}")
+                        Log.e("SCHEDULER_SUCCESS", "--------------------------")
 
                     } else {
-                        Log.w("SCHEDULER", "Server returned non-success status. Will save locally as pending.")
+                        Log.w("SCHEDULER", "Server returned non-success status=$status -> will save pending")
                         serverSuccess = false
                     }
+
                 } else {
                     val err = response.errorBody()?.string()
-                    Log.e("SCHEDULER", "Server call failed: $err")
+                    Log.e("SCHEDULER", "Server call failed. code=${response.code()} err=$err")
                     serverSuccess = false
                 }
 
@@ -695,13 +1023,10 @@ class SubjectSelectActivity : ComponentActivity() {
                 serverSuccess = false
             }
         } else {
-            Log.w("SCHEDULER", "No network/internet. Saving schedules locally as pending.")
+            Log.w("SCHEDULER", "No network/internet -> save pending")
         }
 
-
-
-        // IF API FAIL → SAVE FULL JSON INTO PENDING TABLE
-        // -------------------------------------------------
+        // IF API FAIL -> SAVE PENDING ROWS (same as your logic)
         if (!serverSuccess) {
 
             for (i in 0 until actionArray.length()) {
@@ -740,63 +1065,63 @@ class SubjectSelectActivity : ComponentActivity() {
 
                 db.pendingScheduleDao().insertSchedule(pending)
             }
-            Log.e("SCHEDULER", "API FAILED → Saved ${actionArray.length()} pending schedules locally")
 
+            Log.e("SCHEDULER", "API FAILED -> Saved ${actionArray.length()} pending schedules locally")
             showToast("Students scheduled successfully")
 
-
-            return@withContext // stop here, no StudentSchedule insertion
+            return@withContext
         }
 
-
-
-        // 4) Insert/update local student_schedule rows based on serverSuccess
-        // We'll insert one StudentSchedule per student × cp pair. id format: sch_<ts>_<student>_<cp>
+        //  LOCAL student_schedule insertion should use the SAME cpIds we actually sent (from actionArray)
         val nowTs = System.currentTimeMillis()
         val toInsert = mutableListOf<StudentSchedule>()
 
-        tempSelected.forEach { studentId ->
-            selectedCourseInfo.forEach { info ->
-                if (info.cpId.isNullOrBlank() || info.courseId.isNullOrBlank()) return@forEach
+        // Load schedules once (performance + correct duplicate check)
+        val existingSchedules = db.studentScheduleDao().getAll()
 
-                // check duplicates first (avoid duplicate insertion)
-                val exists = db.studentScheduleDao().getAll().any {
-                    it.studentId == studentId && it.cpId == info.cpId
-                }
-                if (exists) {
-                    Log.d("SCHEDULER", "Skipping duplicate schedule for student=$studentId cp=${info.cpId}")
-                    return@forEach
-                }
+        for (i in 0 until actionArray.length()) {
+            val o = actionArray.getJSONObject(i)
 
-                val scheduleId = "sch_${nowTs}_${studentId}_${info.cpId}"
-                val newSchedule = StudentSchedule(
+            val studentId = o.getString("student_id")
+            val cpId = o.getString("course_period_id")
+            val courseId = o.getString("course_id")
+
+            val exists = existingSchedules.any { it.studentId == studentId && it.cpId == cpId }
+            if (exists) {
+                Log.d("SCHEDULER", "Skipping duplicate schedule for student=$studentId cp=$cpId")
+                continue
+            }
+
+            val scheduleId = "sch_${nowTs}_${studentId}_${cpId}"
+
+            toInsert.add(
+                StudentSchedule(
                     scheduleId = scheduleId,
                     studentId = studentId,
-                    cpId = info.cpId!!,
-                    courseId = info.courseId!!,
+                    cpId = cpId,
+                    courseId = courseId,
                     scheduleStartDate = nowTs.toString(),
                     scheduleEndDate = null,
                     syncStatus = "complete"
                 )
-                toInsert.add(newSchedule)
+            )
 
-                Log.d(
-                    "SCHEDULER",
-                    "Will save local schedule: id=$scheduleId student=$studentId cp=${info.cpId} "
-                )
-            }
+            Log.d("SCHEDULER_LOCAL", "Will save local schedule: id=$scheduleId student=$studentId cp=$cpId course=$courseId")
         }
 
         if (toInsert.isNotEmpty()) {
             try {
                 db.studentScheduleDao().insertAll(toInsert)
-
+                Log.d("SCHEDULER_LOCAL", "Inserted local student_schedule rows = ${toInsert.size}")
             } catch (e: Exception) {
-                Log.e("SCHEDULER", "Error inserting local schedules: ${e.message}", e)
+                Log.e("SCHEDULER_LOCAL", "Error inserting local schedules: ${e.message}", e)
             }
+        } else {
+            Log.d("SCHEDULER_LOCAL", "Nothing to insert into student_schedule")
         }
-    }
 
+        Log.d("SCHEDULER", "---------------- END scheduleStudentsForSelectedCourses ----------------")
+    }
 
     private fun showToast(msg: String) {
         runOnUiThread {

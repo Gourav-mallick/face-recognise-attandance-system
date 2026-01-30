@@ -23,8 +23,12 @@ class AttendanceOverviewAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val data = classList[position]
         holder.binding.textClassName.text = "Class: ${data.className}"
+        holder.binding.textSubject.text = "Subject: ${data.subjectName}"
+
         holder.binding.textTotal.text = "Total Students: ${data.totalStudents}"
         holder.binding.textPresent.text = "Present: ${data.presentCount}"
+        holder.binding.textAbsent.text =
+            "Absent: ${data.absentCount}"
       //  holder.binding.textPresentStudents.text = "Present Students:\n${data.presentStudents.joinToString("\n")}"
 
     }

@@ -28,6 +28,16 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
+        <TextView
+            android:id="@+id/textSubject"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textStyle="italic"
+            android:textColor="@color/text_gray"
+            app:layout_constraintTop_toBottomOf="@id/textClassName"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
         <TextView
             android:id="@+id/textTotal"
@@ -49,6 +59,15 @@
             app:layout_constraintTop_toBottomOf="@id/textClassName"
             app:layout_constraintStart_toEndOf="@id/textTotal"
             android:layout_marginStart="16dp"/>
+
+        <TextView
+            android:id="@+id/textAbsent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textColor="@android:color/holo_red_dark"
+            app:layout_constraintTop_toBottomOf="@id/textTotal"
+            app:layout_constraintStart_toStartOf="parent"/>
     <!--
         <TextView
             android:id="@+id/textPresentStudents"

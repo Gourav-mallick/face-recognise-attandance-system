@@ -52,7 +52,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
             .putString("SESSION_ID", sessionId)
             .apply()
 
-        // ✅ Disable back press & back gesture for this screen
+        //  Disable back press & back gesture for this screen
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (backDisabled) {
@@ -99,6 +99,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
           */
 
+                // Subject name (take from first attendance row)
+                val subjectName =
+                    attendance.firstOrNull()?.subjectTitle
 
                 classSummaries.add(
                     ClassOverviewData(
@@ -106,6 +109,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         totalStudents = totalStudents,
                         presentCount = presentCount,
                         absentCount = absentCount,
+                        subjectName = subjectName,
                      //   presentStudents = presentStudents,
 
                     )
@@ -139,6 +143,10 @@ class AttendanceOverviewActivity : ComponentActivity() {
                  //   showPopup("No attendance found for this session.")
                     Log.d("AttendanceOverview", "No attendance found for this session.")
                     return@launch
+                }
+
+                attendanceList.forEach {
+                    Log.d("PAYLOAD_CHECK", "student=${it.studentId} cpId=${it.cpId}")
                 }
 
                 // Get baseUrl & hash from SharedPreferences
@@ -277,7 +285,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("attSchoolPeriodStartTime", att.startTime)
             put("attSchoolPeriodEndTime", att.endTime)
             put("period", att.period)
-            put("status", att.status)
+           // put("status", att.status)
             // You can extend more mappings as per your actual backend requirement
             put("studentClass", classShort)
             put("attCodetitle", "present")
@@ -303,9 +311,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("attCategory","Regular")
             put("studAttComment","")
             put("attSessionStudId","")
-            put("attCodeId",att.atteId)
+            put("attCodeId","1")
             put("attCodeLngName","present")
-            put("attCode",att.status)
+            put("attCode","P")
             put("studAttStartDateTime",dataStartTime)
             put("studAttEndDateTime",dataEndTime)
             put("studAttTotalDuration","")
@@ -344,6 +352,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
 data class ClassOverviewData(
     val className: String,
+    val subjectName: String?,
     val totalStudents: Int,
     val presentCount: Int,
     val absentCount: Int,

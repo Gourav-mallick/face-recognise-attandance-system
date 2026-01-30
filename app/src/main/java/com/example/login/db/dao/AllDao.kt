@@ -221,6 +221,20 @@ interface CoursePeriodDao {
     @Query("SELECT * FROM course_periods WHERE cpId = :cpId LIMIT 1")
     suspend fun getCoursePeriodByCpId(cpId: String): CoursePeriod?
 
+    @Query("""
+    SELECT * FROM course_periods
+    WHERE teacherId = :teacherId
+      AND classId IN (:classIds)
+      AND courseId IN (:courseIds)
+""")
+    suspend fun getValidCoursePeriods(
+        teacherId: String,
+        classIds: List<String>,
+        courseIds: List<String>
+    ): List<CoursePeriod>
+
+
+
 }
 
 
@@ -421,6 +435,35 @@ interface AttendanceDao {
     @Query("DELETE FROM Attendance WHERE sessionId = :sessionId")
     suspend fun deleteAttendanceForSession(sessionId: String)
 
+
+    @Query("""
+    UPDATE attendance
+    SET 
+        cpId = :cpId,
+        courseId = :courseId,
+        courseTitle = :courseTitle,
+        courseShortName = :courseShortName,
+        subjectId = :subjectId,
+        subjectTitle = :subjectTitle,
+        classShortName = :classShortName,
+        mpId = :mpId,
+        mpLongTitle = :mpLongTitle
+    WHERE sessionId = :sessionId
+      AND studentId = :studentId
+""")
+    suspend fun updateAttendanceWithCourseDetailsForStudent(
+        sessionId: String,
+        studentId: String,
+        cpId: String?,
+        courseId: String?,
+        courseTitle: String?,
+        courseShortName: String?,
+        subjectId: String?,
+        subjectTitle: String?,
+        classShortName: String?,
+        mpId: String?,
+        mpLongTitle: String?
+    )
 
 
 

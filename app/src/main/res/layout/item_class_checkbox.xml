@@ -20,7 +20,7 @@
         android:paddingStart="14dp"
         android:paddingEnd="14dp"
         android:text="Class 1 - A"
-        android:textSize="14sp"
+        android:textSize="16sp"
         android:textColor="@color/text_dark"
         android:textColorHint="@color/text_gray"
         app:layout_constraintTop_toTopOf="parent"

@@ -90,19 +90,6 @@ class LoginActivity : AppCompatActivity() {
             } else {
                 "$baseUrl///"
             }
-/*
-            // Prepare query parameters (unencoded data)
-            val rawData = "{\"username\":\"$username\",\"password\":\"$password\",\"authMethod\":\"online\"}"
-            val rParam = "api/v1/Student/GetUserAuthenticatedData"
-
-            // Log full URL (no hash in query)
-            val fullUrl = "${normalizedBaseUrl}sims-services/digitalsims/?r=$rParam&data=$rawData"
-            Log.d(TAG, "REQUEST_URL: $fullUrl")
-            Log.d(TAG, "REQUEST_PARAMS: r=$rParam, data=$rawData")
-            Log.d(TAG, "REQUEST_HEADER: hash=$HASH")
-
-
- */
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -120,134 +107,6 @@ class LoginActivity : AppCompatActivity() {
 
                     val retrofit = ApiClient.getClient(baseUrl, HASH) // Pass hash for header
                     val service = retrofit.create(ApiService::class.java)
-
-/*
-                    val response: Response<ResponseBody> = service.getUserAuthenticatedDataRaw(rParam, rawData)
-
-                    withContext(Dispatchers.Main) {
-                        if (response.isSuccessful && response.body() != null) {
-                            val rawString = response.body()!!.string()
-                            Log.d(TAG, "FULL_RESPONSE: $rawString")  // Full raw JSON for verification
-
-                            try {
-                                val json = JSONObject(rawString)
-                                val collection = json.optJSONObject("collection")
-                                Log.d(TAG, "COLLECTION_RESPONSE: $collection")
-                                if (collection == null) {
-                                    Log.e(TAG, "PARSE_ERROR: Missing 'collection'")
-                                    Toast.makeText(this@LoginActivity, "Something went wrong. Please try again.", Toast.LENGTH_LONG).show()
-                                    return@withContext
-                                }
-
-                                val responseObj = collection.optJSONObject("response")
-                                Log.d(TAG, "RESPONSE: $responseObj")
-                                if (responseObj == null) {
-                                    Log.e(TAG, "PARSE_ERROR: Missing 'response'")
-                                    Toast.makeText(this@LoginActivity, "Server response incomplete. Please try again.", Toast.LENGTH_LONG).show()
-                                    return@withContext
-                                }
-
-                                // Log response fields for debugging
-                                val responseStatus = responseObj.optString("statusMsg", "No statusMsg")
-                                val responseMsg = responseObj.optString("message", "No message")
-                                Log.d(TAG, "RESPONSE_FIELDS: status=$responseStatus, message=$responseMsg")
-
-                                val userData = responseObj.optJSONObject("userData")
-                                Log.d(TAG, "USERDATA: $userData")
-                                if (userData == null) {
-                                    Log.e(TAG, "PARSE_ERROR: Missing 'userData'. ResponseMsg: $responseMsg")
-                                    Toast.makeText(this@LoginActivity, "Login failed. Please check your username or password.", Toast.LENGTH_LONG).show()
-                                    return@withContext
-                                }
-
-                                // Safe access to fields
-                                val isUserValid = userData.optString("isUserDataFound", "FALSE") == "TRUE"
-                                val authMsg = userData.optString("authMsg", "No authMsg")
-
-                                Log.d(TAG, "AUTH_STATUS: isUserValid=$isUserValid, authMsg=$authMsg")
-
-
-                                // Collect schoolId and schoolShortName lists
-                                // Collect unique schoolId and schoolShortName pairs
-                                val schoolMap = mutableMapOf<String, String>() // schoolId to schoolShortName
-
-
-                                val schoolsArray = userData.optJSONArray("schoolsData")
-                                if (schoolsArray != null) {
-                                    Log.d(TAG, "SCHOOLS_DATA_ARRAY: $schoolsArray")
-                                    Log.d(TAG, "SCHOOLS_COUNT: ${schoolsArray.length()}")
-                                    for (i in 0 until schoolsArray.length()) {
-                                        val school = schoolsArray.optJSONObject(i)
-                                        val syearsDataArray = school?.optJSONArray("syearsData")
-                                        if (syearsDataArray != null) {
-                                            for (j in 0 until syearsDataArray.length()) {
-                                                val syearData = syearsDataArray.optJSONObject(j)
-                                                val schoolId = syearData?.optString("schoolId", "No schoolId") ?: "No schoolId"
-                                                val adminUserId= syearData?.optString("userId", "No userId") ?: "No userId"
-                                                val schoolShortName = syearData?.optString("schoolShortName", "No schoolShortName") ?: "No schoolShortName"
-                                                Log.d(TAG, "SCHOOL[$i].SYEAR[$j]: schoolId=$schoolId, schoolShortName=$schoolShortName")
-                                                if (!schoolMap.containsKey(schoolId)) {
-                                                    schoolMap[schoolId] = schoolShortName
-                                                }
-
-                                            }
-                                        } else {
-                                            Log.d(TAG, "SCHOOL[$i].SYEARS_DATA: null")
-                                        }
-                                    }
-                                } else {
-                                    Log.d(TAG, "SCHOOLS_DATA_ARRAY: null")
-                                    Log.d(TAG, "SCHOOLS_COUNT: 0")
-                                }
-
-                                // Convert map to lists for Intent
-                                val schoolIds = schoolMap.keys.toList()
-                                val schoolShortNames = schoolMap.values.toList()
-
-                                //check valid user or not
-                                if (isUserValid) {
-
-                                    //  Save login details for next launch
-                                    prefs.edit()
-                                        .putString("baseUrl", baseUrl)
-                                        .putString("username", username)
-                                        .putString("password", password)
-                                        .putString("hash", HASH)
-                                        .apply()
-
-                                    Log.d(TAG, "SAVED_LOGIN_DETAILS: baseUrl=$baseUrl, username=$username, password=$password, hash=$HASH")
-
-
-                                    // Navigate to SelectInstituteActivity with schoolIds and schoolShortNames
-                                    val intent = Intent(
-                                        this@LoginActivity,
-                                        SelectInstituteActivity::class.java
-                                    ).apply {
-                                        putStringArrayListExtra("schoolIds", ArrayList(schoolIds))
-                                        putStringArrayListExtra("schoolShortNames", ArrayList(schoolShortNames))
-                                    }
-                                    startActivity(intent)
-                                    Log.d(TAG, "LOGIN_SUCCESS: Validation passed. Navigating to SelectInstituteActivity with schoolIds=$schoolIds, schoolShortNames=$schoolShortNames")
-                                } else {
-                                    Toast.makeText(this@LoginActivity, "Invalid username or password: $responseMsg", Toast.LENGTH_LONG).show()
-                                    Log.e(TAG, "LOGIN_FAILED: $responseMsg")
-                                }
-
-                            } catch (parseE: Exception) {
-                                Log.e(TAG, "JSON_PARSE_EXCEPTION: ${parseE.message}", parseE)
-                                Toast.makeText(this@LoginActivity, "Unexpected server response. Please try again.", Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            val errorBody = response.errorBody()?.string() ?: "No error body"
-                            Log.e(TAG, "API_ERROR: HTTP ${response.code()} - ${response.message()} - Error: $errorBody")
-                            Toast.makeText(this@LoginActivity, "Server is busy. Please try again later.", Toast.LENGTH_LONG).show()
-                        }
-
-                    }
-
- */
-
-
 
 
                    // 1) CALL AUTH API
@@ -292,8 +151,7 @@ class LoginActivity : AppCompatActivity() {
 
                         prefs.edit()
                             .putString("loggedStaffId", staffId)
-                            //todo leter admin replace with user enter username
-                            .putString("loggedUserType", "admin")
+                            .putString("loggedUserType", username)
                         .apply()
 
                         // 2) CALL SCHOOL LIST API
