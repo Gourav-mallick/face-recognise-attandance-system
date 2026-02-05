@@ -212,7 +212,7 @@ class StudentScanFragment : Fragment() {
                         if (isCentered) {
                             if (faceStableStart == 0L) faceStableStart = System.currentTimeMillis()
                             val elapsed = System.currentTimeMillis() - faceStableStart
-                            faceGuide.background.setTint(if (elapsed >= 300) Color.GREEN else Color.YELLOW)
+                            faceGuide.background.setTint(if (elapsed >= 300) Color.GREEN else Color.WHITE)
 
                             if (elapsed >= 1000 && !isVerifying) {
                                 isVerifying = true

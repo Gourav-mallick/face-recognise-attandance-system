@@ -169,7 +169,7 @@ class TeacherScanFragment : Fragment() {
 
                     // 🔹 LIVENESS CHECK (Eye open probability)
                     if (!isLiveFace(face,prevFace)) {
-                        faceGuide.background.setTint(Color.RED)
+                        faceGuide.background.setTint(Color.WHITE)
                         faceStableStart = 0L
                         prevFace = face
                         return@addOnSuccessListener
