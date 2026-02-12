@@ -143,6 +143,11 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
         listUsers = findViewById(R.id.listUsers)
 
+        listUsers.setOnTouchListener { v, event ->
+            // Allow ListView to handle its own scrolling
+            v.parent.requestDisallowInterceptTouchEvent(true)
+            false
+        }
 
         setupSearchDropdown()
         loadLocalUsers()
@@ -241,7 +246,12 @@ class FaceRegistrationActivity : AppCompatActivity() {
             )
 
 
-            listUsers.visibility = View.VISIBLE
+          //  listUsers.visibility = View.VISIBLE
+            if (filteredNames.isNotEmpty()) {
+                listUsers.visibility = View.VISIBLE
+            } else {
+                listUsers.visibility = View.GONE
+            }
             adapter.notifyDataSetChanged()
         }
     }

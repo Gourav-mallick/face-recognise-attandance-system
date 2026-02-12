@@ -12,48 +12,114 @@
     android:paddingBottom="18dp">
 
     <!-- Header card -->
+<!--    <androidx.cardview.widget.CardView-->
+<!--        android:id="@+id/headerCard"-->
+<!--        android:layout_width="0dp"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        app:cardCornerRadius="18dp"-->
+<!--        app:cardElevation="10dp"-->
+<!--      android:layout_marginTop="18dp"-->
+
+<!--        app:cardBackgroundColor="@color/white"-->
+<!--        app:layout_constraintTop_toTopOf="parent"-->
+<!--        app:layout_constraintStart_toStartOf="parent"-->
+<!--        app:layout_constraintEnd_toEndOf="parent">-->
+
+<!--        <LinearLayout-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:gravity="center"-->
+<!--            android:orientation="vertical"-->
+<!--            android:paddingStart="16dp"-->
+<!--            android:paddingEnd="16dp"-->
+<!--            android:paddingTop="16dp"-->
+<!--            android:paddingVertical="20dp">-->
+
+<!--            <TextView-->
+<!--                android:id="@+id/tvHeader"-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:text="Classroom Attendance"-->
+<!--                android:textColor="@color/text_dark"-->
+<!--                android:textSize="18sp"-->
+<!--                android:textStyle="bold" />-->
+
+<!--            <TextView-->
+<!--                android:id="@+id/tvLastSync"-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:layout_marginTop="8dp"-->
+<!--                android:text="Last Sync • Not Synced"-->
+<!--                android:textColor="@color/blue_primary"-->
+<!--                android:textSize="12sp" />-->
+
+<!--        </LinearLayout>-->
+
+<!--    </androidx.cardview.widget.CardView>-->
     <androidx.cardview.widget.CardView
         android:id="@+id/headerCard"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         app:cardCornerRadius="18dp"
         app:cardElevation="10dp"
-      android:layout_marginTop="18dp"
-
+        android:layout_marginTop="18dp"
         app:cardBackgroundColor="@color/white"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingTop="16dp"
-            android:paddingVertical="20dp">
+            android:padding="16dp">
 
-            <TextView
-                android:id="@+id/tvHeader"
+            <!-- CENTER TEXT AREA -->
+            <LinearLayout
+                android:id="@+id/centerText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Classroom Attendance"
-                android:textColor="@color/text_dark"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:orientation="vertical"
+                android:gravity="center"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
 
-            <TextView
-                android:id="@+id/tvLastSync"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Last Sync • Not Synced"
-                android:textColor="@color/blue_primary"
-                android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/tvHeader"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Classroom Attendance"
+                    android:textColor="@color/text_dark"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
 
-        </LinearLayout>
+                <TextView
+                    android:id="@+id/tvLastSync"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Last Sync • Not Synced"
+                    android:textColor="@color/blue_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- RIGHT MENU ICON -->
+<!--            <ImageView-->
+<!--                android:id="@+id/ivMenu"-->
+<!--                android:layout_width="28dp"-->
+<!--                android:layout_height="28dp"-->
+<!--                android:src="@drawable/ic_more_vert"-->
+<!--                android:contentDescription="Menu"-->
+<!--                android:padding="4dp"-->
+<!--                android:clickable="true"-->
+<!--                android:focusable="true"-->
+<!--                app:layout_constraintTop_toTopOf="parent"-->
+<!--                app:layout_constraintBottom_toBottomOf="parent"-->
+<!--                app:layout_constraintEnd_toEndOf="parent"-->
+<!--                app:tint="@color/text_dark" />-->
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
     </androidx.cardview.widget.CardView>
 
@@ -286,7 +352,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="10dp"
         android:gravity="center"
-        android:text="Version 1.51"
+
         android:textColor="#9CA3AF"
         android:textSize="14sp"
 

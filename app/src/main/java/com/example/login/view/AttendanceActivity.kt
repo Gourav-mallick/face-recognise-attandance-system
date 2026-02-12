@@ -175,14 +175,15 @@ class AttendanceActivity : AppCompatActivity() {
                 updateAppState("TEACHER_SCAN")
 
                 transaction.commitAllowingStateLoss()
-            } else {
-
-                Toast.makeText(
-                    this@AttendanceActivity,
-                    "Classroom $classroomName already assigned. Scan teacher card to continue.",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
+           }
+            //            else {
+//
+//                Toast.makeText(
+//                    this@AttendanceActivity,
+//                    "Classroom $classroomName already assigned. Scan teacher card to continue.",
+//                    Toast.LENGTH_SHORT
+//                ).show()
+//            }
         }
     }
 

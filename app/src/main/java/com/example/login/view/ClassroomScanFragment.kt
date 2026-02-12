@@ -29,8 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.login.api.ApiService
 import com.example.login.db.entity.Session
-
-
+import com.example.login.BuildConfig
 import java.net.URLEncoder
 import org.json.JSONObject
 import android.util.Log
@@ -42,6 +41,7 @@ import kotlinx.coroutines.withContext
 class ClassroomScanFragment : Fragment() {
 
     private lateinit var tvSyncStatus: LinearLayout
+    private lateinit var tvVersion:TextView
 
 
 //    private val updateReceiver = object : BroadcastReceiver() {
@@ -76,6 +76,9 @@ class ClassroomScanFragment : Fragment() {
         }
 
  */
+        val versionName = BuildConfig.VERSION_NAME
+        val tvVersion =view.findViewById<TextView>(R.id.tvVersion)
+        tvVersion.text = "Version $versionName"
 
 
         val inputFormat = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm:ss a", java.util.Locale.getDefault())
@@ -104,7 +107,28 @@ class ClassroomScanFragment : Fragment() {
                 .show()
         }
 
-
+//TODO for logout
+//        val ivMenu = view.findViewById<View>(R.id.ivMenu)
+//
+//        ivMenu.setOnClickListener { anchor ->
+//
+//            val popup = android.widget.PopupMenu(requireContext(), anchor)
+//            popup.menuInflater.inflate(R.menu.menu_header, popup.menu)
+//
+//            popup.setOnMenuItemClickListener { item ->
+//                when (item.itemId) {
+//
+//                    R.id.menu_logout -> {
+//                        showLogoutDialog()
+//                        true
+//                    }
+//
+//                    else -> false
+//                }
+//            }
+//
+//            popup.show()
+//        }
 
 
         //face recognize enrollment
@@ -636,6 +660,49 @@ class ClassroomScanFragment : Fragment() {
         Log.e(TAG, "NO MATCH: shortName=$shortName not found in privilegesDataArr")
         return false
     }
+
+    private fun showLogoutDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Logout")
+            .setMessage("Are you sure you want to logout?")
+            .setPositiveButton("Yes") { _, _ ->
+              //  performLogout()
+                Toast.makeText(
+                    requireContext(),
+                    " logout.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performLogout() {
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(requireContext())
+
+            // Clear only user runtime data
+//            db.sessionDao().deleteAll()
+//            db.attendanceDao().deleteAll()
+//            db.activeClassCycleDao().deleteAll()
+
+            // Clear preferences
+            requireContext().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+
+            requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+
+            Toast.makeText(requireContext(), "Logged out", Toast.LENGTH_SHORT).show()
+
+            // Go to Login screen
+            val intent = Intent(requireContext(), LoginActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+        }
+    }
+
 
 }
 
