@@ -246,7 +246,43 @@ class ClassroomScanFragment : Fragment() {
                 .show()
         }
 
+        val cardCounter = view.findViewById<View>(R.id.cardCounter)
+        cardCounter?.setOnClickListener {
+            val intent = Intent(requireContext(), UnregisteredUsersActivity::class.java)
+            startActivity(intent)
+        }
 
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateUserCounters()
+    }
+
+    private fun updateUserCounters() {
+        val view = view ?: return
+        val tvUnregisteredCount = view.findViewById<TextView>(R.id.tvUnregisteredCount) ?: return
+        val tvTotalCount = view.findViewById<TextView>(R.id.tvTotalCount) ?: return
+
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDatabase.getDatabase(requireContext())
+                val totalStudents = db.studentsDao().getTotalStudentsCount()
+                val totalTeachers = db.teachersDao().getTotalTeachersCount()
+                val unregisteredStudents = db.studentsDao().getUnregisteredStudentsCount()
+                val unregisteredTeachers = db.teachersDao().getUnregisteredTeachersCount()
+
+                val totalUsers = totalStudents + totalTeachers
+                val totalUnregistered = unregisteredStudents + unregisteredTeachers
+
+                withContext(Dispatchers.Main) {
+                    tvTotalCount.text = totalUsers.toString()
+                    tvUnregisteredCount.text = totalUnregistered.toString()
+                }
+            } catch (e: Exception) {
+                Log.e("ClassroomScanFragment", "Error updating counters", e)
+            }
+        }
     }
 
 
@@ -399,6 +435,7 @@ class ClassroomScanFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
                     if (allOk) {
+                        updateUserCounters()
                         Toast.makeText(
                             requireContext(),
                             " Sync Successful , Data synced and updated in local database.",

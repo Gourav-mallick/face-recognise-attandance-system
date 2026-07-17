@@ -69,7 +69,14 @@ interface StudentsDao {
     @Query("UPDATE students SET embedding = :embedding WHERE studentId = :studentId")
     suspend fun updateStudentEmbedding(studentId: String, embedding: String)
 
+    @Query("SELECT COUNT(*) FROM students")
+    suspend fun getTotalStudentsCount(): Int
 
+    @Query("SELECT COUNT(*) FROM students WHERE embedding IS NULL OR embedding = ''")
+    suspend fun getUnregisteredStudentsCount(): Int
+
+    @Query("SELECT * FROM students WHERE embedding IS NULL OR embedding = ''")
+    suspend fun getUnregisteredStudents(): List<Student>
 }
 
 
@@ -117,6 +124,14 @@ interface TeachersDao {
     @Query("UPDATE teachers SET embedding = :embedding WHERE staffId = :teacherId")
     suspend fun updateTeacherEmbedding(teacherId: String, embedding: String)
 
+    @Query("SELECT COUNT(*) FROM teachers")
+    suspend fun getTotalTeachersCount(): Int
+
+    @Query("SELECT COUNT(*) FROM teachers WHERE embedding IS NULL OR embedding = ''")
+    suspend fun getUnregisteredTeachersCount(): Int
+
+    @Query("SELECT * FROM teachers WHERE embedding IS NULL OR embedding = ''")
+    suspend fun getUnregisteredTeachers(): List<Teacher>
 }
 
 
