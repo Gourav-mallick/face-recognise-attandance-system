@@ -78,7 +78,7 @@
         <activity android:name=".view.CameraCaptureActivity"
             android:exported="false" />
         <activity android:name=".view.FaceRecogniseActivity" />
-
+        <activity android:name=".view.SettingsActivity" />
 
     </application>
 

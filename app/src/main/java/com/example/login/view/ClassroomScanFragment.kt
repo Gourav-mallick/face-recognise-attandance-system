@@ -34,6 +34,7 @@ import java.net.URLEncoder
 import org.json.JSONObject
 import android.util.Log
 import android.widget.LinearLayout
+import android.widget.ImageView
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -80,6 +81,9 @@ class ClassroomScanFragment : Fragment() {
         val tvVersion =view.findViewById<TextView>(R.id.tvVersion)
         tvVersion.text = "Version $versionName"
 
+        val tvVersionSettings = view.findViewById<TextView>(R.id.tvVersionSettings)
+        tvVersionSettings?.text = "Version $versionName"
+
 
         val inputFormat = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm:ss a", java.util.Locale.getDefault())
         val outputFormat = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
@@ -94,7 +98,7 @@ class ClassroomScanFragment : Fragment() {
 
 
         // inside onViewCreated
-        val tvManualDataSync = view.findViewById<Button>(R.id.tvManualDataSync)
+        val tvManualDataSync = view.findViewById<View>(R.id.tvManualDataSync)
         tvManualDataSync.setOnClickListener {
             AlertDialog.Builder(requireContext())
                 .setTitle("Sync Data")
@@ -132,18 +136,21 @@ class ClassroomScanFragment : Fragment() {
 
 
         //face recognize enrollment
-        val tvFaceRegistration=view.findViewById<Button>(R.id.tvFaceRegister)
+        val tvFaceRegistration=view.findViewById<View>(R.id.tvFaceRegister)
         tvFaceRegistration.setOnClickListener {
             AlertDialog.Builder(requireContext())
                 .setTitle("Registration User")
                 .setMessage("Do you want to Registration User Face?")
                 .setPositiveButton("Yes") { _, _ ->
-                    showAuthDialogForRregistration()
+                    showAuthDialog {
+                        val intent = Intent(requireContext(), FaceRegistrationActivity::class.java)
+                        startActivity(intent)
+                    }
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
         }
-        val btnStartClass = view.findViewById<Button>(R.id.tvStartClass)
+        val btnStartClass = view.findViewById<View>(R.id.tvStartClass)
         btnStartClass.setOnClickListener {
             simulateClassroomCard()
         }
@@ -151,7 +158,7 @@ class ClassroomScanFragment : Fragment() {
         //Todo when give previlages permission
        // applyFeaturePrivileges(btnStartClass, tvFaceRegistration)
 
-        val btnFaceVerify = view.findViewById<Button>(R.id.btnFaceVerify)
+        val btnFaceVerify = view.findViewById<View>(R.id.btnFaceVerify)
         btnFaceVerify.setOnClickListener {
            val intent = Intent(requireContext(), FaceRecogniseActivity::class.java)
             startActivity(intent)
@@ -202,20 +209,7 @@ class ClassroomScanFragment : Fragment() {
         }
 
         // 🕓 Show count of unsubmitted (active) sessions
-//        refreshUnsubmittedSessions()
-//
-////  Listen for broadcast to refresh count after session ends
-//        val updateFilter = IntentFilter("UPDATE_UNSUBMITTED_COUNT")
-//        @Suppress("UnspecifiedRegisterReceiverFlag")
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-//            requireContext().registerReceiver(
-//                updateReceiver,
-//                updateFilter,
-//                Context.RECEIVER_NOT_EXPORTED
-//            )
-//        } else {
-//            requireContext().registerReceiver(updateReceiver, updateFilter)
-//        }
+        // refreshUnsubmittedSessions()
 
 
         // 🔹 Disable back press (both button and gesture)
@@ -252,6 +246,110 @@ class ClassroomScanFragment : Fragment() {
             startActivity(intent)
         }
 
+        // --- BOTTOM NAVIGATION & SETTINGS CLICK ACTIONS ---
+        val tabHome = view.findViewById<View>(R.id.tabHome)
+        val tabSync = view.findViewById<View>(R.id.tabSync)
+        val tabRegister = view.findViewById<View>(R.id.tabRegister)
+        val tabSettings = view.findViewById<View>(R.id.tabSettings)
+
+        tabHome.setOnClickListener {
+            selectTab(view, "Home")
+        }
+        tabSync.setOnClickListener {
+            tvSyncStatus.performClick()
+        }
+        tabRegister.setOnClickListener {
+            tvFaceRegistration.performClick()
+        }
+        tabSettings.setOnClickListener {
+            showAuthDialog {
+                val intent = Intent(requireContext(), SettingsActivity::class.java)
+                startActivity(intent)
+            }
+        }
+
+        // Settings items
+        view.findViewById<View>(R.id.btnContactSupport)?.setOnClickListener {
+            Toast.makeText(requireContext(), "Support Contact: support@university.edu", Toast.LENGTH_LONG).show()
+        }
+        view.findViewById<View>(R.id.btnTerms)?.setOnClickListener {
+            Toast.makeText(requireContext(), "Terms of Service opened", Toast.LENGTH_SHORT).show()
+        }
+        view.findViewById<View>(R.id.btnPrivacy)?.setOnClickListener {
+            Toast.makeText(requireContext(), "Privacy Policy opened", Toast.LENGTH_SHORT).show()
+        }
+        view.findViewById<View>(R.id.btnLogout)?.setOnClickListener {
+            showLogoutDialog()
+        }
+        view.findViewById<View>(R.id.btnEditProfile)?.setOnClickListener {
+            Toast.makeText(requireContext(), "Profile editing is managed by Administrator", Toast.LENGTH_LONG).show()
+        }
+        // view.findViewById<View>(R.id.btnViewDetails)?.setOnClickListener {
+        //     Toast.makeText(requireContext(), "Class CS101 in Room 302 is scheduled from 09:00 AM to 10:30 AM", Toast.LENGTH_LONG).show()
+        // }
+    }
+
+    private fun selectTab(view: View, tabName: String) {
+        val tabHomePill = view.findViewById<View>(R.id.tabHomePill) ?: return
+        val tabHomeIcon = view.findViewById<ImageView>(R.id.tabHomeIcon) ?: return
+        val tabHomeText = view.findViewById<TextView>(R.id.tabHomeText) ?: return
+
+        val tabSyncPill = view.findViewById<View>(R.id.tabSyncPill) ?: return
+        val tabSyncIcon = view.findViewById<ImageView>(R.id.tabSyncIcon) ?: return
+        val tabSyncText = view.findViewById<TextView>(R.id.tabSyncText) ?: return
+
+        val tabRegisterPill = view.findViewById<View>(R.id.tabRegisterPill) ?: return
+        val tabRegisterIcon = view.findViewById<ImageView>(R.id.tabRegisterIcon) ?: return
+        val tabRegisterText = view.findViewById<TextView>(R.id.tabRegisterText) ?: return
+
+        val tabSettingsPill = view.findViewById<View>(R.id.tabSettingsPill) ?: return
+        val tabSettingsIcon = view.findViewById<ImageView>(R.id.tabSettingsIcon) ?: return
+        val tabSettingsText = view.findViewById<TextView>(R.id.tabSettingsText) ?: return
+
+        val layoutHomeContainer = view.findViewById<View>(R.id.layoutHomeContainer) ?: return
+        val layoutSettingsContainer = view.findViewById<View>(R.id.layoutSettingsContainer) ?: return
+
+        // Reset all to default gray/unselected
+        tabHomePill.setBackgroundResource(0)
+        tabHomeIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6B7280")))
+        tabHomeText.setTextColor(android.graphics.Color.parseColor("#6B7280"))
+        tabHomeText.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        tabSyncPill.setBackgroundResource(0)
+        tabSyncIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6B7280")))
+        tabSyncText.setTextColor(android.graphics.Color.parseColor("#6B7280"))
+        tabSyncText.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        tabRegisterPill.setBackgroundResource(0)
+        tabRegisterIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6B7280")))
+        tabRegisterText.setTextColor(android.graphics.Color.parseColor("#6B7280"))
+        tabRegisterText.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        tabSettingsPill.setBackgroundResource(0)
+        tabSettingsIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6B7280")))
+        tabSettingsText.setTextColor(android.graphics.Color.parseColor("#6B7280"))
+        tabSettingsText.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        when (tabName) {
+            "Home" -> {
+                tabHomePill.setBackgroundResource(R.drawable.bg_nav_selected_pill)
+                tabHomeIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1E88E5")))
+                tabHomeText.setTextColor(android.graphics.Color.parseColor("#1E88E5"))
+                tabHomeText.setTypeface(null, android.graphics.Typeface.BOLD)
+
+                layoutHomeContainer.visibility = View.VISIBLE
+                layoutSettingsContainer.visibility = View.GONE
+            }
+            "Settings" -> {
+                tabSettingsPill.setBackgroundResource(R.drawable.bg_nav_selected_pill)
+                tabSettingsIcon.setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1E88E5")))
+                tabSettingsText.setTextColor(android.graphics.Color.parseColor("#1E88E5"))
+                tabSettingsText.setTypeface(null, android.graphics.Typeface.BOLD)
+
+                layoutHomeContainer.visibility = View.GONE
+                layoutSettingsContainer.visibility = View.VISIBLE
+            }
+        }
     }
 
     override fun onResume() {
@@ -335,7 +433,7 @@ class ClassroomScanFragment : Fragment() {
     }
 
 
-    private fun showAuthDialogForRregistration() {
+    private fun showAuthDialog(onSuccess: () -> Unit) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_auth_sync, null)
         val edtUsername = dialogView.findViewById<EditText>(R.id.edtUsername)
         val edtPassword = dialogView.findViewById<EditText>(R.id.edtPassword)
@@ -358,9 +456,7 @@ class ClassroomScanFragment : Fragment() {
 
             if (enteredUser == savedUser && enteredPass == savedPass) {
                 dialog.dismiss()
-                // Call EnrollActivity here
-                val intent = Intent(requireContext(), FaceRegistrationActivity::class.java)
-                startActivity(intent)
+                onSuccess()
             } else {
                 Toast.makeText(requireContext(), "Invalid credentials!", Toast.LENGTH_SHORT).show()
             }
@@ -523,8 +619,8 @@ class ClassroomScanFragment : Fragment() {
 
 
     private fun applyFeaturePrivileges(
-        btnStartClass: Button,
-        btnFaceRegister: Button
+        btnStartClass: View,
+        btnFaceRegister: View
     ) {
         val TAG = "PRIVILEGE_API"
         val prefs = requireContext().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
