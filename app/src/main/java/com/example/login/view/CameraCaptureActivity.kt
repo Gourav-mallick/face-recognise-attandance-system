@@ -2,6 +2,7 @@ package com.example.login.view
 
 import android.graphics.*
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
@@ -15,12 +16,13 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 import com.example.login.R
 
 
-class CameraCaptureActivity : AppCompatActivity() {
+class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var previewView: PreviewView
 
@@ -52,6 +54,10 @@ class CameraCaptureActivity : AppCompatActivity() {
     private lateinit var ivCenterArrow: ImageView
     private lateinit var ivRightArrow: ImageView
 
+    // Voice guidance
+    private lateinit var tts: TextToSpeech
+    private var isTtsReady = false
+
     private val detector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
@@ -61,6 +67,9 @@ class CameraCaptureActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_camera_capture)
+
+        // Initialize Text-to-Speech
+        tts = TextToSpeech(this, this)
 
         // bind views
         previewView = findViewById(R.id.previewView)
@@ -100,6 +109,7 @@ class CameraCaptureActivity : AppCompatActivity() {
                 faceStableStart = 0L
             } else {
                 tvStep.text = "All photos captured"
+                speak("All photos captured successfully")
 
                 // Now return images to caller
                 val img1 = bitmapToBytes(capturedBitmaps[0])
@@ -123,6 +133,7 @@ class CameraCaptureActivity : AppCompatActivity() {
             // Do NOT change step — recapture same position
             captured = false
             faceStableStart = 0L
+            updateStepText() // Re-speak current step voice command
         }
 
 
@@ -351,6 +362,7 @@ class CameraCaptureActivity : AppCompatActivity() {
         overlayPanel.visibility = View.VISIBLE
         capturedImage.setImageBitmap(bmp)
         tvStep.text = "Preview"
+        speak("Photo captured, please verify")
     }
 
 
@@ -361,18 +373,21 @@ class CameraCaptureActivity : AppCompatActivity() {
                 ivLeftArrow.alpha = 1f
                 ivCenterArrow.alpha = 0.1f
                 ivRightArrow.alpha = 0.1f
+                speak("Turn left and hold still, capturing left face")
             }
             1 -> {
                 tvStep.text = "Turn RIGHT and hold still"
                 ivLeftArrow.alpha = 0.1f
                 ivCenterArrow.alpha = 0.1f
                 ivRightArrow.alpha = 1f
+                speak("Turn right and hold still, capturing right face")
             }
             2 -> {
                 tvStep.text = "Look CENTER and hold still"
                 ivLeftArrow.alpha = 0.1f
                 ivCenterArrow.alpha = 1f
                 ivRightArrow.alpha = 0.1f
+                speak("Look straight at the camera and hold still")
             }
         }
     }
@@ -446,5 +461,31 @@ class CameraCaptureActivity : AppCompatActivity() {
         val h = min(bmp.height - y, halfH * 2)
 
         return Bitmap.createBitmap(bmp, x, y, w, h)
+    }
+
+    // --- Voice Guidance (TTS) ---
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts.setLanguage(Locale.US)
+            isTtsReady = result != TextToSpeech.LANG_MISSING_DATA
+                    && result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (isTtsReady) {
+                // Speak the first step instruction once TTS is ready
+                speak("Turn left and hold still, capturing left face")
+            }
+        }
+    }
+
+    private fun speak(message: String) {
+        if (isTtsReady) {
+            tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "voice_guide")
+        }
+    }
+
+    override fun onDestroy() {
+        tts.stop()
+        tts.shutdown()
+        super.onDestroy()
     }
 }
