@@ -502,7 +502,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                         val prefs2 = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
                         prefs2.edit().clear().apply()
 
-                        val intent = Intent(this@AttendanceActivity, ClassSelectActivity::class.java)
+                        val intent = Intent(this@AttendanceActivity, PeriodSelectActivity::class.java)
                         intent.putExtra("SESSION_ID", cycle.sessionId)
                         intent.putExtra("TEACHER_ID", cycle.teacherId)
                         startActivity(intent)

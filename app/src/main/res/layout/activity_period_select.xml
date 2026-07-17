@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_gradient"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/tvPeriodTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select School Period(s)"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_dark"
+            android:layout_gravity="center"
+            android:layout_marginBottom="4dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="4dp"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/tvAutoAssigned"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto-assigned period: —"
+            android:textSize="13sp"
+            android:textColor="@color/text_gray"
+            android:gravity="center"
+            android:layout_marginBottom="12dp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewPeriods"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="8dp"
+            android:clipToPadding="false" />
+
+        <Button
+            android:id="@+id/btnSkipPeriod"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Skip (Use Auto-Assigned)"
+            android:textColor="@color/text_dark"
+            android:backgroundTint="@android:color/transparent"
+            android:layout_marginTop="8dp" />
+
+        <Button
+            android:id="@+id/btnContinuePeriod"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Continue"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/btn_rounded"
+            android:textColor="@android:color/white"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
