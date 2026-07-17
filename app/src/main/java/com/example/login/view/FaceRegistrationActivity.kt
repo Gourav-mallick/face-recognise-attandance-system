@@ -342,6 +342,16 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 selectedStudent = null
             }
 
+            // Check if already registered
+            val existingEmbedding = selectedStudent?.embedding ?: selectedTeacher?.embedding
+            if (!existingEmbedding.isNullOrEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Already Registered")
+                    .setMessage("User $name ($id) is already registered.\n\nYou can choose to update, delete, or go to the Home screen and verify their identity.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+
             hideDropdown()
 
             //  NEW: Hide keyboard

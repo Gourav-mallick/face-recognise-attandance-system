@@ -10,6 +10,83 @@
     android:paddingTop="16dp"
     android:paddingBottom="16dp">
 
+    <!-- TOP SELECTOR CARD -->
+    <LinearLayout
+        android:id="@+id/selectorCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/white_transparent_card"
+        android:padding="10dp"
+        android:elevation="6dp"
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="User Type"
+                android:textColor="#6B6B6B"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvSelectUserType"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_container"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="10dp"
+                android:text="Select User Type"
+                android:textColor="#111111"
+                android:textSize="14sp"
+                android:drawableEnd="@drawable/outline_arrow_drop_down_24"
+                android:drawableTint="#6B6B6B" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutClassSelector"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select Class"
+                android:textColor="#6B6B6B"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvSelectClass"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_container"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="10dp"
+                android:text="All Classes"
+                android:textColor="#111111"
+                android:textSize="14sp"
+                android:drawableEnd="@drawable/outline_arrow_drop_down_24"
+                android:drawableTint="#6B6B6B" />
+        </LinearLayout>
+
+    </LinearLayout>
+
     <!-- CAMERA PREVIEW AREA -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cameraFrame"
@@ -18,11 +95,11 @@
         app:cardCornerRadius="22dp"
         app:cardElevation="10dp"
         app:cardBackgroundColor="#11000000"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/selectorCard"
         app:layout_constraintBottom_toTopOf="@+id/infoCard"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHeight_percent="0.68">
+        android:layout_marginTop="10dp">
 
         <FrameLayout
             android:layout_width="match_parent"

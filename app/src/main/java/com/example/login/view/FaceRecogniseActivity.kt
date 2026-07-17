@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.ListPopupWindow
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -26,6 +27,13 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
+import android.widget.Spinner
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
+import android.view.View
+import com.example.login.db.entity.Class
+import com.example.login.db.entity.Student
+import com.example.login.db.entity.Teacher
 
 class FaceRecogniseActivity : AppCompatActivity() {
 
@@ -35,6 +43,24 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private lateinit var tvUserRole: TextView
     private lateinit var tvExtraInfo: TextView
     private lateinit var faceGuide: android.view.View
+    private lateinit var tvScreenHint: TextView
+    private lateinit var tvBottomHint: TextView
+
+    private lateinit var tvSelectUserType: TextView
+    private lateinit var tvSelectClass: TextView
+    private lateinit var layoutClassSelector: View
+
+    data class CachedUser(
+        val id: String,
+        val name: String,
+        val role: String,
+        val classId: String?,
+        val embedding: FloatArray
+    )
+
+    private var classList = listOf<Class>()
+    @Volatile
+    private var cachedUsersToMatch = listOf<CachedUser>()
 
     private lateinit var faceNet: FaceNetHelper
     private lateinit var cameraExecutor: java.util.concurrent.ExecutorService
@@ -63,6 +89,20 @@ class FaceRecogniseActivity : AppCompatActivity() {
         tvUserName = findViewById(R.id.tvUserName)
         tvUserRole = findViewById(R.id.tvUserRole)
         tvExtraInfo = findViewById(R.id.tvExtraInfo)
+        tvScreenHint = findViewById(R.id.tvScreenHint)
+        tvBottomHint = findViewById(R.id.tvBottomHint)
+
+        tvSelectUserType = findViewById(R.id.tvSelectUserType)
+        tvSelectClass = findViewById(R.id.tvSelectClass)
+        layoutClassSelector = findViewById(R.id.layoutClassSelector)
+
+        // Set initial pause instructions
+        tvScreenHint.text = "Please select User Type from the dropdown"
+        tvBottomHint.text = "Selection required to start recognition"
+        tvMatchStatus.text = "Scanning Paused: Select User Type"
+
+        setupSpinners()
+        loadInitialFiltersAndCache()
 
         faceNet = FaceNetHelper(this)
         cameraExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -157,6 +197,32 @@ class FaceRecogniseActivity : AppCompatActivity() {
     // FRAME PROCESSING
     // -----------------------------------------------------------
     private fun processFrame(imageProxy: ImageProxy) {
+        if (tvSelectUserType.text.toString() == "Select User Type") {
+            runOnUiThread {
+                tvScreenHint.text = "Please select User Type from the dropdown"
+                tvBottomHint.text = "Selection required to start recognition"
+                tvMatchStatus.text = "Scanning Paused: Select User Type"
+                faceGuide.background.setTint(Color.RED)
+            }
+            imageProxy.close()
+            return
+        } else {
+            runOnUiThread {
+                if (tvScreenHint.text == "Please select User Type from the dropdown") {
+                    tvScreenHint.text = "Align your face inside the circle"
+                }
+                if (tvBottomHint.text == "Selection required to start recognition") {
+                    tvBottomHint.text = "Good lighting improves accuracy"
+                }
+                if (tvMatchStatus.text == "Scanning Paused: Select User Type") {
+                    tvMatchStatus.text = "Face Not Detected"
+                }
+            }
+        }
+        if (isVerifying) {
+            imageProxy.close()
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastProcessTime < 140) {
             imageProxy.close()
@@ -231,7 +297,6 @@ class FaceRecogniseActivity : AppCompatActivity() {
                                     withContext(Dispatchers.Main) {
                                         verifyFace(emb)
                                         faceStableStart = 0L
-                                        isVerifying = false
                                     }
                                 }
                             }
@@ -292,99 +357,237 @@ class FaceRecogniseActivity : AppCompatActivity() {
     // -----------------------------------------------------------
     // MATCH LOGIC (real-time DB comparison)
     // -----------------------------------------------------------
-    private fun verifyFace(faceEmbedding: FloatArray) {
+    private var classNames = mutableListOf("All Classes")
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(this@FaceRecogniseActivity)
+    private fun setupSpinners() {
+        val types = listOf("Students", "Teachers")
 
-            var bestDist = Float.MAX_VALUE
-            var bestName = "Unknown"
-            var bestId: String? = null
-            var bestRole = "Unknown"
-
-            // --- CHECK TEACHERS IN DB ---
-            val teachers = db.teachersDao().getAllTeachers()
-            for (t in teachers) {
-                val embStr = t.embedding ?: continue
-                val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
-                if (emb.isEmpty()) continue
-
-                val dist = faceNet.calculateDistance(emb, faceEmbedding)
-                if (dist < bestDist) {
-                    bestDist = dist
-                    bestName = t.staffName
-                    bestId = t.staffId
-                    bestRole = "Teacher"
+        tvSelectUserType.setOnClickListener { anchorView ->
+            val listPopupWindow = ListPopupWindow(this)
+            listPopupWindow.anchorView = anchorView
+            listPopupWindow.setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, types))
+            
+            val width = (200 * resources.displayMetrics.density).toInt()
+            listPopupWindow.width = width
+            listPopupWindow.height = ListPopupWindow.WRAP_CONTENT
+            listPopupWindow.setOnItemClickListener { _, _, position, _ ->
+                val selectedType = types[position]
+                tvSelectUserType.text = selectedType
+                
+                tvScreenHint.text = "Align your face inside the circle"
+                tvBottomHint.text = "Good lighting improves accuracy"
+                tvMatchStatus.text = "Face Not Detected"
+                
+                if (selectedType == "Teachers") {
+                    layoutClassSelector.visibility = View.GONE
+                } else {
+                    layoutClassSelector.visibility = View.VISIBLE
                 }
+                
+                updateMatchingCache()
+                listPopupWindow.dismiss()
             }
-
-            // --- CHECK STUDENTS IN DB ---
-            val students = db.studentsDao().getAllStudents()
-            for (s in students) {
-                val embStr = s.embedding ?: continue
-                val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
-                if (emb.isEmpty()) continue
-
-                val dist = faceNet.calculateDistance(emb, faceEmbedding)
-                if (dist < bestDist) {
-                    bestDist = dist
-                    bestName = s.studentName
-                    bestId = s.studentId
-                    bestRole = "Student"
-                }
+            listPopupWindow.show()
+            listPopupWindow.listView?.let { listView ->
+                listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#E0E0E0"))
+                listView.dividerHeight = (1 * resources.displayMetrics.density).toInt()
             }
+        }
 
-            // --- EVALUATE MATCH ---
-            withContext(Dispatchers.Main) {
-                if (bestDist >= DIST_THRESHOLD || bestId == null) {
-                    showResult("Face Not Recognized", "", "", "")
-                    return@withContext
-                }
-
-                // FETCH EXTRA INFO
-                lifecycleScope.launch(Dispatchers.IO) {
-                    var extraInfo = ""
-                    val db2 = AppDatabase.getDatabase(this@FaceRecogniseActivity)
-
-                    if (bestRole == "Student") {
-                        val st = db2.studentsDao().getStudentById(bestId)
-                        extraInfo = "Class: ${st?.classId ?: "--"}"
-                    } else {
-                        val tc = db2.teachersDao().getTeacherById(bestId)
-                        // extraInfo = "Department: ${tc?.dept ?: "--"}"
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        showResult("Face Matched", bestName, bestRole, extraInfo)
-                    }
-                }
+        tvSelectClass.setOnClickListener { anchorView ->
+            val listPopupWindow = ListPopupWindow(this)
+            listPopupWindow.anchorView = anchorView
+            listPopupWindow.setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, classNames))
+            
+            val width = (300 * resources.displayMetrics.density).toInt()
+            listPopupWindow.width = width
+            listPopupWindow.horizontalOffset = -(width - anchorView.width)
+            
+            // Limit height to 300dp (approx 900 pixels on high-density screens)
+            listPopupWindow.height = (300 * resources.displayMetrics.density).toInt()
+            listPopupWindow.setOnItemClickListener { _, _, position, _ ->
+                val selectedClass = classNames[position]
+                tvSelectClass.text = selectedClass
+                
+                updateMatchingCache()
+                listPopupWindow.dismiss()
+            }
+            listPopupWindow.show()
+            listPopupWindow.listView?.let { listView ->
+                listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#E0E0E0"))
+                listView.dividerHeight = (1 * resources.displayMetrics.density).toInt()
             }
         }
     }
 
-    private fun showResult(status: String, name: String, role: String, extra: String) {
-        tvMatchStatus.text = status
-        tvUserName.text = name
-        tvUserRole.text = role
-        tvExtraInfo.text = extra
+    private fun loadInitialFiltersAndCache() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDatabase.getDatabase(this@FaceRecogniseActivity)
+                classList = db.classDao().getAllClasses()
+                
+                val names = mutableListOf("All Classes")
+                names.addAll(classList.map { it.classShortName })
 
-        // 🔥 Reset UI after 5 seconds
+                withContext(Dispatchers.Main) {
+                    classNames.clear()
+                    classNames.addAll(names)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FaceRecognise", "loadInitialFiltersAndCache error", e)
+            }
+        }
+    }
+
+    private fun updateMatchingCache() {
+        val selectedType = tvSelectUserType.text.toString()
+        val selectedClassShort = tvSelectClass.text.toString()
+
+        if (selectedType == "Select User Type") {
+            cachedUsersToMatch = emptyList()
+            return
+        }
+
+        // Resolve class ID
+        val selectedClassId = if (selectedClassShort == "All Classes" || selectedType == "Teachers") null else {
+            classList.firstOrNull { it.classShortName == selectedClassShort }?.classId
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDatabase.getDatabase(this@FaceRecogniseActivity)
+                val list = mutableListOf<CachedUser>()
+
+                // 1. Load Teachers
+                if (selectedType == "Teachers") {
+                    val teachers = db.teachersDao().getAllTeachers()
+                    for (t in teachers) {
+                        val embStr = t.embedding ?: continue
+                        val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
+                        if (emb.size == 512 || emb.size == 128) {
+                            list.add(CachedUser(t.staffId, t.staffName, "Teacher", null, emb))
+                        }
+                    }
+                }
+
+                // 2. Load Students
+                if (selectedType == "Students") {
+                    val students = if (selectedClassId != null) {
+                        db.studentsDao().getStudentsByClass(selectedClassId)
+                    } else {
+                        db.studentsDao().getAllStudents()
+                    }
+
+                    for (s in students) {
+                        val embStr = s.embedding ?: continue
+                        val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
+                        if (emb.size == 512 || emb.size == 128) {
+                            list.add(CachedUser(s.studentId, s.studentName, "Student", s.classId, emb))
+                        }
+                    }
+                }
+
+                cachedUsersToMatch = list
+                android.util.Log.d("FaceRecognise", "Cache updated! Match pool size: ${list.size}")
+            } catch (e: Exception) {
+                android.util.Log.e("FaceRecognise", "updateMatchingCache error", e)
+            }
+        }
+    }
+
+    private fun verifyFace(faceEmbedding: FloatArray) {
+        val currentCache = cachedUsersToMatch
+
+        lifecycleScope.launch(Dispatchers.Default) {
+            var bestDist = Float.MAX_VALUE
+            var bestUser: CachedUser? = null
+
+            for (user in currentCache) {
+                val dist = faceNet.calculateDistance(user.embedding, faceEmbedding)
+                if (dist < bestDist) {
+                    bestDist = dist
+                    bestUser = user
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                if (bestDist >= DIST_THRESHOLD || bestUser == null) {
+                    showUnrecognizedResult()
+                    return@withContext
+                }
+
+                val extraInfo = if (bestUser.role == "Student") {
+                    val classShort = classList.firstOrNull { it.classId == bestUser.classId }?.classShortName
+                    "Class: ${classShort ?: bestUser.classId ?: "--"}"
+                } else {
+                    ""
+                }
+
+                showResultDialog("Face Matched", bestUser.name, bestUser.role, extraInfo)
+            }
+        }
+    }
+
+    private fun showUnrecognizedResult() {
+        tvMatchStatus.text = "Face Not Recognized"
+        tvUserName.text = ""
+        tvUserRole.text = ""
+        tvExtraInfo.text = ""
+
+        // Reset scanning automatically after 2 seconds (no popup dialog)
         tvMatchStatus.postDelayed({
             tvMatchStatus.text = "Face Not Detected"
-            tvUserName.text = ""
-            tvUserRole.text = ""
-            tvExtraInfo.text = ""
-
-            // Optional: reset liveness to allow new scan
+            tvScreenHint.text = "Align your face inside the circle"
+            tvBottomHint.text = "Good lighting improves accuracy"
             blinkDetected = false
             lastLeftProb = -1f
             lastRightProb = -1f
             prevFace = null
+            faceStableStart = 0L
             isVerifying = false
-
             faceGuide.background.setTint(Color.RED)
+        }, 2000)
+    }
 
-        }, 5000)   // 5000 ms = 5 seconds
+    private fun showResultDialog(title: String, name: String, role: String, extra: String) {
+        tvMatchStatus.text = "Face Matched"
+        tvUserName.text = name
+        tvUserRole.text = role
+        tvExtraInfo.text = extra
+
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+        builder.setTitle(title)
+        
+        val message = buildString {
+            append("Name: $name\n")
+            append("Role: $role\n")
+            if (extra.isNotEmpty()) append("$extra\n")
+        }
+        builder.setMessage(message)
+        builder.setCancelable(false)
+        builder.setPositiveButton("OK") { dialog, _ ->
+            dialog.dismiss()
+            
+            // Reset state to allow next scan
+            blinkDetected = false
+            lastLeftProb = -1f
+            lastRightProb = -1f
+            prevFace = null
+            faceStableStart = 0L
+            isVerifying = false
+            faceGuide.background.setTint(Color.RED)
+            
+            // Reset text views
+            tvMatchStatus.text = "Face Not Detected"
+            tvScreenHint.text = "Align your face inside the circle"
+            tvBottomHint.text = "Good lighting improves accuracy"
+            tvUserName.text = ""
+            tvUserRole.text = ""
+            tvExtraInfo.text = ""
+        }
+        
+        val dialog = builder.create()
+        dialog.show()
     }
 
     // -----------------------------------------------------------
