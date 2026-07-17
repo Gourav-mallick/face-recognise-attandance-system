@@ -137,6 +137,14 @@ class FaceRegistrationActivity : AppCompatActivity() {
         radioActionType = findViewById(R.id.radioActionType)
 
         editSearchId = findViewById(R.id.editSearchId)
+        val scrollView = findViewById<ScrollView>(R.id.scrollView)
+        editSearchId.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                scrollView?.postDelayed({
+                    scrollView.fullScroll(View.FOCUS_DOWN)
+                }, 200)
+            }
+        }
         editName = findViewById(R.id.editName)
         btnEnrollFace = findViewById(R.id.btnEnrollFace)
 
@@ -154,6 +162,12 @@ class FaceRegistrationActivity : AppCompatActivity() {
         setupDropdownListeners()
 
         btnEnrollFace.setOnClickListener { handleActionClick() }
+
+        val cardCounter = findViewById<View>(R.id.cardCounter)
+        cardCounter?.setOnClickListener {
+            val intent = Intent(this, UnregisteredUsersActivity::class.java)
+            startActivity(intent)
+        }
 
 
         //only for test - other no use
@@ -192,6 +206,35 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateUserCounters()
+    }
+
+    private fun updateUserCounters() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
+                val totalStudents = db.studentsDao().getTotalStudentsCount()
+                val totalTeachers = db.teachersDao().getTotalTeachersCount()
+                val unregisteredStudents = db.studentsDao().getUnregisteredStudentsCount()
+                val unregisteredTeachers = db.teachersDao().getUnregisteredTeachersCount()
+
+                val totalUsers = totalStudents + totalTeachers
+                val totalUnregistered = unregisteredStudents + unregisteredTeachers
+
+                withContext(Dispatchers.Main) {
+                    val tvTotalCount = findViewById<TextView>(R.id.tvTotalCount)
+                    val tvUnregisteredCount = findViewById<TextView>(R.id.tvUnregisteredCount)
+                    if (tvTotalCount != null) tvTotalCount.text = totalUsers.toString()
+                    if (tvUnregisteredCount != null) tvUnregisteredCount.text = totalUnregistered.toString()
+                }
+            } catch (e: Exception) {
+                Log.e("FaceRegistrationActivity", "Error updating counters", e)
+            }
+        }
+    }
+
 
     private fun loadLocalUsers() {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -204,7 +247,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     private fun setupSearchDropdown() {
 
-        adapter = ArrayAdapter(this, R.layout.list_item_user_dropdown, android.R.id.text1, filteredNames)
+        adapter = HighlightAdapter(this, R.layout.list_item_user_dropdown, android.R.id.text1, filteredNames)
 
         listUsers.adapter = adapter
 
@@ -615,17 +658,23 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
                 if (successStatus.equals("TRUE", ignoreCase = true)) {
                     Toast.makeText(this@FaceRegistrationActivity, "Face synced to server!", Toast.LENGTH_LONG).show()
-/*
-                    val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
 
-                    if (userType == "student") {
-                        db.studentsDao().updateStudentEmbedding(id, embeddingStr ?: "")
-                    } else {
-                        db.teachersDao().updateTeacherEmbedding(id, embeddingStr ?: "")
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
+                            if (userType == "student") {
+                                db.studentsDao().updateStudentEmbedding(id, embeddingStr ?: "")
+                            } else {
+                                db.teachersDao().updateTeacherEmbedding(id, embeddingStr ?: "")
+                            }
+                            allStudents = db.studentsDao().getAllStudents()
+                            allTeachers = db.teachersDao().getAllTeachers()
+                            updateUserCounters()
+                        } catch (e: Exception) {
+                            Log.e("EnrollActivity", "Local DB update failed", e)
+                        }
                     }
 
-
- */
                     Toast.makeText(
                         this@FaceRegistrationActivity,
                         "Face synced and stored locally!",
@@ -751,6 +800,42 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 Log.e("EnrollActivity", "PreSync error: ${e.message}")
                 false
             }
+        }
+    }
+
+    private inner class HighlightAdapter(
+        context: android.content.Context,
+        resource: Int,
+        textViewResourceId: Int,
+        objects: List<String>
+    ) : ArrayAdapter<String>(context, resource, textViewResourceId, objects) {
+
+        override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+            val view = super.getView(position, convertView, parent)
+            val textView = view.findViewById<TextView>(android.R.id.text1)
+            val fullText = getItem(position) ?: ""
+            val query = editSearchId.text.toString().trim()
+
+            if (query.isNotEmpty() && fullText.isNotEmpty()) {
+                val spannable = android.text.SpannableString(fullText)
+                val queryLower = query.lowercase()
+                val fullTextLower = fullText.lowercase()
+                var startPos = fullTextLower.indexOf(queryLower)
+                while (startPos >= 0) {
+                    val endPos = startPos + queryLower.length
+                    spannable.setSpan(
+                        android.text.style.BackgroundColorSpan(android.graphics.Color.YELLOW),
+                        startPos,
+                        endPos,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    startPos = fullTextLower.indexOf(queryLower, endPos)
+                }
+                textView.text = spannable
+            } else {
+                textView.text = fullText
+            }
+            return view
         }
     }
 

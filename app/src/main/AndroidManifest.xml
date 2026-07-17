@@ -68,7 +68,12 @@
         <activity android:name=".view.AttendanceOverviewActivity"/>
         <activity android:name=".view.SyncAttendanceToServer"/>
 
-        <activity android:name=".view.FaceRegistrationActivity" />
+        <activity 
+            android:name=".view.FaceRegistrationActivity"
+            android:windowSoftInputMode="adjustResize" />
+        <activity 
+            android:name=".view.UnregisteredUsersActivity"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".view.CameraCaptureActivity"
             android:exported="false" />
         <activity android:name=".view.FaceRecogniseActivity" />
