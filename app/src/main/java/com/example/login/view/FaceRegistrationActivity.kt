@@ -58,6 +58,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private var allTeachers = listOf<Teacher>()
     private var filteredNames = mutableListOf<String>()
 
+    private val CAMERA_PERMISSION_REQUEST_CODE = 1002
+
 
     private val liveCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -190,6 +192,26 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
 
 
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Camera permission granted", Toast.LENGTH_SHORT).show()
+                handleActionClick()
+            } else {
+                if (!androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.CAMERA)) {
+                    com.example.login.utility.PermissionUtils.showSettingsDialog(this, "Camera permission is required to capture photos for registration. Please enable it in the app settings.")
+                } else {
+                    Toast.makeText(this, "Camera permission is required to capture photos", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
 
@@ -330,6 +352,12 @@ class FaceRegistrationActivity : AppCompatActivity() {
             if (action == "delete") {
                 val id = selectedStudent?.studentId ?: selectedTeacher?.staffId
                 if (id != null) showDeleteFaceRegisterAuthDialog(id)
+                return
+            }
+
+            // Check camera permission
+            if (!com.example.login.utility.PermissionUtils.hasCameraPermission(this)) {
+                com.example.login.utility.PermissionUtils.requestCameraPermission(this, CAMERA_PERMISSION_REQUEST_CODE)
                 return
             }
 

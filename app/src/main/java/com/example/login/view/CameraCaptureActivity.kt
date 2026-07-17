@@ -64,6 +64,8 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             .build()
     )
 
+    private val CAMERA_PERMISSION_REQUEST_CODE = 1002
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_camera_capture)
@@ -180,7 +182,11 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
          */
 
-        startCamera()
+        if (com.example.login.utility.PermissionUtils.hasCameraPermission(this)) {
+            startCamera()
+        } else {
+            com.example.login.utility.PermissionUtils.requestCameraPermission(this, CAMERA_PERMISSION_REQUEST_CODE)
+        }
     }
 
 
@@ -487,5 +493,34 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tts.stop()
         tts.shutdown()
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (com.example.login.utility.PermissionUtils.hasCameraPermission(this)) {
+            startCamera()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startCamera()
+            } else {
+                if (!androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.CAMERA)) {
+                    com.example.login.utility.PermissionUtils.showSettingsDialog(this, "Camera permission is required to capture photos. Please enable it in the app settings.") {
+                        finish()
+                    }
+                } else {
+                    Toast.makeText(this, "Camera permission is required to capture photos", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
+        }
     }
 }

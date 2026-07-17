@@ -392,6 +392,12 @@ class TeacherScanFragment : Fragment() {
     override fun onResume() {
         super.onResume()
 
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            startCamera()
+        }
+
         val callback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (sessionCreated) {
@@ -412,6 +418,28 @@ class TeacherScanFragment : Fragment() {
         }
 
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, callback)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCamera()
+            } else {
+                if (!shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+                    com.example.login.utility.PermissionUtils.showSettingsDialog(this, "Camera permission is required for face scanning. Please enable it in the app settings.") {
+                        parentFragmentManager.popBackStack()
+                    }
+                } else {
+                    Toast.makeText(requireContext(), "Camera permission is required for scanning", Toast.LENGTH_LONG).show()
+                    parentFragmentManager.popBackStack()
+                }
+            }
+        }
     }
 
     private fun isLiveFace(face: com.google.mlkit.vision.face.Face, prevFace: com.google.mlkit.vision.face.Face?): Boolean {

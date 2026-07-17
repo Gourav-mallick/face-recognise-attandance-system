@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.*
 import android.os.Bundle
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -73,6 +74,41 @@ class FaceRecogniseActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (allPermissionsGranted()) {
+            startCamera()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        android.util.Log.d("PERM_DEBUG", "onRequestPermissionsResult: code=$requestCode, size=${grantResults.size}")
+        if (requestCode == 101) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                android.util.Log.d("PERM_DEBUG", "Permission GRANTED")
+                startCamera()
+            } else {
+                val showRationale = ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)
+                android.util.Log.d("PERM_DEBUG", "Permission DENIED. showRationale=$showRationale")
+                if (!showRationale) {
+                    android.util.Log.d("PERM_DEBUG", "Showing settings dialog")
+                    com.example.login.utility.PermissionUtils.showSettingsDialog(this, "Camera permission is required for face recognition. Please enable it in the app settings.") {
+                        finish()
+                    }
+                } else {
+                    android.util.Log.d("PERM_DEBUG", "Showing standard rationale toast")
+                    Toast.makeText(this, "Camera permission is required for face recognition", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
+        }
     }
 
     private fun allPermissionsGranted() =

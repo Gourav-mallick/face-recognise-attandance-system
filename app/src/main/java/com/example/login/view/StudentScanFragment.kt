@@ -608,4 +608,32 @@ class StudentScanFragment : Fragment() {
 
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (allPermissionsGranted()) {
+            startCamera()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCamera()
+            } else {
+                if (!shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+                    com.example.login.utility.PermissionUtils.showSettingsDialog(this, "Camera permission is required for student face scanning. Please enable it in the app settings.") {
+                        parentFragmentManager.popBackStack()
+                    }
+                } else {
+                    Toast.makeText(requireContext(), "Camera permission is required for scanning", Toast.LENGTH_LONG).show()
+                    parentFragmentManager.popBackStack()
+                }
+            }
+        }
+    }
 }
