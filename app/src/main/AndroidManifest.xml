@@ -64,6 +64,7 @@
         <activity android:name=".view.SelectInstituteActivity" />
         <activity android:name=".view.AttendanceActivity" />
         <activity android:name=".view.ClassSelectActivity"/>
+        <activity android:name=".view.PeriodSelectActivity"/>
         <activity android:name=".view.SubjectSelectActivity"/>
         <activity android:name=".view.AttendanceOverviewActivity"/>
         <activity android:name=".view.SyncAttendanceToServer"/>
