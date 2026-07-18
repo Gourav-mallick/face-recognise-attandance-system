@@ -245,20 +245,19 @@ class TeacherScanFragment : Fragment() {
 
                     if (!hasClasses) {
                         //  Teacher NOT assigned to any class
-                        val message = "$bestName,\n you are not enrolled in any class.\nPlease contact authority."
+                        val message = "$bestName,\nyou are not enroll any class. Please contact authority. and do setup first."
 
                         AlertDialog.Builder(requireContext())
                             .setTitle("Access Denied")
                             .setMessage(message)
                             .setCancelable(false)
                             .setPositiveButton("OK") { _, _ ->
+                                // Clear app state
+                                val prefs = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
+                                prefs.edit().remove("CURRENT_SCREEN").apply()
 
-
-                                // 🔥 Navigate back to Classroom Scan starting screen
-                               // parentFragmentManager.popBackStack()   // go back 1 step
-
-                                // If you want to CLEAR ALL and go to root of scanning:
-                                parentFragmentManager.popBackStack("TEACHER_SCAN",  FragmentManager.POP_BACK_STACK_INCLUSIVE)
+                                // Go back to ClassroomScanFragment (Home Screen)
+                                parentFragmentManager.popBackStack()
                                 isVerifying = false
                             }
                             .show()
