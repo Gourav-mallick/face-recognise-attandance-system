@@ -56,6 +56,9 @@ class PeriodSelectActivity : ComponentActivity() {
 
         // Continue button → override with selected periods + duplicate for multi
         binding.btnContinuePeriod.setOnClickListener {
+            if (!::adapter.isInitialized) {
+                return@setOnClickListener
+            }
             val selected = adapter.getSelectedPeriodIds()
             if (selected.isEmpty()) {
                 Toast.makeText(this, "Please select at least one period, or tap Skip", Toast.LENGTH_SHORT).show()
@@ -117,9 +120,28 @@ class PeriodSelectActivity : ComponentActivity() {
             val allPeriods = db.schoolPeriodDao().getAll().filter { it.instId == instId }
 
             if (allPeriods.isEmpty()) {
-                Log.w(TAG, "No school periods found for instId=$instId, skipping to ClassSelect")
-                Toast.makeText(this@PeriodSelectActivity, "No periods found, continuing...", Toast.LENGTH_SHORT).show()
-                navigateToClassSelect()
+                android.app.AlertDialog.Builder(this@PeriodSelectActivity)
+                    .setTitle("Setup Missing")
+                    .setMessage("school period setup not done yet .please contact authority and setup..\n\ndo you want to procced")
+                    .setCancelable(false)
+                    .setPositiveButton("Yes") { dialog, _ ->
+                        dialog.dismiss()
+                        lifecycleScope.launch {
+                            db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
+                            db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, "999")
+                            navigateToClassSelect()
+                        }
+                    }
+                    .setNegativeButton("No") { dialog, _ ->
+                        dialog.dismiss()
+                        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+                        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+                        val intent = Intent(this@PeriodSelectActivity, AttendanceActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        startActivity(intent)
+                        finish()
+                    }
+                    .show()
                 return@launch
             }
 
