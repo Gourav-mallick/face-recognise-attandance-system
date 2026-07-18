@@ -1,5 +1,6 @@
 package com.example.login.view
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -43,6 +44,31 @@ class EditAttendanceActivity : ComponentActivity() {
     private var allListItems = mutableListOf<EditListItem>()
     private var filteredListItems = mutableListOf<EditListItem>()
     private lateinit var adapter: EditAttendanceAdapter
+
+    private var isLaunchingVerification = false
+    private var pendingVerifyItem: EditListItem.StudentItem? = null
+
+    private val faceVerificationLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val verifiedStudentId = result.data?.getStringExtra("VERIFIED_STUDENT_ID")
+            val item = pendingVerifyItem
+            if (item != null && item.studentId == verifiedStudentId) {
+                item.status = "P"
+                adapter.notifyDataSetChanged()
+                Toast.makeText(this, "${item.studentName} marked Present!", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Face verification failed or cancelled", Toast.LENGTH_SHORT).show()
+        }
+        pendingVerifyItem = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isLaunchingVerification = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -117,7 +143,16 @@ class EditAttendanceActivity : ComponentActivity() {
                 allListItems.addAll(items)
                 filterList(binding.editSearch.text.toString())
 
-                adapter = EditAttendanceAdapter(filteredListItems)
+                adapter = EditAttendanceAdapter(filteredListItems) { studentItem ->
+                    if (isLaunchingVerification) return@EditAttendanceAdapter
+                    isLaunchingVerification = true
+                    pendingVerifyItem = studentItem
+                    val intent = Intent(this@EditAttendanceActivity, FaceVerificationActivity::class.java).apply {
+                        putExtra("STUDENT_ID", studentItem.studentId)
+                        putExtra("STUDENT_NAME", studentItem.studentName)
+                    }
+                    faceVerificationLauncher.launch(intent)
+                }
                 binding.recyclerViewStudents.layoutManager = LinearLayoutManager(this@EditAttendanceActivity)
                 binding.recyclerViewStudents.adapter = adapter
             }
@@ -278,8 +313,8 @@ class EditAttendanceActivity : ComponentActivity() {
                         }
                     } else {
                         // Was originally absent
-                        if (status == "E") {
-                            // Create exempted record
+                        if (status == "P" || status == "E") {
+                            // Create present/exempted record
                             val existing = db.attendanceDao().getAttendanceForStudentInSession(sessionId, studentId)
                             if (existing == null) {
                                 val newAtt = Attendance(
@@ -290,7 +325,7 @@ class EditAttendanceActivity : ComponentActivity() {
                                     classId = sampleAtt.classId,
                                     markedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
                                     sessionId = sampleAtt.sessionId,
-                                    status = "E",
+                                    status = status,
                                     studentId = studentId,
                                     studentName = item.studentName,
                                     syncStatus = "pending",
@@ -313,11 +348,11 @@ class EditAttendanceActivity : ComponentActivity() {
                                 )
                                 db.attendanceDao().insertAttendance(newAtt)
                             } else {
-                                val updated = existing.copy(status = "E")
+                                val updated = existing.copy(status = status)
                                 db.attendanceDao().insertAttendance(updated)
                             }
                         } else if (status == "A") {
-                            // Delete record if it was previously exempted in this edit session
+                            // Delete record if it was previously marked in this edit session
                             db.attendanceDao().deleteAttendanceForStudent(sessionId, studentId)
                         }
                     }
@@ -348,7 +383,8 @@ sealed class EditListItem {
 }
 
 class EditAttendanceAdapter(
-    private val items: List<EditListItem>
+    private val items: List<EditListItem>,
+    private val onVerifyFace: (EditListItem.StudentItem) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -382,14 +418,18 @@ class EditAttendanceAdapter(
             holder.textName.text = item.studentName
             holder.textId.text = "ID: ${item.studentId}"
 
-            // Reset listeners to prevent recycling bugs
+            // Reset listeners and click listeners
             holder.cbP.setOnCheckedChangeListener(null)
             holder.cbL.setOnCheckedChangeListener(null)
             holder.cbA.setOnCheckedChangeListener(null)
             holder.cbE.setOnCheckedChangeListener(null)
+            holder.cbP.setOnClickListener(null)
+            holder.cbL.setOnClickListener(null)
+            holder.cbA.setOnClickListener(null)
+            holder.cbE.setOnClickListener(null)
 
             if (item.isOriginallyPresent) {
-                // Show P and L, hide A and E
+                // Originally present students: can be toggled between P and L
                 holder.cbP.visibility = View.VISIBLE
                 holder.cbL.visibility = View.VISIBLE
                 holder.cbA.visibility = View.GONE
@@ -398,51 +438,65 @@ class EditAttendanceAdapter(
                 holder.cbP.isChecked = (item.status == "P")
                 holder.cbL.isChecked = (item.status == "L")
 
-                holder.cbP.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
+                holder.cbP.setOnClickListener {
+                    if (holder.cbP.isChecked) {
                         item.status = "P"
                         holder.cbL.isChecked = false
-                    } else if (!holder.cbL.isChecked) {
+                    } else {
                         item.status = "A"
+                        holder.cbP.isChecked = false
                     }
                 }
 
-                holder.cbL.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
+                holder.cbL.setOnClickListener {
+                    if (holder.cbL.isChecked) {
                         item.status = "L"
                         holder.cbP.isChecked = false
-                    } else if (!holder.cbP.isChecked) {
+                    } else {
                         item.status = "A"
+                        holder.cbL.isChecked = false
                     }
                 }
             } else {
-                // Show A and E, hide P and L
-                holder.cbP.visibility = View.GONE
+                // Originally absent students: show cbP (requires face verification), cbA, and cbE
+                holder.cbP.visibility = View.VISIBLE
                 holder.cbL.visibility = View.GONE
                 holder.cbA.visibility = View.VISIBLE
                 holder.cbE.visibility = View.VISIBLE
 
+                holder.cbP.isChecked = (item.status == "P")
                 holder.cbA.isChecked = (item.status == "A")
                 holder.cbE.isChecked = (item.status == "E")
 
-                holder.cbA.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
+                // Camera icon overlay (tint/decoration on cbP text is optional, standard is enough)
+                holder.cbP.text = "P 📷"
+
+                holder.cbP.setOnClickListener {
+                    if (item.status != "P") {
+                        // User wants to mark present: reset checkbox and trigger face verification
+                        holder.cbP.isChecked = false
+                        onVerifyFace(item)
+                    } else {
+                        // Unchecking present goes back to Absent
                         item.status = "A"
+                        holder.cbP.isChecked = false
+                        holder.cbA.isChecked = true
                         holder.cbE.isChecked = false
-                    } else if (!holder.cbE.isChecked) {
-                        item.status = "A"
-                        holder.cbA.isChecked = true // force at least one checked
                     }
                 }
 
-                holder.cbE.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        item.status = "E"
-                        holder.cbA.isChecked = false
-                    } else if (!holder.cbA.isChecked) {
-                        item.status = "A"
-                        holder.cbA.isChecked = true
-                    }
+                holder.cbA.setOnClickListener {
+                    item.status = "A"
+                    holder.cbA.isChecked = true
+                    holder.cbP.isChecked = false
+                    holder.cbE.isChecked = false
+                }
+
+                holder.cbE.setOnClickListener {
+                    item.status = "E"
+                    holder.cbE.isChecked = true
+                    holder.cbP.isChecked = false
+                    holder.cbA.isChecked = false
                 }
             }
         }

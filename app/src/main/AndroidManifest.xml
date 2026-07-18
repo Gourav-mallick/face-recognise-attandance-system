@@ -69,6 +69,8 @@
         <activity android:name=".view.AttendanceOverviewActivity"/>
         <activity android:name=".view.EditAttendanceActivity"/>
         <activity android:name=".view.SyncAttendanceToServer"/>
+        <activity android:name=".view.FaceVerificationActivity"
+            android:screenOrientation="portrait" />
 
         <activity 
             android:name=".view.FaceRegistrationActivity"
