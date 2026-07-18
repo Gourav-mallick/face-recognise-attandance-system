@@ -242,10 +242,10 @@ class SubjectSelectActivity : ComponentActivity() {
                 Log.d("ALL_COURSES", "courseId=${c.courseId}, title=${c.courseTitle}, short=${c.courseShortName}")
             }
 
-            // 4️⃣ Convert CP → Course
+            // 4️⃣ Convert CP → Course and deduplicate by courseId
             val assignedCourses = assignedCoursePeriods.mapNotNull { cp ->
                 allCourses.firstOrNull { it.courseId == cp.courseId }
-            }
+            }.distinctBy { it.courseId }
 
             assignedCourses.forEach { c ->
                 Log.d("ASSIGNED_COURSES", "courseId=${c.courseId}, title=${c.courseTitle}, short=${c.courseShortName}")
