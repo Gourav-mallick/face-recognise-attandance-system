@@ -337,13 +337,9 @@ class StudentScanFragment : Fragment() {
                                 if (attendanceCount == 0) {
                                     AlertDialog.Builder(requireContext())
                                         .setTitle("Empty Session")
-                                        .setMessage("No students were scanned in this session.\n\nChoose 'Proceed' to save/log this empty session, or 'Discard' to delete it completely.")
+                                        .setMessage("No students were scanned in this session.")
                                         .setCancelable(false)
-                                        .setPositiveButton("Proceed") { dialog, _ ->
-                                            dialog.dismiss()
-                                            (requireActivity() as AttendanceActivity).showEndClassDialogForVisibleClass()
-                                        }
-                                        .setNegativeButton("Discard") { dialog, _ ->
+                                        .setPositiveButton("Discard") { dialog, _ ->
                                             dialog.dismiss()
                                             AlertDialog.Builder(requireContext())
                                                 .setTitle("Discard Session?")
@@ -357,6 +353,9 @@ class StudentScanFragment : Fragment() {
                                                      confDialog.dismiss()
                                                 }
                                                 .show()
+                                        }
+                                        .setNegativeButton("Cancel") { dialog, _ ->
+                                            dialog.dismiss()
                                         }
                                         .show()
                                 } else {

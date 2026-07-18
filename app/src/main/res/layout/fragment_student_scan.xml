@@ -80,6 +80,21 @@
                     android:textSize="14sp"
                     android:background="@drawable/bg_warning_pill"
                     android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tvBlinkWarning"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="12dp"
+                    android:text="for detection face please blink eyes"
+                    android:textColor="#FFEB3B"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="1"
+                    android:shadowDy="1"
+                    android:shadowRadius="2" />
             </FrameLayout>
 
         </LinearLayout>
