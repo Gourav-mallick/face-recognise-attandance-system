@@ -40,7 +40,8 @@ import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequest
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 
 class AttendanceActivity : AppCompatActivity() {
@@ -282,17 +283,34 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
     private fun startNewTeacherSession(teacherId: String, teacherName: String, classId: String) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
+            val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId) ?: ""
+
+            // Check if periods are empty for this institute
+            val periods = withContext(Dispatchers.IO) {
+                db.schoolPeriodDao().getAll().filter { it.instId == inst_id }
+            }
+
+            val spId = if (periods.isEmpty()) {
+                "999"
+            } else {
+                val estimated = getEstimatedCurrentTime()
+                val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
+                getFlexibleSchoolPeriodId(inst_id, startTime)
+            }
+            proceedWithNewTeacherSession(teacherId, teacherName, classId, spId)
+        }
+    }
+
+    private fun proceedWithNewTeacherSession(teacherId: String, teacherName: String, classId: String, spId: String) {
+        lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(this@AttendanceActivity)
             val sessionId = UUID.randomUUID().toString()
             val estimated = getEstimatedCurrentTime()
             val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
             Log.d("SESSION_DEBUG", "Session start time: $startTime")
             val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(estimated)
-            val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId)!!
-           // val instId = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
-            //    .getString("selectedInstituteIds", "") ?: ""
+            val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId) ?: ""
 
-            // 🔥 NEW: Calculate spId at session start
-            val spId = getFlexibleSchoolPeriodId(inst_id, startTime)
             Log.d("PERIOD_SAVE", "Session Start=$startTime → spId=$spId")
 
             val session = Session(
@@ -325,7 +343,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             currentTeacherId = teacherId
 
             val frag = StudentScanFragment.newInstance(teacherName, sessionId)
-            val transaction =supportFragmentManager.beginTransaction()
+            val transaction = supportFragmentManager.beginTransaction()
             transaction.replace(R.id.fragment_container, frag, TAG_STUDENT)
             updateAppState("STUDENT_SCAN")
             transaction.commitAllowingStateLoss()
@@ -864,14 +882,19 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         val db = AppDatabase.getDatabase(this)
         val periods = db.schoolPeriodDao().getAll().filter { it.instId == instId }
 
+        if (periods.isEmpty()) {
+            Log.w("PERIOD_ASSIGN", "No periods found in DB for instId=$instId, returning default 999")
+            return "999"
+        }
+
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val now = sdf.parse(startTime) ?: return ""
+        val now = sdf.parse(startTime) ?: return "999"
 
         val GRACE_MINUTES = 10
 
         for (p in periods) {
-            val start = sdf.parse(p.spIstTime)!!
-            val end = sdf.parse(p.spEndTime)!!
+            val start = sdf.parse(p.spIstTime) ?: continue
+            val end = sdf.parse(p.spEndTime) ?: continue
             val graceStart = Date(start.time - GRACE_MINUTES * 60 * 1000)
 
             if (now.after(start) && now.before(end)) {
@@ -886,7 +909,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
         Log.w("PERIOD_ASSIGN", "No matching period for $startTime")
 
-        val defaultSpId = periods.first().spId
+        val defaultSpId = periods.firstOrNull()?.spId ?: "999"
         Log.w("PERIOD_ASSIGN", "No match for $startTime, fallback → spId=$defaultSpId")
         return defaultSpId
     }

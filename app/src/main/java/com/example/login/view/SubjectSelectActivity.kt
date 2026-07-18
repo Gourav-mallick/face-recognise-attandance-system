@@ -198,6 +198,7 @@ class SubjectSelectActivity : ComponentActivity() {
 
             val session = db.sessionDao().getSessionById(sessionId)
             val teacherId = session?.teacherId ?: ""
+            val teacherName = db.teachersDao().getTeacherById(teacherId)?.staffName ?: ""
 
             Log.d("LOAD_COURSES", "sessionId = $sessionId")
             Log.d("LOAD_COURSES", "teacherId = $teacherId")
@@ -252,7 +253,35 @@ class SubjectSelectActivity : ComponentActivity() {
             }
             // 5️⃣ Update UI
             withContext(Dispatchers.Main) {
-                updateCourseUI(assignedCourses)
+                if (assignedCourses.isEmpty()) {
+                    AlertDialog.Builder(this@SubjectSelectActivity)
+                        .setTitle("Setup Missing")
+                        .setMessage("$teacherName, you are not assigned to any course. Please contact authority and do setup first, then conduct the session again.")
+                        .setCancelable(false)
+                        .setPositiveButton("Discard") { dialog, _ ->
+                            dialog.dismiss()
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                db.attendanceDao().deleteAttendanceForSession(sessionId)
+                                db.sessionDao().deleteSessionById(sessionId)
+                                db.activeClassCycleDao().getAll()
+                                    .find { it.sessionId == sessionId }
+                                    ?.let { db.activeClassCycleDao().delete(it) }
+
+                                withContext(Dispatchers.Main) {
+                                    getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+                                    getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+
+                                    val intent = Intent(this@SubjectSelectActivity, AttendanceActivity::class.java)
+                                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    startActivity(intent)
+                                    finish()
+                                }
+                            }
+                        }
+                        .show()
+                } else {
+                    updateCourseUI(assignedCourses)
+                }
             }
         }
     }

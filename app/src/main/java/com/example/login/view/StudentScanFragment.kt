@@ -328,70 +328,61 @@ class StudentScanFragment : Fragment() {
                 // 1) If the best match is a teacher
                 if (bestIsTeacher) {
                     if (bestMatchId == teacherId) {
-                        //  Check if there are any students marked present in this session
+                        // Check if there are any students marked present in this session
                         lifecycleScope.launch(Dispatchers.IO) {
                             val db = AppDatabase.getDatabase(requireContext())
                             val attendanceCount = db.attendanceDao().getAttendancesForSession(sessionIdArg).size
 
-                            if (attendanceCount == 0) {
-                                withContext(Dispatchers.Main) {
+                            withContext(Dispatchers.Main) {
+                                if (attendanceCount == 0) {
                                     AlertDialog.Builder(requireContext())
-                                        .setTitle("Close Class?")
-                                        .setMessage("No students are present in this class.\nDo you want to close?")
-                                        .setPositiveButton("Yes") { dialog, _ ->
+                                        .setTitle("Empty Session")
+                                        .setMessage("No students were scanned in this session.")
+                                        .setCancelable(false)
+                                        .setPositiveButton("Discard") { dialog, _ ->
                                             dialog.dismiss()
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                                                    .format(java.util.Date())
-
-                                                // 🔹 End and delete session completely
-                                                db.sessionDao().getSessionById(sessionIdArg)?.let { session ->
-                                                    db.sessionDao().updateSessionEnd(session.sessionId, currentTime)
-                                                    db.attendanceDao().deleteAttendanceForSession(session.sessionId)
-                                                    db.activeClassCycleDao().getAll()
-                                                        .find { it.sessionId == session.sessionId }
-                                                        ?.let { db.activeClassCycleDao().delete(it) }
-                                                    db.sessionDao().deleteSessionById(session.sessionId)
+                                            AlertDialog.Builder(requireContext())
+                                                .setTitle("Discard Session?")
+                                                .setMessage("Are you sure you want to discard this session? All logs will be deleted.")
+                                                .setCancelable(false)
+                                                .setPositiveButton("Discard") { confDialog, _ ->
+                                                     confDialog.dismiss()
+                                                     discardSessionAndExit(sessionIdArg)
                                                 }
-
-                                                withContext(Dispatchers.Main) {
-                                                    // 🔹 Clear saved app state
-                                                    val prefs1 = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
-                                                    prefs1.edit().clear().apply()
-
-                                                    val prefs2 = requireContext().getSharedPreferences("AttendancePrefs", Context.MODE_PRIVATE)
-                                                    prefs2.edit().clear().apply()
-
-                                                    Toast.makeText(
-                                                        requireContext(),
-                                                        "Class has been closed. Returning to the main screen.",
-                                                        Toast.LENGTH_LONG
-                                                    ).show()
-
-                                                    // 🔹 Restart app to starting fragment
-                                                    val intent = android.content.Intent(requireContext(), AttendanceActivity::class.java)
-                                                    intent.flags =
-                                                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                                                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                                                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                                    startActivity(intent)
-                                                    requireActivity().finish()
+                                                .setNegativeButton("Cancel") { confDialog, _ ->
+                                                     confDialog.dismiss()
                                                 }
-                                            }
+                                                .show()
                                         }
                                         .setNegativeButton("Cancel") { dialog, _ ->
                                             dialog.dismiss()
-                                            Toast.makeText(requireContext(), "Class not closed", Toast.LENGTH_SHORT).show()
                                         }
-                                        .setCancelable(false)
                                         .show()
-                                }
-                            }
-
-                            else {
-                                // 🔹 Students are present — normal flow (show end class popup)
-                                withContext(Dispatchers.Main) {
-                                    (requireActivity() as AttendanceActivity).showEndClassDialogForVisibleClass()
+                                } else {
+                                    AlertDialog.Builder(requireContext())
+                                        .setTitle("Session Completed")
+                                        .setMessage("Students have been scanned in this session.\n\nChoose 'Proceed' to save and select periods, or 'Mistakenly Started' to discard this session.")
+                                        .setCancelable(false)
+                                        .setPositiveButton("Proceed") { dialog, _ ->
+                                            dialog.dismiss()
+                                            (requireActivity() as AttendanceActivity).showEndClassDialogForVisibleClass()
+                                        }
+                                        .setNegativeButton("Mistakenly Started") { dialog, _ ->
+                                            dialog.dismiss()
+                                            AlertDialog.Builder(requireContext())
+                                                .setTitle("Discard Session?")
+                                                .setMessage("Are you sure you want to discard this session? All marked attendance will be deleted.")
+                                                .setCancelable(false)
+                                                .setPositiveButton("Discard") { confDialog, _ ->
+                                                     confDialog.dismiss()
+                                                     discardSessionAndExit(sessionIdArg)
+                                                }
+                                                .setNegativeButton("Cancel") { confDialog, _ ->
+                                                     confDialog.dismiss()
+                                                }
+                                                .show()
+                                        }
+                                        .show()
                                 }
                             }
                         }
@@ -606,6 +597,38 @@ class StudentScanFragment : Fragment() {
 
 
 
+    }
+
+    private fun discardSessionAndExit(sessionId: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(requireContext())
+            db.attendanceDao().deleteAttendanceForSession(sessionId)
+            db.sessionDao().deleteSessionById(sessionId)
+            db.activeClassCycleDao().getAll()
+                .find { it.sessionId == sessionId }
+                ?.let { db.activeClassCycleDao().delete(it) }
+
+            withContext(Dispatchers.Main) {
+                val prefs1 = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
+                prefs1.edit().clear().apply()
+
+                val prefs2 = requireContext().getSharedPreferences("AttendancePrefs", Context.MODE_PRIVATE)
+                prefs2.edit().clear().apply()
+
+                Toast.makeText(
+                    requireContext(),
+                    "Session discarded. Returning to main screen.",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                val intent = android.content.Intent(requireContext(), AttendanceActivity::class.java)
+                intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intent)
+                requireActivity().finish()
+            }
+        }
     }
 
     override fun onResume() {
