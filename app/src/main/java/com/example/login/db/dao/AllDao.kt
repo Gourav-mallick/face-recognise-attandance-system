@@ -21,6 +21,7 @@ import com.example.login.db.entity.SchoolPeriod
 import com.example.login.db.entity.Session
 import com.example.login.db.entity.StudentSchedule
 import com.example.login.db.entity.TeacherClassMap
+import com.example.login.db.entity.AttendanceCode
 
 
 @Dao
@@ -550,5 +551,20 @@ interface PendingScheduleDao {
 
     @Delete
     suspend fun delete(item: PendingScheduleEntity)
+}
+
+@Dao
+interface AttendanceCodeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(codes: List<AttendanceCode>)
+
+    @Query("SELECT * FROM attendance_codes")
+    suspend fun getAll(): List<AttendanceCode>
+
+    @Query("SELECT * FROM attendance_codes WHERE atcCode = :code LIMIT 1")
+    suspend fun getByCode(code: String): AttendanceCode?
+
+    @Query("DELETE FROM attendance_codes")
+    suspend fun clear()
 }
 

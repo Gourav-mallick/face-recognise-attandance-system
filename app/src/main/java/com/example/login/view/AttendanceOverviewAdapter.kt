@@ -29,7 +29,9 @@ class AttendanceOverviewAdapter(
         holder.binding.textPresent.text = "Present: ${data.presentCount}"
         holder.binding.textAbsent.text =
             "Absent: ${data.absentCount}"
-      //  holder.binding.textPresentStudents.text = "Present Students:\n${data.presentStudents.joinToString("\n")}"
 
+        holder.binding.btnEdit.setOnClickListener {
+            onEditClick(data.classId)
+        }
     }
 }

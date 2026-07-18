@@ -19,6 +19,7 @@ import com.example.login.db.entity.PendingScheduleEntity
 import com.example.login.db.entity.Institute
 import com.example.login.db.entity.PendingTeacherAllocationEntity
 import com.example.login.db.entity.SchoolPeriod
+import com.example.login.db.entity.AttendanceCode
 
 
 
@@ -40,6 +41,7 @@ import com.example.login.db.entity.SchoolPeriod
     Institute::class,
     PendingTeacherAllocationEntity::class,
     SchoolPeriod::class,
+    AttendanceCode::class
     ],
     version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
@@ -64,6 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingTeacherAllocationDao(): PendingTeacherAllocationDao
 
     abstract fun schoolPeriodDao(): SchoolPeriodDao
+    abstract fun attendanceCodeDao(): AttendanceCodeDao
 
 
 

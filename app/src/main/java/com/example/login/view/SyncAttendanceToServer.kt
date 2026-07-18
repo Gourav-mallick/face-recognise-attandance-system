@@ -123,12 +123,13 @@ class SyncAttendanceToServer : AppCompatActivity(){
                         attArray.put(mapAttendanceToApiFormat(att))
                     }
 
+                    val loggedStaffId = sharedPreferences.getString("loggedStaffId", null)
                     val requestBodyJson = JSONObject().apply {
                         put("attParamDataObj", JSONObject().apply {
                             put("attDataArr", attArray)
                             put("attAttachmentArr", JSONArray())
                             put("attendanceMethod", "periodDayWiseAttendance")
-                            put("loggedInUsrId", "1")
+                            put("loggedInUsrId", loggedStaffId)
                         })
                     }
                     Log.d("SYNC_REQUEST_server", requestBodyJson.toString())
@@ -192,24 +193,39 @@ class SyncAttendanceToServer : AppCompatActivity(){
         )
     }
 
-
-    private fun mapAttendanceToApiFormat(att: Attendance): JSONObject {
+    private suspend fun mapAttendanceToApiFormat(att: Attendance): JSONObject {
 
         val date=att.date
         val startTime=att.startTime
         val endtime=att.endTime
-        val year = date.split("-")[0]
         val dataStartTime="$date $startTime:00"
 
         val dataEndTime="$date $endtime:00"
+
+        val classShort = db.classDao().getClassById(att.classId)?.classShortName ?: ""
+
+        val attCode = att.status // "P", "L", "E", "A"
+        val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+        val attCodeId = codeEntity?.atcId ?: when(attCode) {
+            "L" -> "4"
+            "E" -> "3"
+            "A" -> "2"
+            else -> "1"
+        }
+        val attCodeLngName = codeEntity?.atcLongName ?: when(attCode) {
+            "L" -> "late"
+            "E" -> "exempted"
+            "A" -> "absent"
+            else -> "present"
+        }
 
         return JSONObject().apply {
             put("studentId", att.studentId)
             put("instId", att.instId)
             put("instShortName", att.instShortName ?: "")
-            put("academicYear",  year)
+            put("academicYear",  att.academicYear)
             put("classId", att.classId)
-            put("classShortName", att.classShortName ?: "")
+            put("classShortName", classShort)
             put("subjectId", att.subjectId ?: "")
             put("subjectCode", att.subjectId ?: "")
             put("subjectShortName", att.subjectTitle ?: "")
@@ -223,11 +239,11 @@ class SyncAttendanceToServer : AppCompatActivity(){
             put("attSchoolPeriodStartTime", att.startTime)
             put("attSchoolPeriodEndTime", att.endTime)
             put("period", att.period)
-            put("status", att.status)
+            put("status", "A")
             // You can extend more mappings as per your actual backend requirement
-            put("studentClass", att.classShortName ?: "")
+            put("studentClass", classShort)
             put("attCodetitle", "present")
-            put("courseSelectionMode","mandatory")
+            put("courseSelectionMode","")
             put("stfId",att.teacherId)
             put("stfFML","")
             put("studId",att.studentId)
@@ -249,9 +265,9 @@ class SyncAttendanceToServer : AppCompatActivity(){
             put("attCategory","Regular")
             put("studAttComment","")
             put("attSessionStudId","")
-            put("attCodeId",att.atteId)
-            put("attCodeLngName","present")
-            put("attCode",att.status)
+            put("attCodeId", attCodeId)
+            put("attCodeLngName", attCodeLngName)
+            put("attCode", attCode)
             put("studAttStartDateTime",dataStartTime)
             put("studAttEndDateTime",dataEndTime)
             put("studAttTotalDuration","")
@@ -262,7 +278,7 @@ class SyncAttendanceToServer : AppCompatActivity(){
             put("attCoLectureCpIds","")
             put("toRemoveCoLecturerCpIds","")
             put("toAddCoLecturerCpIds","")
-            put("status","A")
+            put("status", "A")
         }
     }
 }

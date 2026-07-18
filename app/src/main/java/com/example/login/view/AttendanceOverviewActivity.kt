@@ -105,19 +105,22 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
                 classSummaries.add(
                     ClassOverviewData(
+                        classId = classId,
                         className = classShortName,
                         totalStudents = totalStudents,
                         presentCount = presentCount,
                         absentCount = absentCount,
-                        subjectName = subjectName,
-                     //   presentStudents = presentStudents,
-
+                        subjectName = subjectName
                     )
                 )
             }
 
-            val adapter = AttendanceOverviewAdapter(classSummaries) { className ->
-                Toast.makeText(this@AttendanceOverviewActivity, "Edit clicked for $className", Toast.LENGTH_SHORT).show()
+            val adapter = AttendanceOverviewAdapter(classSummaries) { selectedClassId ->
+                val intent = Intent(this@AttendanceOverviewActivity, EditAttendanceActivity::class.java)
+                intent.putExtra("CLASS_ID", selectedClassId)
+                intent.putExtra("SESSION_ID", sessionId)
+                intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                startActivity(intent)
             }
 
             binding.recyclerViewOverview.layoutManager = LinearLayoutManager(this@AttendanceOverviewActivity)
@@ -311,9 +314,24 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("attCategory","Regular")
             put("studAttComment","")
             put("attSessionStudId","")
-            put("attCodeId","1")
-            put("attCodeLngName","present")
-            put("attCode","P")
+            val attCode = att.status // "P", "L", "E", "A"
+            val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+            val attCodeId = codeEntity?.atcId ?: when(attCode) {
+                "L" -> "4"
+                "E" -> "3"
+                "A" -> "2"
+                else -> "1"
+            }
+            val attCodeLngName = codeEntity?.atcLongName ?: when(attCode) {
+                "L" -> "late"
+                "E" -> "exempted"
+                "A" -> "absent"
+                else -> "present"
+            }
+
+            put("attCodeId", attCodeId)
+            put("attCodeLngName", attCodeLngName)
+            put("attCode", attCode)
             put("studAttStartDateTime",dataStartTime)
             put("studAttEndDateTime",dataEndTime)
             put("studAttTotalDuration","")
@@ -324,7 +342,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("attCoLectureCpIds","")
             put("toRemoveCoLecturerCpIds","")
             put("toAddCoLecturerCpIds","")
-            put("status","A")
+            put("status", "A")
 
         }
 
@@ -351,10 +369,10 @@ class AttendanceOverviewActivity : ComponentActivity() {
 }
 
 data class ClassOverviewData(
+    val classId: String,
     val className: String,
     val subjectName: String?,
     val totalStudents: Int,
     val presentCount: Int,
-    val absentCount: Int,
-  //  val presentStudents: List<String>,
+    val absentCount: Int
 )
