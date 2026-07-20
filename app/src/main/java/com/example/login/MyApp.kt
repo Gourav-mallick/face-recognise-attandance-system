@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.util.Log
-import com.sis.notification.NetworkReceiver
+import com.example.login.utility.NetworkReceiver
 
 class MyApp : Application() {
 

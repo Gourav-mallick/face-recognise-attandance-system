@@ -1,4 +1,4 @@
-package com.sis.notification
+package com.example.login.utility
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -6,7 +6,6 @@ import android.content.Intent
 import android.util.Log
 import com.example.login.db.dao.AppDatabase
 import com.example.login.repository.DataSyncRepository
-import com.example.login.utility.CheckNetworkAndInternetUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
