@@ -48,80 +48,46 @@ class SelectInstituteActivity : AppCompatActivity() {
 
     private val selectedInstitutes = mutableSetOf<String>()
     private val TAG = "SELECT_INSTITUTE"
-  //  private val HASH = "trr36pdthb9xbhcppyqkgbpkq"
+    private val allInstitutesMap = mutableMapOf<String, String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_select_institute)
 
         instituteSelectionLayout = findViewById(R.id.instituteSelectionLayout)
-  //      edtUsername = findViewById(R.id.usernametap)
-   //     edtPassword = findViewById(R.id.passwordtap)
         btnSync = findViewById(R.id.btnLogin)
         progressBar = findViewById(R.id.progressBar)
-        // SearchView
-        val searchInstitute = findViewById<SearchView>(R.id.searchInstitute)
 
         // 🔹 Get shared preferences
         val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
-        val savedUsername = prefs.getString("username", "")
-        val savedPassword = prefs.getString("password", "")
         val baseUrl = prefs.getString("baseUrl", "") ?: ""
-        val HASH=prefs.getString("hash", "")
-
-
-        // 🔹 Autofill saved credentials
-       // edtUsername.setText(savedUsername)
-      //  edtPassword.setText(savedPassword)
+        val HASH = prefs.getString("hash", "")
 
         // 🔹 Get data from intent
         val schoolIds = intent.getStringArrayListExtra("schoolIds") ?: arrayListOf()
         val schoolShortNames = intent.getStringArrayListExtra("schoolShortNames") ?: arrayListOf()
 
-        // store all views for filtering
-        val allInstituteViews = mutableListOf<View>()
-
-        // 🔹 Dynamically create checkbox list
-        for (i in schoolIds.indices) {
-            val view = layoutInflater.inflate(R.layout.item_institute, instituteSelectionLayout, false)
-            val chkSelect = view.findViewById<CheckBox>(R.id.cbSelectInstitute)
-            val tvSchoolShortName = view.findViewById<TextView>(R.id.tvSchoolShortName)
-            val tvSchoolId = view.findViewById<TextView>(R.id.tvSchoolId)
-
-            tvSchoolShortName.text = schoolShortNames[i]
-            tvSchoolId.text = "Institute ID: ${schoolIds[i]}"
-
-            chkSelect.setOnCheckedChangeListener { _, isChecked ->
-                if (isChecked) selectedInstitutes.add(schoolIds[i])
-                else selectedInstitutes.remove(schoolIds[i])
-            }
-
-            instituteSelectionLayout.addView(view)
-            allInstituteViews.add(view)
-        }
-
-        //  Search filter logic
-        searchInstitute.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean = false
-
-            override fun onQueryTextChange(newText: String?): Boolean {
-                val query = newText?.trim()?.lowercase(Locale.getDefault()) ?: ""
-                for (view in allInstituteViews) {
-                    val name = view.findViewById<TextView>(R.id.tvSchoolShortName).text.toString().lowercase(Locale.getDefault())
-                    val idText = view.findViewById<TextView>(R.id.tvSchoolId).text.toString().lowercase(Locale.getDefault())
-
-                    // Match if query is part of name or ID
-                    view.visibility = if (name.contains(query) || idText.contains(query)) View.VISIBLE else View.GONE
+        if (schoolIds.isEmpty()) {
+            // Load from local database
+            lifecycleScope.launch(Dispatchers.IO) {
+                val db = AppDatabase.getDatabase(this@SelectInstituteActivity)
+                val allInsts = db.instituteDao().getAll()
+                withContext(Dispatchers.Main) {
+                    val ids = ArrayList<String>()
+                    val names = ArrayList<String>()
+                    allInsts.forEach {
+                        ids.add(it.id)
+                        names.add(it.shortName)
+                    }
+                    buildInstituteList(ids, names)
                 }
-                return true
             }
-        })
+        } else {
+            buildInstituteList(schoolIds, schoolShortNames)
+        }
 
         // 🔹 Sync button click
         btnSync.setOnClickListener {
-        //    val enteredUser = edtUsername.text.toString().trim()
-        //    val enteredPass = edtPassword.text.toString().trim()
-
             // Show progress and disable button
             progressBar.visibility = ProgressBar.VISIBLE
             btnSync.isEnabled = false
@@ -133,31 +99,16 @@ class SelectInstituteActivity : AppCompatActivity() {
                 btnSync.isEnabled = true
                 return@setOnClickListener
             }
-/*
-            // 🔸 Validate fields
-            if (enteredUser.isEmpty() || enteredPass.isEmpty()) {
-                showToast("Please enter username and password")
-                return@setOnClickListener
-            }
 
- */
             if (selectedInstitutes.isEmpty()) {
                 showToast("Please select at least one institute")
                 progressBar.visibility = ProgressBar.GONE
                 btnSync.isEnabled = true
                 return@setOnClickListener
             }
-/*
-            // 🔸 Validate with SharedPreferences
-            if (enteredUser != savedUsername || enteredPass != savedPassword) {
-                showToast("Invalid username or password")
-                return@setOnClickListener
-            }
 
- */
             //  Save selected institute IDs to SharedPreferences
             val instIds = selectedInstitutes.joinToString(",")
-
 
             // Normalize baseUrl with triple slashes
             val normalizedBaseUrl = if (baseUrl.endsWith("/")) {
@@ -170,19 +121,12 @@ class SelectInstituteActivity : AppCompatActivity() {
             val rParam = "api/v1/StudentEnrollment/GetStudList"
             val dataParam = "{\"studListParamData\":{\"actionType\":\"FingerPrint\",\"school_id\":\"$instIds\"}}"
 
-
             val fullUrl = "${normalizedBaseUrl}sims-services/digitalsims/?r=$rParam&data=$dataParam"
             Log.d(TAG, "REQUEST_URL: $fullUrl")
-
-
             Log.d(TAG, "SYNC_CALL: instId=$instIds")
 
-
-
-// Inside your btnSync.setOnClickListener -> lifecycleScope.launch(Dispatchers.IO)
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-
                     val hasInternet = CheckNetworkAndInternetUtils.hasInternetAccess()
                     if (!hasInternet) {
                         withContext(Dispatchers.Main) {
@@ -201,7 +145,6 @@ class SelectInstituteActivity : AppCompatActivity() {
 
                     // 🔥 NEW: Sync each institute one-by-one
                     selectedInstitutes.forEach { instId ->
-
                         // 🔥 Students
                         val st = repository.fetchAndSaveStudents(apiService, db, instId)
                         if (!st) allOk = false
@@ -214,10 +157,9 @@ class SelectInstituteActivity : AppCompatActivity() {
                         val sc = repository.fetchAndSaveStudentSchedulingData(apiService, db, instId)
                         if (!sc) allOk = false
 
-                        //periods details
+                        // periods details
                         val pd = repository.fetchAndSaveSchoolPeriods(apiService, db, instId)
                         if (!pd) allOk = false
-
                     }
 
                     // 🔥 Subject Instances do NOT depend on institute
@@ -233,22 +175,21 @@ class SelectInstituteActivity : AppCompatActivity() {
                         progressBar.visibility = ProgressBar.GONE
                         btnSync.isEnabled = true
 
-
-                        if(allOk){
-
+                        if (allOk) {
+                            val selectedNames = selectedInstitutes.map { allInstitutesMap[it] ?: "" }.joinToString(",")
                             prefs.edit()
                                 .putString("selectedInstituteIds", instIds)
-                                .putString("selectedInstituteNames", schoolShortNames.joinToString(","))
+                                .putString("selectedInstituteNames", selectedNames)
                                 .apply()
                             Log.d(TAG, "Saved selected institutes: $instIds")
 
                             showToast("Sync completed successfully!")
 
                             // Navigate to AttendanceActivity
-                            val intent= Intent(this@SelectInstituteActivity, AttendanceActivity::class.java)
+                            val intent = Intent(this@SelectInstituteActivity, AttendanceActivity::class.java)
                             startActivity(intent)
                             finish()
-                        }else{
+                        } else {
                             showToast("Some data failed to sync. Please try again.")
                         }
                     }
@@ -263,6 +204,60 @@ class SelectInstituteActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun buildInstituteList(schoolIds: List<String>, schoolShortNames: List<String>) {
+        val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+        val savedSelectedIds = prefs.getString("selectedInstituteIds", "") ?: ""
+        val savedSelectedSet = savedSelectedIds.split(",").filter { it.isNotEmpty() }.toSet()
+
+        instituteSelectionLayout.removeAllViews()
+        val allInstituteViews = mutableListOf<View>()
+
+        allInstitutesMap.clear()
+        for (i in schoolIds.indices) {
+            allInstitutesMap[schoolIds[i]] = schoolShortNames[i]
+
+            val view = layoutInflater.inflate(R.layout.item_institute, instituteSelectionLayout, false)
+            val chkSelect = view.findViewById<CheckBox>(R.id.cbSelectInstitute)
+            val tvSchoolShortName = view.findViewById<TextView>(R.id.tvSchoolShortName)
+            val tvSchoolId = view.findViewById<TextView>(R.id.tvSchoolId)
+
+            tvSchoolShortName.text = schoolShortNames[i]
+            tvSchoolId.text = "Institute ID: ${schoolIds[i]}"
+
+            val isSaved = savedSelectedSet.contains(schoolIds[i])
+            chkSelect.isChecked = isSaved
+            if (isSaved) {
+                selectedInstitutes.add(schoolIds[i])
+            }
+
+            chkSelect.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) selectedInstitutes.add(schoolIds[i])
+                else selectedInstitutes.remove(schoolIds[i])
+            }
+
+            instituteSelectionLayout.addView(view)
+            allInstituteViews.add(view)
+        }
+
+        // Setup SearchView filtering
+        val searchInstitute = findViewById<SearchView>(R.id.searchInstitute)
+        searchInstitute.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean = false
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                val query = newText?.trim()?.lowercase(Locale.getDefault()) ?: ""
+                for (view in allInstituteViews) {
+                    val name = view.findViewById<TextView>(R.id.tvSchoolShortName).text.toString().lowercase(Locale.getDefault())
+                    val idText = view.findViewById<TextView>(R.id.tvSchoolId).text.toString().lowercase(Locale.getDefault())
+
+                    // Match if query is part of name or ID
+                    view.visibility = if (name.contains(query) || idText.contains(query)) View.VISIBLE else View.GONE
+                }
+                return true
+            }
+        })
     }
 
     //   Safe toast helper that works from any thread

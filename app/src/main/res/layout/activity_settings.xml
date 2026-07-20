@@ -100,6 +100,7 @@
                         android:orientation="vertical">
 
                         <TextView
+                            android:id="@+id/tvProfileName"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Admin User"
@@ -108,6 +109,7 @@
                             android:textStyle="bold" />
 
                         <TextView
+                            android:id="@+id/tvProfileEmail"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
@@ -142,12 +144,12 @@
                 </RelativeLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- SUPPORT & LEGAL Header -->
+            <!-- Section Header: Portal Configuration -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
-                android:text="SUPPORT &amp; LEGAL"
+                android:text="PORTAL CONFIGURATION"
                 android:textColor="#3B82F6"
                 android:textSize="12sp"
                 android:textStyle="bold"
@@ -167,9 +169,9 @@
                     android:background="@drawable/bg_card_premium"
                     android:orientation="vertical">
 
-                    <!-- Contact Support Row -->
+                    <!-- Portal Configuration Row -->
                     <LinearLayout
-                        android:id="@+id/btnContactSupport"
+                        android:id="@+id/btnPortalConfig"
                         android:layout_width="match_parent"
                         android:layout_height="60dp"
                         android:gravity="center_vertical"
@@ -180,81 +182,13 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@drawable/ic_support" />
+                            android:src="@drawable/ic_cloud_sync" />
                         <TextView
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:layout_marginStart="14dp"
-                            android:text="Contact Support"
-                            android:textColor="#0F172A"
-                            android:textSize="16sp" />
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:src="@drawable/ic_chevron_right" />
-                    </LinearLayout>
-
-                    <!-- Divider -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="#F1F5F9" />
-
-                    <!-- Terms of Service Row -->
-                    <LinearLayout
-                        android:id="@+id/btnTerms"
-                        android:layout_width="match_parent"
-                        android:layout_height="60dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingHorizontal="16dp"
-                        android:clickable="true"
-                        android:focusable="true">
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_terms" />
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="14dp"
-                            android:text="Terms of Service"
-                            android:textColor="#0F172A"
-                            android:textSize="16sp" />
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:src="@drawable/ic_chevron_right" />
-                    </LinearLayout>
-
-                    <!-- Divider -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="#F1F5F9" />
-
-                    <!-- Privacy Policy Row -->
-                    <LinearLayout
-                        android:id="@+id/btnPrivacy"
-                        android:layout_width="match_parent"
-                        android:layout_height="60dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingHorizontal="16dp"
-                        android:clickable="true"
-                        android:focusable="true">
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_privacy" />
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="14dp"
-                            android:text="Privacy Policy"
+                            android:text="Portal Configuration"
                             android:textColor="#0F172A"
                             android:textSize="16sp" />
                         <ImageView
