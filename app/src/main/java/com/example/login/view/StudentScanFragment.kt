@@ -339,7 +339,15 @@ class StudentScanFragment : Fragment() {
                                         .setTitle("Empty Session")
                                         .setMessage("No students were scanned in this session.")
                                         .setCancelable(false)
-                                        .setPositiveButton("Discard") { dialog, _ ->
+                                        .setPositiveButton("Mass Bunk") { dialog, _ ->
+                                            dialog.dismiss()
+                                            (requireActivity() as AttendanceActivity).startMassBunkFlow()
+                                        }
+                                        .setNeutralButton("Start Cycle") { dialog, _ ->
+                                            dialog.dismiss()
+                                            done()
+                                        }
+                                        .setNegativeButton("Discard Cycle") { dialog, _ ->
                                             dialog.dismiss()
                                             AlertDialog.Builder(requireContext())
                                                 .setTitle("Discard Session?")
@@ -351,11 +359,9 @@ class StudentScanFragment : Fragment() {
                                                 }
                                                 .setNegativeButton("Cancel") { confDialog, _ ->
                                                      confDialog.dismiss()
+                                                     done()
                                                 }
                                                 .show()
-                                        }
-                                        .setNegativeButton("Cancel") { dialog, _ ->
-                                            dialog.dismiss()
                                         }
                                         .show()
                                 } else {

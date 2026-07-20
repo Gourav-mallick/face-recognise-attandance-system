@@ -48,6 +48,8 @@ class SubjectSelectActivity : ComponentActivity() {
 
 
 
+    private var isMassBunk = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityPeriodCourseSelectBinding.inflate(layoutInflater)
@@ -56,6 +58,7 @@ class SubjectSelectActivity : ComponentActivity() {
         db = AppDatabase.getDatabase(this)
         sessionId = intent.getStringExtra("SESSION_ID") ?: return
         selectedClasses = intent.getStringArrayListExtra("SELECTED_CLASSES") ?: emptyList()
+        isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
 
 
         //  Disable back press (both button and gesture)
@@ -310,6 +313,46 @@ class SubjectSelectActivity : ComponentActivity() {
 
             val session = db.sessionDao().getSessionById(sessionId)
             val teacherId = session?.teacherId ?: ""
+
+            if (isMassBunk) {
+                val existingCount = db.attendanceDao().getAttendancesForSession(sessionId).size
+                if (existingCount == 0 && session != null) {
+                    val students = db.studentsDao().getStudentsByClasses(selectedClasses)
+                    val teacherName = db.teachersDao().getTeacherById(session.teacherId)?.staffName ?: ""
+                    val instName = db.instituteDao().getInstituteNameById(session.instId) ?: ""
+                    val academicYear = db.instituteDao().getInstituteYearById(session.instId) ?: ""
+                    val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                    val sessionEndTime = if (session.endTime.isNullOrBlank()) currentTime else session.endTime
+
+                    val attendanceList = students.map { student ->
+                        com.example.login.db.entity.Attendance(
+                            atteId = com.example.login.db.entity.AttendanceIdGenerator.nextId(),
+                            sessionId = sessionId,
+                            studentId = student.studentId,
+                            studentName = student.studentName,
+                            classId = student.classId,
+                            status = "A", // Default is Absent
+                            markedAt = currentTime,
+                            syncStatus = "pending",
+                            instId = session.instId,
+                            instShortName = instName,
+                            date = session.date,
+                            startTime = session.startTime,
+                            endTime = sessionEndTime,
+                            academicYear = academicYear,
+                            period = "",
+                            teacherId = session.teacherId,
+                            teacherName = teacherName,
+                            attSchoolPeriodId = session.attSchoolPeriodId
+                        )
+                    }
+
+                    attendanceList.forEach { att ->
+                        db.attendanceDao().insertAttendance(att)
+                    }
+                    Log.d("MASS_BUNK", "Inserted ${attendanceList.size} absent attendance records for mass bunk")
+                }
+            }
 
             Log.d("HANDLE_CONTINUE", "---------------- START ----------------")
             Log.d("HANDLE_CONTINUE", "sessionId=$sessionId")

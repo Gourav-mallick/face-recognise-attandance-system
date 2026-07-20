@@ -855,6 +855,45 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         showEndClassDialog(classroomId)
     }
 
+    fun startMassBunkFlow() {
+        val classroomId = currentVisibleClassroomId ?: return
+        val teacherId = currentTeacherId ?: return
+        val cycle = activeSessions[Pair(classroomId, teacherId)] ?: return
+        lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(this@AttendanceActivity)
+            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(getEstimatedCurrentTime())
+
+            cycle.sessionId?.let { db.sessionDao().updateSessionEnd(it, currentTime) }
+            cycle.sessionId?.let { db.attendanceDao().updateAttendanceEndTime(it, currentTime) }
+
+            // remove from ActiveClassCycle table
+            removeActiveSession(classroomId, teacherId)
+            activeSessions.remove(Pair(classroomId, teacherId))
+
+            val broadcastIntent = Intent("UPDATE_UNSUBMITTED_COUNT")
+            sendBroadcast(broadcastIntent)
+
+            Log.d("SESSION_END_MB", "Session ${cycle.sessionId} closed at $currentTime for Mass Bunk")
+
+            // Clear saved app state before starting new flow
+            val prefs1 = getSharedPreferences("APP_STATE", MODE_PRIVATE)
+            prefs1.edit().clear().apply()
+            val prefs2 = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
+            prefs2.edit().clear().apply()
+
+            val intent = Intent(this@AttendanceActivity, PeriodSelectActivity::class.java).apply {
+                putExtra("SESSION_ID", cycle.sessionId)
+                putExtra("TEACHER_ID", cycle.teacherId)
+                putExtra("IS_MASS_BUNK", true)
+            }
+            startActivity(intent)
+            finish()
+            activeSessions.remove(Pair(classroomId, teacherId))
+
+            currentVisibleClassroomId = null
+        }
+    }
+
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

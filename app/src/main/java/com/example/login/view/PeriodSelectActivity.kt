@@ -164,9 +164,12 @@ class PeriodSelectActivity : ComponentActivity() {
     }
 
     private fun navigateToClassSelect() {
-        val intent = Intent(this@PeriodSelectActivity, ClassSelectActivity::class.java)
-        intent.putExtra("SESSION_ID", sessionId)
-        intent.putExtra("TEACHER_ID", teacherId)
+        val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
+        val intent = Intent(this@PeriodSelectActivity, ClassSelectActivity::class.java).apply {
+            putExtra("SESSION_ID", sessionId)
+            putExtra("TEACHER_ID", teacherId)
+            putExtra("IS_MASS_BUNK", isMassBunk)
+        }
         startActivity(intent)
         finish()
     }

@@ -40,17 +40,25 @@ class ClassSelectActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, backCallback)
 
 
-        lifecycleScope.launch {
+        val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
 
-            val preSelected = db.attendanceDao().getDistinctClassIdsForCurrentSession(sessionId)
+        lifecycleScope.launch {
+            val preSelected = if (isMassBunk) emptyList() else db.attendanceDao().getDistinctClassIdsForCurrentSession(sessionId)
             val allClasses = db.classDao().getAllClasses()
 
-            // 🔹 Filter only preselected classes
-            val preSelectedClasses = allClasses.filter { preSelected.contains(it.classId) }
+            // 🔹 Filter only preselected classes or teacher's mapped classes
+            val classesToShow = if (isMassBunk) {
+                val session = db.sessionDao().getSessionById(sessionId)
+                val teacherId = session?.teacherId ?: ""
+                val mappedClassIds = db.teacherClassMapDao().getClassesForTeacher(teacherId)
+                allClasses.filter { mappedClassIds.contains(it.classId) }
+            } else {
+                allClasses.filter { preSelected.contains(it.classId) }
+            }
 
             selectedClassIds.addAll(preSelected)
 
-            val adapter = ClassSelectAdapter(preSelectedClasses, preSelected) { classId, isChecked, wasPreSelected ->
+            val adapter = ClassSelectAdapter(classesToShow, preSelected) { classId, isChecked, wasPreSelected ->
                 handleClassSelectionChange(classId, isChecked, wasPreSelected)
             }
 
@@ -81,9 +89,11 @@ class ClassSelectActivity : ComponentActivity() {
 
 
                 // 🔹 Navigate next
-                val intent = Intent(this@ClassSelectActivity, SubjectSelectActivity::class.java)
-                intent.putExtra("SESSION_ID", sessionId)
-                intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClassIds))
+                val intent = Intent(this@ClassSelectActivity, SubjectSelectActivity::class.java).apply {
+                    putExtra("SESSION_ID", sessionId)
+                    putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClassIds))
+                    putExtra("IS_MASS_BUNK", isMassBunk)
+                }
                 startActivity(intent)
                 finish()
             }
