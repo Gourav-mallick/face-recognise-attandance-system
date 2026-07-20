@@ -93,130 +93,117 @@ class LoginActivity : AppCompatActivity() {
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val hasInternet = withContext(Dispatchers.IO) { CheckNetworkAndInternetUtils.hasInternetAccess() }
+                    val hasInternet = CheckNetworkAndInternetUtils.hasInternetAccess()
                     if (!hasInternet) {
-                        Toast.makeText(
-                            this@LoginActivity,
-                            "No internet access. Please check your connection.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@LoginActivity,
+                                "No internet access. Please check your connection.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                         return@launch
                     }
-
-
 
                     val retrofit = ApiClient.getClient(baseUrl, HASH) // Pass hash for header
                     val service = retrofit.create(ApiService::class.java)
 
-
-                   // 1) CALL AUTH API
+                    // 1) CALL AUTH API
                     val authData = "{\"username\":\"$username\",\"password\":\"$password\"}"
+                    val authResponse = service.authenticateStaff(data = authData)
 
-                    val authResponse = service.authenticateStaff(
-                        data = authData
-                    )
-
-                    withContext(Dispatchers.Main) {
-
-                        if (!authResponse.isSuccessful || authResponse.body() == null) {
+                    if (!authResponse.isSuccessful || authResponse.body() == null) {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(this@LoginActivity, "Authentication failed. Try again.", Toast.LENGTH_LONG).show()
-                            return@withContext
                         }
+                        return@launch
+                    }
 
-                        val authJson = JSONObject(authResponse.body()!!.string())
-                        val authCollection = authJson.optJSONObject("collection")
-                        val authResponseObj = authCollection?.optJSONObject("response")
+                    val authJson = JSONObject(authResponse.body()!!.string())
+                    val authCollection = authJson.optJSONObject("collection")
+                    val authResponseObj = authCollection?.optJSONObject("response")
+                    val status = authResponseObj?.optString("statusMsg", "FAIL") ?: "FAIL"
 
-                        val status = authResponseObj?.optString("statusMsg", "FAIL") ?: "FAIL"
-
-
-
-                        if (status != "SUCCESS") {
+                    if (status != "SUCCESS") {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(this@LoginActivity, "Invalid username or password", Toast.LENGTH_LONG).show()
-                            return@withContext
                         }
+                        return@launch
+                    }
 
-                        val staffDetails = authResponseObj?.optJSONObject("staffDetails")
-                        val staffId = staffDetails?.optString("staffId", null)
+                    val staffDetails = authResponseObj?.optJSONObject("staffDetails")
+                    val staffId = staffDetails?.optString("staffId", "")
 
-
-                        if (staffId.isNullOrEmpty()) {
+                    if (staffId.isNullOrEmpty()) {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 this@LoginActivity,
                                 "Invalid authentication data. Please contact admin.",
                                 Toast.LENGTH_LONG
                             ).show()
-                            return@withContext
                         }
+                        return@launch
+                    }
 
-                        prefs.edit()
-                            .putString("loggedStaffId", staffId)
-                            .putString("loggedUserType", username)
+                    prefs.edit()
+                        .putString("loggedStaffId", staffId)
+                        .putString("loggedUserType", username)
                         .apply()
 
-                        // 2) CALL SCHOOL LIST API
-                        val schoolResponse = service.getSchoolList()
+                    // 2) CALL SCHOOL LIST API
+                    val schoolResponse = service.getSchoolList()
 
-                        if (!schoolResponse.isSuccessful || schoolResponse.body() == null) {
+                    if (!schoolResponse.isSuccessful || schoolResponse.body() == null) {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(this@LoginActivity, "Unable to fetch schools.", Toast.LENGTH_LONG).show()
-                            return@withContext
                         }
+                        return@launch
+                    }
 
-                        val schoolJson = JSONObject(schoolResponse.body()!!.string())
-                        val schoolCollection = schoolJson.optJSONObject("collection")
-                        val schoolResponseObj = schoolCollection?.optJSONObject("response")
-                        val schoolArray = schoolResponseObj?.optJSONArray("schoolList")
+                    val schoolJson = JSONObject(schoolResponse.body()!!.string())
+                    val schoolCollection = schoolJson.optJSONObject("collection")
+                    val schoolResponseObj = schoolCollection?.optJSONObject("response")
+                    val schoolArray = schoolResponseObj?.optJSONArray("schoolList")
 
-                        if (schoolArray == null || schoolArray.length() == 0) {
+                    if (schoolArray == null || schoolArray.length() == 0) {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(this@LoginActivity, "No institutes found.", Toast.LENGTH_LONG).show()
-                            return@withContext
                         }
+                        return@launch
+                    }
 
-                        val instituteList = ArrayList<Institute>()
-                        val schoolIds = ArrayList<String>()
-                        val schoolShortNames = ArrayList<String>()
+                    val instituteList = ArrayList<Institute>()
+                    val schoolIds = ArrayList<String>()
+                    val schoolShortNames = ArrayList<String>()
 
-                        for (i in 0 until schoolArray.length()) {
-                            val obj = schoolArray.getJSONObject(i)
+                    for (i in 0 until schoolArray.length()) {
+                        val obj = schoolArray.getJSONObject(i)
+                        val inst = Institute(
+                            id = obj.optString("ID"),
+                            shortName = obj.optString("SHORT_NAME"),
+                            title = obj.optString("TITLE"),
+                            sYear = obj.optString("SYEAR"),
+                            timezone = obj.optString("timezone"),
+                        )
+                        instituteList.add(inst)
+                        schoolIds.add(inst.id)
+                        schoolShortNames.add(inst.shortName)
+                    }
 
-                            val inst = Institute(
-                                id = obj.optString("ID"),
-                                shortName = obj.optString("SHORT_NAME"),
-                                title = obj.optString("TITLE"),
-                                sYear = obj.optString("SYEAR"),
-                                timezone = obj.optString("timezone"),
-                            )
+                    val db = AppDatabase.getDatabase(this@LoginActivity)
+                    db.instituteDao().insertAll(instituteList)
+                    Log.d(TAG, "INSTITUTE_SAVED: ${instituteList.size}")
 
-                            instituteList.add(inst)
+                    // Save login details (same as before)
+                    prefs.edit()
+                        .putString("baseUrl", baseUrl)
+                        .putString("username", username)
+                        .putString("password", password)
+                        .putString("hash", HASH)
+                        .apply()
 
-                            // also for Intent navigation
-                            schoolIds.add(inst.id)
-                            schoolShortNames.add(inst.shortName)
-                        }
-
-
-                     // ADD THIS BLOCK EXACTLY HERE
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            try {
-                                val db = AppDatabase.getDatabase(this@LoginActivity)
-                                db.instituteDao().insertAll(instituteList)
-                                Log.d(TAG, "INSTITUTE_SAVED: ${instituteList.size}")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "INSTITUTE_SAVE_ERROR: ${e.message}")
-                            }
-                        }
-
-
-
-                        // Save login details (same as before)
-                        prefs.edit()
-                            .putString("baseUrl", baseUrl)
-                            .putString("username", username)
-                            .putString("password", password)
-                            .putString("hash", HASH)
-                            .apply()
-
-                        // NAVIGATE (same as old logic)
+                    // NAVIGATE (same as old logic)
+                    withContext(Dispatchers.Main) {
                         val intent = Intent(this@LoginActivity, SelectInstituteActivity::class.java).apply {
                             putStringArrayListExtra("schoolIds", schoolIds)
                             putStringArrayListExtra("schoolShortNames", schoolShortNames)

@@ -24,41 +24,52 @@ class DataSyncRepository(private val context: Context) {
         db: AppDatabase,
         instIds: String
     ): Boolean = withContext(Dispatchers.IO) {
-        val rParam = "api/v1/User/GetUserRegisteredDetails"
-        val dataParam = "{\"userRegParamData\":{\"userType\":\"student\",\"registrationType\":\"Biometric\",\"school_id\":\"$instIds\"}}"
-        val response = apiService.getStudents(rParam, dataParam)
+        try {
+            val rParam = "api/v1/User/GetUserRegisteredDetails"
+            val dataParam = "{\"userRegParamData\":{\"userType\":\"student\",\"registrationType\":\"Biometric\",\"school_id\":\"$instIds\"}}"
+            val response = apiService.getStudents(rParam, dataParam)
 
-        if (response.isSuccessful && response.body() != null) {
-            val jsonString = response.body()!!.string()
-            val json = JSONObject(jsonString)
-            val collection = json.optJSONObject("collection")
-            val responseObj = collection?.optJSONObject("response")
-            val dataArray = responseObj?.optJSONArray("userRegisteredData") ?: JSONArray()
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                val json = JSONObject(jsonString)
+                val collection = json.optJSONObject("collection")
+                val responseObj = collection?.optJSONObject("response")
+                val dataArray = responseObj?.optJSONArray("userRegisteredData") ?: JSONArray()
 
-            val studentsList = mutableListOf<Student>()
-            val classList = mutableListOf<Class>()
+                val studentsList = mutableListOf<Student>()
+                val classList = mutableListOf<Class>()
 
-            for (i in 0 until dataArray.length()) {
-                val obj = dataArray.getJSONObject(i)
-                val studentId = obj.optString("studentId", "")
-                val studentName = obj.optString("studentName", "")
-                val classId = obj.optString("classId", "")
-                val classShortName = obj.optString("userClassShortName", "")
-                val fingerType= obj.optString("fingerType", "")
-                val fingerData= obj.optString("fingerData", "")
-                val instId = instIds
-                studentsList.add(Student(studentId, studentName, classId, instId,fingerType,fingerData))
-                classList.add(Class(classId, classShortName))
+                for (i in 0 until dataArray.length()) {
+                    val obj = dataArray.getJSONObject(i)
+                    val studentId = obj.optString("studentId", "")
+                    val studentName = obj.optString("studentName", "")
+                    val classId = obj.optString("classId", "")
+                    val classShortName = obj.optString("userClassShortName", "")
+                    val fingerType = obj.optString("fingerType", "")
+                    val fingerData = obj.optString("fingerData", "")
+                    val instId = instIds
+                    studentsList.add(Student(studentId, studentName, classId, instId, fingerType, fingerData))
+                    classList.add(Class(classId, classShortName))
+                }
+
+                if (studentsList.isEmpty()) {
+                    showToast("Student not found on server for institute: $instIds")
+                    return@withContext false
+                }
+
+                db.studentsDao().insertAll(studentsList)
+                db.classDao().insertAll(classList)
+                Log.d(TAG, "Inserted ${studentsList.size} students and ${classList.size} classes.")
+                Log.d(TAG, "Inserted ${studentsList} students.")
+                true
+            } else {
+                showToast("Students API failed: Server returned error ${response.code()}")
+                Log.e(TAG, "STUDENT_API_FAILED: ${response.errorBody()?.string()}")
+                false
             }
-
-            db.studentsDao().insertAll(studentsList)
-            db.classDao().insertAll(classList)
-            Log.d(TAG, "Inserted ${studentsList.size} students and ${classList.size} classes.")
-            Log.d(TAG, "Inserted ${studentsList} students.")
-            true
-        } else {
-            showToast("Unable to fetch student data. Please try again.")
-            Log.e(TAG, "STUDENT_API_FAILED: ${response.errorBody()?.string()}")
+        } catch (e: Exception) {
+            showToast("Students API connection failed: ${e.localizedMessage ?: "Unknown network error"}")
+            Log.e(TAG, "STUDENT_EXCEPTION: ${e.message}", e)
             false
         }
     }
@@ -68,39 +79,51 @@ class DataSyncRepository(private val context: Context) {
         db: AppDatabase,
         instIds: String
     ): Boolean = withContext(Dispatchers.IO) {
-        val rParam = "api/v1/User/GetUserRegisteredDetails"
-        val dataParam = "{\"userRegParamData\":{\"userType\":\"staff\",\"registrationType\":\"Biometric\",\"school_id\":\"$instIds\"}}"
-        val response = apiService.getTeachers(rParam, dataParam)
+        try {
+            val rParam = "api/v1/User/GetUserRegisteredDetails"
+            val dataParam = "{\"userRegParamData\":{\"userType\":\"staff\",\"registrationType\":\"Biometric\",\"school_id\":\"$instIds\"}}"
+            val response = apiService.getTeachers(rParam, dataParam)
 
-        if (response.isSuccessful && response.body() != null) {
-            val jsonString = response.body()!!.string()
-            val json = JSONObject(jsonString)
-            val dataArray = json.optJSONObject("collection")
-                ?.optJSONObject("response")
-                ?.optJSONArray("userRegisteredData") ?: JSONArray()
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                val json = JSONObject(jsonString)
+                val dataArray = json.optJSONObject("collection")
+                    ?.optJSONObject("response")
+                    ?.optJSONArray("userRegisteredData") ?: JSONArray()
 
-            val teachersList = mutableListOf<Teacher>()
-            for (i in 0 until dataArray.length()) {
-                val obj = dataArray.getJSONObject(i)
-                if (obj.optString("staffProfile", "").equals("teacher", ignoreCase = true)) {
-                    teachersList.add(
-                        Teacher(
-                            obj.optString("staffId", ""),
-                            obj.optString("staffName", ""),
-                            instIds,
-                            obj.optString("fingerType", ""),
-                            obj.optString("fingerData", "")
+                val teachersList = mutableListOf<Teacher>()
+                for (i in 0 until dataArray.length()) {
+                    val obj = dataArray.getJSONObject(i)
+                    if (obj.optString("staffProfile", "").equals("teacher", ignoreCase = true)) {
+                        teachersList.add(
+                            Teacher(
+                                obj.optString("staffId", ""),
+                                obj.optString("staffName", ""),
+                                instIds,
+                                obj.optString("fingerType", ""),
+                                obj.optString("fingerData", "")
+                            )
                         )
-                    )
+                    }
                 }
+
+                if (teachersList.isEmpty()) {
+                    showToast("Teacher  not found on server for institute: $instIds")
+                    return@withContext false
+                }
+
+                db.teachersDao().insertAll(teachersList)
+                Log.d(TAG, "Inserted ${teachersList.size} teachers.")
+                Log.d(TAG, "Inserted ${teachersList} teachers.")
+                true
+            } else {
+                showToast("Teachers API failed: Server returned error ${response.code()}")
+                Log.e(TAG, "TEACHER_API_FAILED: ${response.errorBody()?.string()}")
+                false
             }
-            db.teachersDao().insertAll(teachersList)
-            Log.d(TAG, "Inserted ${teachersList.size} teachers.")
-            Log.d(TAG, "Inserted ${teachersList} teachers.")
-            true
-        } else {
-            showToast("Unable to fetch teacher data. Please try again.")
-            Log.e(TAG, "TEACHER_API_FAILED: ${response.errorBody()?.string()}")
+        } catch (e: Exception) {
+            showToast("Teachers API connection failed: ${e.localizedMessage ?: "Unknown network error"}")
+            Log.e(TAG, "TEACHER_EXCEPTION: ${e.message}", e)
             false
         }
     }
@@ -109,124 +132,109 @@ class DataSyncRepository(private val context: Context) {
         apiService: ApiService,
         db: AppDatabase
     ): Boolean = withContext(Dispatchers.IO) {
-        val rParam = "api/v1/CoursePeriod/SubjectInstances"
-        val dataParam = "{\"cpParamData\":{\"actionType\":\"markCpAttendance2\"}}"
-        val response = apiService.getSubjectInstances(rParam, dataParam)
+        try {
+            val rParam = "api/v1/CoursePeriod/SubjectInstances"
+            val dataParam = "{\"cpParamData\":{\"actionType\":\"markCpAttendance2\"}}"
+            val response = apiService.getSubjectInstances(rParam, dataParam)
 
-        if (response.isSuccessful && response.body() != null) {
-            val jsonString = response.body()!!.string()
-            val json = JSONObject(jsonString)
-            val dataArray = json.optJSONObject("collection")
-                ?.optJSONObject("response")
-                ?.optJSONArray("subjectInstancesData") ?: JSONArray()
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                val json = JSONObject(jsonString)
+                val dataArray = json.optJSONObject("collection")
+                    ?.optJSONObject("response")
+                    ?.optJSONArray("subjectInstancesData") ?: JSONArray()
 
-            if (dataArray.length() == 0) {
-                showToast("No subject instance data found.")
-                Log.w(TAG, "No subject instance data found.")
-                return@withContext false
-            }
+                if (dataArray.length() == 0) {
+                    showToast("Subject configuration setup not found on the server.")
+                    Log.w(TAG, "No subject instance data found.")
+                    return@withContext false
+                }
 
-            val coursePeriodList = mutableListOf<CoursePeriod>()
-            val courseList = mutableListOf<Course>()
-            val subjectList = mutableListOf<Subject>()
+                val coursePeriodList = mutableListOf<CoursePeriod>()
+                val courseList = mutableListOf<Course>()
+                val subjectList = mutableListOf<Subject>()
 
-            val teacherClassMapList = mutableListOf<TeacherClassMap>()
+                val teacherClassMapList = mutableListOf<TeacherClassMap>()
 
-            for (i in 0 until dataArray.length()) {
-                val obj = dataArray.getJSONObject(i)
+                for (i in 0 until dataArray.length()) {
+                    val obj = dataArray.getJSONObject(i)
 
-                val cpId = obj.optString("cpIds")
-                val courseId = obj.optString("courseIds")
-                val subjectId = obj.optString("subjectIds")
-                val subjectTitle = obj.optString("subjectTitles")
-                val courseTitle = obj.optString("courseTitles")
-                val classId = obj.optString("classIds")
-                val classShortName = obj.optString("classShortNames")
-                val mpId = obj.optString("mpId")
-                val mpLongTitle = obj.optString("mpLongTitle")
-                // Extract teacher IDs correctly
-                val teacherIdsRaw = obj.optString("teacherIds", "")
-                val teacherIdsList = teacherIdsRaw
-                    .split(",")
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }  // ["382", "524"]
+                    val cpId = obj.optString("cpIds")
+                    val courseId = obj.optString("courseIds")
+                    val subjectId = obj.optString("subjectIds")
+                    val subjectTitle = obj.optString("subjectTitles")
+                    val courseTitle = obj.optString("courseTitles")
+                    val classId = obj.optString("classIds")
+                    val classShortName = obj.optString("classShortNames")
+                    val mpId = obj.optString("mpId")
+                    val mpLongTitle = obj.optString("mpLongTitle")
+                    // Extract teacher IDs correctly
+                    val teacherIdsRaw = obj.optString("teacherIds", "")
+                    val teacherIdsList = teacherIdsRaw
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }  // ["382", "524"]
 
-              // Primary teacher (first in list)
-                val primaryTeacherId = teacherIdsList.firstOrNull() ?: ""
+                    // Primary teacher (first in list)
+                    val primaryTeacherId = teacherIdsList.firstOrNull() ?: ""
 
-            // Save subject
-                subjectList.add(
-                    Subject(subjectId, subjectTitle)
-                )
-
-              // Save course
-                courseList.add(
-                    Course(courseId, subjectId, courseTitle, courseTitle)
-                )
-
-             // Save course period (only primary teacher in this table)
-                // ➤ Save course period ONCE FOR EACH TEACHER
-                teacherIdsList.forEach { tId ->
-                    coursePeriodList.add(
-                        CoursePeriod(
-                            cpId = cpId,
-                            courseId = courseId,
-                            classId = classId,
-                            teacherId = tId,   // EACH TEACHER GETS OWN ROW
-                            mpId = mpId,
-                            mpLongTitle = mpLongTitle
-                        )
+                    // Save subject
+                    subjectList.add(
+                        Subject(subjectId, subjectTitle)
                     )
+
+                    // Save course
+                    courseList.add(
+                        Course(courseId, subjectId, courseTitle, courseTitle)
+                    )
+
+                    // Save course period (only primary teacher in this table)
+                    // ➤ Save course period ONCE FOR EACH TEACHER
+                    teacherIdsList.forEach { tId ->
+                        coursePeriodList.add(
+                            CoursePeriod(
+                                cpId = cpId,
+                                courseId = courseId,
+                                classId = classId,
+                                teacherId = tId,   // EACH TEACHER GETS OWN ROW
+                                mpId = mpId,
+                                mpLongTitle = mpLongTitle
+                            )
+                        )
+                    }
+
+
+                    // Save ALL teacher ↔ class mappings
+                    teacherIdsList.forEach { tId ->
+                        teacherClassMapList.add(
+                            TeacherClassMap(
+                                teacherId = tId,
+                                classId = classId
+                            )
+                        )
+                    }
                 }
 
 
-                // Save ALL teacher ↔ class mappings
-                teacherIdsList.forEach { tId ->
-                    teacherClassMapList.add(
-                        TeacherClassMap(
-                            teacherId = tId,
-                            classId = classId
-                        )
-                    )
-                }
+                db.subjectDao().insertAll(subjectList)
+                db.courseDao().insertAll(courseList)
+                db.coursePeriodDao().insertAll(coursePeriodList)
 
-                /*
-                         val teacherId = obj.optString("teacherIds").replace(",", "").trim()
+                db.teacherClassMapDao().clear()
+                db.teacherClassMapDao().insertAll(teacherClassMapList)
 
-                         subjectList.add(Subject(subjectId, subjectTitle))
-                         courseList.add(Course(courseId, subjectId, courseTitle, courseTitle))
-                         coursePeriodList.add(CoursePeriod(cpId, courseId, classId, teacherId, mpId, mpLongTitle))
+                Log.d(TAG, "Subjects: ${subjectList.size}, Courses: ${courseList.size}, CoursePeriods: ${coursePeriodList.size}")
+                Log.d(TAG, "Teacher-Class mapping saved: ${teacherClassMapList.size}")
 
-                         // 👇 NEW MAPPING
-                         if (teacherId.isNotEmpty()) {
-                             teacherClassMapList.add(
-                                 TeacherClassMap(
-                                     teacherId = teacherId,
-                                     classId = classId
-                                 )
-                             )
-                         }
-
-                 */
+                true
+            } else {
+                showToast("Subject Instances API failed: Server returned error ${response.code()}")
+                Log.e(TAG, "SUBJECT_INSTANCE_API_FAILED: ${response.errorBody()?.string()}")
+                false
             }
-
-
-            db.subjectDao().insertAll(subjectList)
-            db.courseDao().insertAll(courseList)
-            db.coursePeriodDao().insertAll(coursePeriodList)
-
-            db.teacherClassMapDao().clear()
-            db.teacherClassMapDao().insertAll(teacherClassMapList)
-
-          //  val teacherClassMap = db.teacherClassMapDao().getAllTeacherClassMaps()
-          //  Log.d(TAG, "Teacher-Class mapping data: ${teacherClassMap}")
-            Log.d(TAG, "Subjects: ${subjectList.size}, Courses: ${courseList.size}, CoursePeriods: ${coursePeriodList.size}")
-            Log.d(TAG, "Teacher-Class mapping saved: ${teacherClassMapList.size}")
-
-            true
-        } else {
-            showToast("Unable to fetch class schedule. Please try again.")
-            Log.e(TAG, "SUBJECT_INSTANCE_API_FAILED: ${response.errorBody()?.string()}")
+        } catch (e: Exception) {
+            showToast("Subject Instances API connection failed: ${e.localizedMessage ?: "Unknown network error"}")
+            Log.e(TAG, "SUBJECT_INSTANCE_EXCEPTION: ${e.message}", e)
             false
         }
     }
@@ -279,6 +287,7 @@ class DataSyncRepository(private val context: Context) {
             val response = apiService.getStudentScheduleList(rParam, dataParam)
 
             if (!response.isSuccessful || response.body() == null) {
+                showToast("Student Scheduling API failed: Server returned error ${response.code()}")
                 Log.e(TAG, "SCHEDULE_API_FAILED: ${response.errorBody()?.string()}")
                 return@withContext false
             }
@@ -309,11 +318,17 @@ class DataSyncRepository(private val context: Context) {
                 )
             }
 
+            if (scheduleList.isEmpty()) {
+                showToast("Student scheduling setup not found on server for institute: $instIds")
+                return@withContext false
+            }
+
             db.studentScheduleDao().insertAll(scheduleList)
             Log.d(TAG, "Saved ${scheduleList.size} student schedule rows")
             return@withContext true
 
         } catch (e: Exception) {
+            showToast("Student Scheduling API connection failed: ${e.localizedMessage ?: "Unknown network error"}")
             Log.e(TAG, "SCHEDULE_EXCEPTION: ${e.message}")
             return@withContext false
         }
@@ -516,6 +531,7 @@ class DataSyncRepository(private val context: Context) {
             val response = apiService.getPeriodDetails(rParam, dataParam)
 
             if (!response.isSuccessful || response.body() == null) {
+                showToast("School Periods API failed: Server returned error ${response.code()}")
                 Log.e("PERIOD_API_FAILED", "${response.errorBody()?.string()}")
                 return@withContext false
             }
@@ -546,6 +562,11 @@ class DataSyncRepository(private val context: Context) {
                 )
             }
 
+            if (periodList.isEmpty()) {
+                showToast("School period setup not found on server for institute: $instId")
+                return@withContext false
+            }
+
             // Optional: Clear old before saving new
             db.schoolPeriodDao().insertAll(periodList)
 
@@ -554,6 +575,7 @@ class DataSyncRepository(private val context: Context) {
             return@withContext true
 
         } catch (e: Exception) {
+            showToast("School Periods API connection failed: ${e.localizedMessage ?: "Unknown network error"}")
             Log.e("SYNC_PERIOD_ERROR", "Exception: ${e.message}")
             return@withContext false
         }

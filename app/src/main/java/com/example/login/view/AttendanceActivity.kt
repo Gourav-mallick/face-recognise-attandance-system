@@ -391,7 +391,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
             val classroomId = currentVisibleClassroomId ?: return@launch
             val teacherId = currentTeacherId ?: run {
-                Toast.makeText(this@AttendanceActivity, "Please scan teacher card first!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@AttendanceActivity, "Please scan teacher  first!", Toast.LENGTH_SHORT).show()
                 return@launch
             }
             val cycle = activeSessions[Pair(classroomId, teacherId)] ?: run {

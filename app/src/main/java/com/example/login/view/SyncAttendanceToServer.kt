@@ -138,25 +138,29 @@ class SyncAttendanceToServer : AppCompatActivity(){
                     val jsonString = requestBodyJson.toString()
                     val response = sendToServer(jsonString)
 
-                    withContext(Dispatchers.Main) {
-                        if (response.isSuccessful && response.body() != null) {
-                            val bodyString = response.body()!!.string()
-                            val json = JSONObject(bodyString)
-                            val collection = json.optJSONObject("collection")
-                            val responseObj = collection?.optJSONObject("response")
-                            val apiStatus = responseObj?.optString("status", "FAILED") ?: "FAILED"
+                    if (response.isSuccessful && response.body() != null) {
+                        val bodyString = response.body()!!.string()
+                        val json = JSONObject(bodyString)
+                        val collection = json.optJSONObject("collection")
+                        val responseObj = collection?.optJSONObject("response")
+                        val apiStatus = responseObj?.optString("status", "FAILED") ?: "FAILED"
 
-                            if (apiStatus.equals("SUCCESS", ignoreCase = true)) {
-                                db.attendanceDao().updateSyncStatusBySession(sessionId, "complete")
-                                db.sessionDao().updateSessionSyncStatusToComplete(sessionId, "complete")
+                        if (apiStatus.equals("SUCCESS", ignoreCase = true)) {
+                            db.attendanceDao().updateSyncStatusBySession(sessionId, "complete")
+                            db.sessionDao().updateSessionSyncStatusToComplete(sessionId, "complete")
 
+                            withContext(Dispatchers.Main) {
                                 statusText.text = " Session $currentSession synced successfully!"
-                                Log.d("SYNC_SESSION", "Session $sessionId synced OK")
-                            } else {
-                                statusText.text = "⚠ Session $currentSession failed to sync!"
-                                Log.e("SYNC_SESSION", "Session $sessionId failed!")
                             }
+                            Log.d("SYNC_SESSION", "Session $sessionId synced OK")
                         } else {
+                            withContext(Dispatchers.Main) {
+                                statusText.text = "⚠ Session $currentSession failed to sync!"
+                            }
+                            Log.e("SYNC_SESSION", "Session $sessionId failed!")
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
                             statusText.text = " Network error for session $currentSession"
                         }
                     }

@@ -651,7 +651,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
         id: String,
         userType: String,
         embeddingStr: String?
-    ) {
+    ) = withContext(Dispatchers.IO) {
         val json = """
         {
           "userRegParamData": {
@@ -680,51 +680,44 @@ class FaceRegistrationActivity : AppCompatActivity() {
             val response = api.postUserRegistration(body = requestBody)
             Log.d("EnrollActivity", "Response: $response")
 
-            withContext(Dispatchers.Main) {
-                if (!response.isSuccessful) {
+            if (!response.isSuccessful) {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(this@FaceRegistrationActivity, "HTTP error: ${response.code()}", Toast.LENGTH_LONG).show()
-                    return@withContext
                 }
+                return@withContext
+            }
 
-                val bodyStr = response.body()?.string() ?: ""
-                Log.d("EnrollActivity", "Response body: $bodyStr")
+            val bodyStr = response.body()?.string() ?: ""
+            Log.d("EnrollActivity", "Response body: $bodyStr")
 
-                val jsonObj = JSONObject(bodyStr)
-                val collection = jsonObj.optJSONObject("collection")
-                val resp = collection?.optJSONObject("response")
-                val successStatus = resp?.optString("successStatus", "FALSE") ?: "FALSE"
+            val jsonObj = JSONObject(bodyStr)
+            val collection = jsonObj.optJSONObject("collection")
+            val resp = collection?.optJSONObject("response")
+            val successStatus = resp?.optString("successStatus", "FALSE") ?: "FALSE"
 
-                if (successStatus.equals("TRUE", ignoreCase = true)) {
-                    Toast.makeText(this@FaceRegistrationActivity, "Face synced to server!", Toast.LENGTH_LONG).show()
+            if (successStatus.equals("TRUE", ignoreCase = true)) {
+                val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
+                if (userType == "student") {
+                    db.studentsDao().updateStudentEmbedding(id, embeddingStr ?: "")
+                } else {
+                    db.teachersDao().updateTeacherEmbedding(id, embeddingStr ?: "")
+                }
+                allStudents = db.studentsDao().getAllStudents()
+                allTeachers = db.teachersDao().getAllTeachers()
+                updateUserCounters()
 
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        try {
-                            val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
-                            if (userType == "student") {
-                                db.studentsDao().updateStudentEmbedding(id, embeddingStr ?: "")
-                            } else {
-                                db.teachersDao().updateTeacherEmbedding(id, embeddingStr ?: "")
-                            }
-                            allStudents = db.studentsDao().getAllStudents()
-                            allTeachers = db.teachersDao().getAllTeachers()
-                            updateUserCounters()
-                        } catch (e: Exception) {
-                            Log.e("EnrollActivity", "Local DB update failed", e)
-                        }
-                    }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FaceRegistrationActivity, "Face synced and stored locally!", Toast.LENGTH_LONG).show()
 
-                    Toast.makeText(
-                        this@FaceRegistrationActivity,
-                        "Face synced and stored locally!",
-                        Toast.LENGTH_LONG
-                    ).show()
                     // 🔹 Trigger local DB sync automatically
                     val workRequest = OneTimeWorkRequestBuilder<AutoSyncWorker>()
-                       .setInitialDelay(3, TimeUnit.SECONDS) // Optional delay
+                       .setInitialDelay(3, TimeUnit.SECONDS)
                         .build()
 
                     WorkManager.getInstance(this@FaceRegistrationActivity).enqueue(workRequest)
-                } else {
+                }
+            } else {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(this@FaceRegistrationActivity, "Server rejected data!", Toast.LENGTH_LONG).show()
                 }
             }

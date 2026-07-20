@@ -438,79 +438,100 @@ class SelectInstituteActivity : AppCompatActivity() {
 
 
 
-   private suspend fun fetchDeviceDataToServer(
-        apiService: ApiService,
-        db: AppDatabase,
-        normalizedBaseUrl: String,
-        instIds: String
-    ):Boolean {
-        val rParam = "api/v1/Hardware/DeviceUtilityMgmt"
-        val dataParam = getDeviceUtilityQueryParams(this)
+    private suspend fun fetchDeviceDataToServer(
+         apiService: ApiService,
+         db: AppDatabase,
+         normalizedBaseUrl: String,
+         instIds: String
+     ): Boolean {
+         try {
+             val rParam = "api/v1/Hardware/DeviceUtilityMgmt"
+             val dataParam = getDeviceUtilityQueryParams(this)
 
-       val fullUrl = "${normalizedBaseUrl}sims-services/digitalsims/?r=$rParam&data=$dataParam"
-       Log.d(TAG, "HARDWARE_REQUEST_URL: $fullUrl")
+             val fullUrl = "${normalizedBaseUrl}sims-services/digitalsims/?r=$rParam&data=$dataParam"
+             Log.d(TAG, "HARDWARE_REQUEST_URL: $fullUrl")
 
-        val response = apiService.getDeveiceDataToserver(rParam, dataParam)
-        if (response.isSuccessful && response.body() != null) {
-            val jsonString = response.body()!!.string()
+             val response = apiService.getDeveiceDataToserver(rParam, dataParam)
+             if (response.isSuccessful && response.body() != null) {
+                 val jsonString = response.body()!!.string()
 
-            val json = JSONObject(jsonString)
-            Log.d(TAG, "HARDWARE_RESPONSE: $jsonString")
-            val collection = json.optJSONObject("collection")
-            Log.d(TAG, "HARDWARE_COLLECTION_RESPONSE: $collection")
-            val responseObj = collection?.optJSONObject("response")
-            Log.d(TAG, "RESPONSE: $responseObj")
-            val hwMgmtData = responseObj?.optJSONObject("hwMgmtData")
-            Log.d(TAG, "HW_MGMT_DATA: $hwMgmtData")
+                 val json = JSONObject(jsonString)
+                 Log.d(TAG, "HARDWARE_RESPONSE: $jsonString")
+                 val collection = json.optJSONObject("collection")
+                 Log.d(TAG, "HARDWARE_COLLECTION_RESPONSE: $collection")
+                 val responseObj = collection?.optJSONObject("response")
+                 Log.d(TAG, "RESPONSE: $responseObj")
+                 val hwMgmtData = responseObj?.optJSONObject("hwMgmtData")
+                 Log.d(TAG, "HW_MGMT_DATA: $hwMgmtData")
 
+                 if (hwMgmtData != null) {
+                     val status = hwMgmtData.optString("status")
+                     val cfg = hwMgmtData.optJSONObject("cfg")
+                     val deviceDetails = hwMgmtData.optJSONObject("deviceDetails")
 
-            if (hwMgmtData != null) {
-                val status = hwMgmtData.optString("status")
-                val cfg = hwMgmtData.optJSONObject("cfg")
-                val deviceDetails = hwMgmtData.optJSONObject("deviceDetails")
+                     val passcode = cfg?.optString("passCode")
+                     val faciCode = cfg?.optString("faciCode")
+                     val instType = cfg?.optString("instType")
+                     val deconfigstr = cfg?.optString("deconfigstr")
 
-                val passcode=cfg?.optString("passCode")
-                val faciCode=cfg?.optString("faciCode")
-                val instType=cfg?.optString("instType")
-                val deconfigstr = cfg?.optString("deconfigstr")
+                     if (!deconfigstr.isNullOrEmpty()) {
+                         val decryptedStr = TripleDESUtility().getDecryptedStr(deconfigstr)
+                         Log.d(TAG, "Decrypted Config: $decryptedStr")
 
-                if (!deconfigstr.isNullOrEmpty()) {
-                    val decryptedStr = TripleDESUtility().getDecryptedStr(deconfigstr)
-                    Log.d(TAG, "Decrypted Config: $decryptedStr")
+                         // Example: "CODE,ABCD12,0345"
+                         val elements = decryptedStr.split(",")
+                         if (elements.size >= 2) {
+                             val passCode = elements[1].trim()
+                             val faciCode = elements.getOrNull(2)?.trim() ?: ""
+                             val hexPassCode = convertAsciiToHex(passCode)
 
-                    // Example: "CODE,ABCD12,0345"
-                    val elements = decryptedStr.split(",")
-                    if (elements.size >= 2) {
-                        val passCode = elements[1].trim()
-                        val faciCode = elements.getOrNull(2)?.trim() ?: ""
-                        val hexPassCode = convertAsciiToHex(passCode)
+                             val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+                             prefs.edit()
+                                 .putString("cpass", hexPassCode)
+                                 .putString("passCode", passCode)
+                                 .putString("faciCode", faciCode)
+                                 .apply()
 
-                        val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
-                        prefs.edit()
-                            .putString("cpass", hexPassCode)
-                            .putString("passCode", passCode)
-                            .putString("faciCode", faciCode)
-                            .apply()
+                             Log.d(TAG, "Saved passCode: $passCode → HEX: $hexPassCode")
 
-                        Log.d(TAG, "Saved passCode: $passCode → HEX: $hexPassCode")
+                             val verify = prefs.getString("cpass", null)
+                             Log.d(TAG, "VERIFY_PREF_AFTER_SAVE: $verify")
 
-                        val verify = prefs.getString("cpass", null)
-                        Log.d(TAG, "VERIFY_PREF_AFTER_SAVE: $verify")
-
-                    } else {
-                        Log.e(TAG, "Invalid decrypted config format: $decryptedStr")
-                    }
-                }
-            } else {
-                Log.e(TAG, "No hwMgmtData found in response!")
-            }
-            return true
-        }
-            else {
-            Log.e(TAG, "STUDENT_API_FAILED: ${response.errorBody()?.string()}")
+                         } else {
+                             Log.e(TAG, "Invalid decrypted config format: $decryptedStr")
+                             withContext(Dispatchers.Main) {
+                                 Toast.makeText(this@SelectInstituteActivity, "Device config format is invalid.", Toast.LENGTH_LONG).show()
+                             }
+                         }
+                     } else {
+                         withContext(Dispatchers.Main) {
+                             Toast.makeText(this@SelectInstituteActivity, "Device configuration details not found on server.", Toast.LENGTH_LONG).show()
+                         }
+                         return false
+                     }
+                 } else {
+                     Log.e(TAG, "No hwMgmtData found in response!")
+                     withContext(Dispatchers.Main) {
+                         Toast.makeText(this@SelectInstituteActivity, "Device management details not found on server.", Toast.LENGTH_LONG).show()
+                     }
+                     return false
+                 }
+                 return true
+             } else {
+                 Log.e(TAG, "DEVICE_API_FAILED: ${response.errorBody()?.string()}")
+                 withContext(Dispatchers.Main) {
+                     Toast.makeText(this@SelectInstituteActivity, "Device API failed: Server returned error ${response.code()}", Toast.LENGTH_LONG).show()
+                 }
+                 return false
+             }
+         } catch (e: Exception) {
+             Log.e(TAG, "DEVICE_API_EXCEPTION: ${e.message}", e)
+             withContext(Dispatchers.Main) {
+                 Toast.makeText(this@SelectInstituteActivity, "Device API connection failed: ${e.localizedMessage ?: "Unknown network error"}", Toast.LENGTH_LONG).show()
+             }
              return false
-            }
-    }
+         }
+     }
 
 
 

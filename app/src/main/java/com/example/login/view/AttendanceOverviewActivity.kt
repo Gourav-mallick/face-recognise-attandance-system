@@ -130,20 +130,22 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
 
     private fun submitAttendanceForSession() {
-        lifecycleScope.launch {
-
+        lifecycleScope.launch(Dispatchers.IO) {
             Log.d("ATTENDANCE_DEBUG", "submitAttendanceForSession() START for sessionId=$sessionId")
-            // Show spinner
-            binding.progressBar.visibility = View.VISIBLE
+            // Show spinner on main thread
+            withContext(Dispatchers.Main) {
+                binding.progressBar.visibility = View.VISIBLE
+            }
             delay(2000) // show for 2s
 
             try {
                 val attendanceList = db.attendanceDao().getAttendanceBySessionId(sessionId)
-               Log.d("AttendanceOverview", "Attendance list: $attendanceList")
+                Log.d("AttendanceOverview", "Attendance list: $attendanceList")
 
                 if (attendanceList.isEmpty()) {
-                    binding.progressBar.visibility = View.GONE
-                 //   showPopup("No attendance found for this session.")
+                    withContext(Dispatchers.Main) {
+                        binding.progressBar.visibility = View.GONE
+                    }
                     Log.d("AttendanceOverview", "No attendance found for this session.")
                     return@launch
                 }
@@ -152,12 +154,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
                     Log.d("PAYLOAD_CHECK", "student=${it.studentId} cpId=${it.cpId}")
                 }
 
-                // Get baseUrl & hash from SharedPreferences
                 val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
                 val baseUrl = prefs.getString("baseUrl", "")!!
-              //  val hash = "trr36pdthb9xbhcppyqkgbpkq"
-                val hash=prefs.getString("hash", "")!!
-
+                val hash = prefs.getString("hash", "")!!
 
                 val apiService = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
 
@@ -165,7 +164,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 val attArray = JSONArray()
                 for (att in attendanceList) {
                     val mapped = mapAttendanceToApiFormat(att)
-                    Log.d("ATT_MAPPED", mapped.toString()) // logs each mapped attendance
+                    Log.d("ATT_MAPPED", mapped.toString())
                     attArray.put(mapped)
                 }
 
@@ -181,10 +180,6 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 }
 
                 Log.d("SYNC_REQUEST", requestBodyJson.toString())
-                Log.d("ATTENDANCE_DEBUG", "Final requestBodyJson=${requestBodyJson.toString()}")
-                Log.d("SYNC_REQUEST", requestBodyJson.toString())
-                Log.d("ATT_PAYLOAD", requestBodyJson.toString(2))
-
                 val mediaType = MediaType.parse("application/json; charset=utf-8")
                 val requestBody = RequestBody.create(mediaType, requestBodyJson.toString())
 
@@ -193,7 +188,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
                     requestBody = requestBody
                 )
 
-                binding.progressBar.visibility = View.GONE
+                withContext(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.GONE
+                }
 
                 if (response.isSuccessful && response.body() != null) {
                     val bodyString = response.body()!!.string()
@@ -206,15 +203,12 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         val apiStatus = responseObj?.optString("status", "FAILED") ?: "FAILED"
                         Log.d("ATTENDANCE_DEBUG", "API reported status=$apiStatus")
                         val apiMsgArray = responseObj?.optJSONArray("msgAr")
-                        Log.d("ATTENDANCE_DEBUG", "API msgArr raw=$apiMsgArray")
                         val msg = apiMsgArray?.optString(0) ?: "Attendance synced successfully"
 
                         if (apiStatus.equals("SUCCESS", ignoreCase = true)) {
-                            // Delete Attendance records from DB & Session if it successfully sent to server
                             Log.d("SYNC_RESPONSE", "Attendance synced successfully")
                             db.attendanceDao().updateSyncStatusBySession(sessionId, "complete")
                             db.sessionDao().updateSessionSyncStatusToComplete(sessionId, "complete")
-
 
                             DatabaseCleanupUtils.deleteSyncedAttendances(this@AttendanceOverviewActivity)
                             DatabaseCleanupUtils.deleteSyncedSessions(this@AttendanceOverviewActivity)
@@ -222,8 +216,6 @@ class AttendanceOverviewActivity : ComponentActivity() {
                             withContext(Dispatchers.Main) {
                                 showPopupWithOk(msg)
                             }
-
-
                         } else {
                             withContext(Dispatchers.Main) {
                                 Log.w("ATTENDANCE_DEBUG", "API returned non-success or empty body. Will mark locally.")
@@ -241,12 +233,10 @@ class AttendanceOverviewActivity : ComponentActivity() {
                     }
                 }
 
-
-
             } catch (e: Exception) {
                 Log.e("ATTENDANCE_DEBUG", "Exception in submitAttendanceForSession: ${e.message}", e)
-                binding.progressBar.visibility = View.GONE
                 withContext(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.GONE
                     showPopupWithOk("Server not reachable. Attendance saved locally, will sync later.")
                 }
             }
