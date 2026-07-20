@@ -159,7 +159,13 @@ class SettingsActivity : AppCompatActivity() {
                 val hash = prefs.getString("hash", "") ?: ""
                 val loggedStaffId = prefs.getString("loggedStaffId", "") ?: ""
 
-                val apiService = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
+                val normalizedBaseUrl = if (baseUrl.endsWith("/")) {
+                    baseUrl.removeSuffix("/") + "///"
+                } else {
+                    "$baseUrl///"
+                }
+
+                val apiService = ApiClient.getClient(normalizedBaseUrl, hash).create(ApiService::class.java)
                 val groupedBySession = pendingList.groupBy { it.sessionId }
                 var allSuccess = true
 
@@ -337,6 +343,12 @@ class SettingsActivity : AppCompatActivity() {
                 .edit().clear().apply()
 
             getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+
+            getSharedPreferences("AttendancePrefs", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+
+            getSharedPreferences("SyncPrefs", Context.MODE_PRIVATE)
                 .edit().clear().apply()
 
             withContext(Dispatchers.Main) {

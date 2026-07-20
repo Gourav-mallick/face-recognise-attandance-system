@@ -29,12 +29,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.login.api.ApiService
 import com.example.login.db.entity.Session
+import com.example.login.db.entity.Attendance
 import com.example.login.BuildConfig
 import java.net.URLEncoder
 import org.json.JSONObject
+import org.json.JSONArray
 import android.util.Log
 import android.widget.LinearLayout
 import android.widget.ImageView
+import com.example.login.utility.CheckNetworkAndInternetUtils
+import com.example.login.utility.DatabaseCleanupUtils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -799,40 +803,278 @@ class ClassroomScanFragment : Fragment() {
             .setTitle("Logout")
             .setMessage("Are you sure you want to logout?")
             .setPositiveButton("Yes") { _, _ ->
-              //  performLogout()
-                Toast.makeText(
-                    requireContext(),
-                    " logout.",
-                    Toast.LENGTH_LONG
-                ).show()
+                checkAndSyncBeforeLogout()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun performLogout() {
+    private fun checkAndSyncBeforeLogout() {
+        val context = context ?: return
+        val progressDialog = android.app.ProgressDialog(context).apply {
+            setMessage("Checking pending data...")
+            setCancelable(false)
+            show()
+        }
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            val db = AppDatabase.getDatabase(requireContext())
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(context)
+            val pendingList = db.attendanceDao().getPendingAttendancesByStatus("pending")
 
-            // Clear only user runtime data
-//            db.sessionDao().deleteAll()
-//            db.attendanceDao().deleteAll()
-//            db.activeClassCycleDao().deleteAll()
+            withContext(Dispatchers.Main) {
+                progressDialog.dismiss()
+                if (pendingList.isEmpty()) {
+                    proceedWithLogout(true)
+                } else {
+                    showSyncWarningDialog(pendingList)
+                }
+            }
+        }
+    }
 
-            // Clear preferences
-            requireContext().getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
+    private fun showSyncWarningDialog(pendingList: List<Attendance>) {
+        val context = context ?: return
+        AlertDialog.Builder(context)
+            .setTitle("Pending Attendance Detected")
+            .setMessage("You have ${pendingList.size} attendance records that are not synced to the server. Would you like to sync them now before logging out?\n\nWarning: Logging out without syncing will permanently delete these local attendance records.")
+            .setPositiveButton("Sync & Logout") { _, _ ->
+                syncAndThenLogout(pendingList)
+            }
+            .setNegativeButton("Logout Anyway (Delete Data)") { _, _ ->
+                proceedWithLogout(true)
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    private fun syncAndThenLogout(pendingList: List<Attendance>) {
+        val context = context ?: return
+        val progressDialog = android.app.ProgressDialog(context).apply {
+            setMessage("Syncing attendance to server... Please wait...")
+            setCancelable(false)
+            show()
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val hasNetwork = CheckNetworkAndInternetUtils.isNetworkAvailable(context)
+            val hasInternet = CheckNetworkAndInternetUtils.hasInternetAccess()
+
+            if (!hasNetwork || !hasInternet) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    showSyncErrorDialog("No internet connection available. Please connect to the internet to sync and logout, or logout anyway.", pendingList)
+                }
+                return@launch
+            }
+
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val prefs = context.getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
+                val baseUrl = prefs.getString("baseUrl", "") ?: ""
+                val hash = prefs.getString("hash", "") ?: ""
+                val loggedStaffId = prefs.getString("loggedStaffId", "") ?: ""
+
+                val normalizedBaseUrl = if (baseUrl.endsWith("/")) {
+                    baseUrl.removeSuffix("/") + "///"
+                } else {
+                    "$baseUrl///"
+                }
+
+                val apiService = ApiClient.getClient(normalizedBaseUrl, hash).create(ApiService::class.java)
+                val groupedBySession = pendingList.groupBy { it.sessionId }
+                var allSuccess = true
+
+                for ((sessionId, sessionAttendances) in groupedBySession) {
+                    val attArray = JSONArray()
+                    for (att in sessionAttendances) {
+                        val date = att.date
+                        val startTime = att.startTime
+                        val endTime = att.endTime
+                        val dataStartTime = "$date $startTime:00"
+                        val dataEndTime = "$date $endTime:00"
+
+                        val classShort = db.classDao().getClassById(att.classId)?.classShortName ?: ""
+
+                        val attCode = att.status
+                        val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+                        val attCodeId = codeEntity?.atcId ?: when (attCode) {
+                            "L" -> "4"
+                            "E" -> "3"
+                            "A" -> "2"
+                            else -> "1"
+                        }
+                        val attCodeLngName = codeEntity?.atcLongName ?: when (attCode) {
+                            "L" -> "late"
+                            "E" -> "exempted"
+                            "A" -> "absent"
+                            else -> "present"
+                        }
+
+                        val attJson = JSONObject().apply {
+                            put("studentId", att.studentId)
+                            put("instId", att.instId)
+                            put("instShortName", att.instShortName ?: "")
+                            put("academicYear", att.academicYear)
+                            put("classId", att.classId)
+                            put("classShortName", classShort)
+                            put("subjectId", att.subjectId ?: "")
+                            put("subjectCode", att.subjectId ?: "")
+                            put("subjectShortName", att.subjectTitle ?: "")
+                            put("courseId", att.courseId ?: "")
+                            put("courseShortName", att.courseShortName ?: "")
+                            put("cpId", att.cpId ?: "")
+                            put("cpShortName", "")
+                            put("mpId", att.mpId ?: "")
+                            put("mpShortName", att.mpLongTitle ?: "")
+                            put("attDate", att.date)
+                            put("attSchoolPeriodStartTime", att.startTime)
+                            put("attSchoolPeriodEndTime", att.endTime)
+                            put("period", att.period)
+                            put("status", "A")
+                            put("studentClass", classShort)
+                            put("attCodetitle", "present")
+                            put("courseSelectionMode", "")
+                            put("stfId", att.teacherId)
+                            put("stfFML", "")
+                            put("studId", att.studentId)
+                            put("studfFML", "")
+                            put("studfLFM", "")
+                            put("studentName", att.studentName)
+                            put("studAltId", att.atteId)
+                            put("studRollNo", "")
+                            put("int_rollNo", "")
+                            put("attCycleId", "")
+                            put("attSessionId", att.sessionId)
+                            put("attSchoolPeriodId", att.attSchoolPeriodId)
+                            put("attSchoolPeriodTitle", "")
+                            put("attSessionStartDateTime", dataStartTime)
+                            put("attSessionEndDateTime", dataEndTime)
+                            put("attCapturingIntervalDateTime", "")
+                            put("attCapturingIntervalInSec", "")
+                            put("attCapturingCycleState", "")
+                            put("attCategory", "Regular")
+                            put("studAttComment", "")
+                            put("attSessionStudId", "")
+                            put("attCodeId", attCodeId)
+                            put("attCodeLngName", attCodeLngName)
+                            put("attCode", attCode)
+                            put("studAttStartDateTime", dataStartTime)
+                            put("studAttEndDateTime", dataEndTime)
+                            put("studAttTotalDuration", "")
+                            put("atsaId", "")
+                            put("atsaIsProxy", "")
+                            put("atsaDistanceDeltaInMeter", "")
+                            put("isSelfUsrAttMarked", "")
+                            put("attCoLectureCpIds", "")
+                            put("toRemoveCoLecturerCpIds", "")
+                            put("toAddCoLecturerCpIds", "")
+                            put("status", "A")
+                        }
+                        attArray.put(attJson)
+                    }
+
+                    val requestBodyJson = JSONObject().apply {
+                        put("attParamDataObj", JSONObject().apply {
+                            put("attDataArr", attArray)
+                            put("attAttachmentArr", JSONArray())
+                            put("attendanceMethod", "periodDayWiseAttendance")
+                            put("loggedInUsrId", loggedStaffId)
+                        })
+                    }
+
+                    val mediaType = okhttp3.MediaType.parse("application/json; charset=utf-8")
+                    val requestBody = okhttp3.RequestBody.create(mediaType, requestBodyJson.toString())
+
+                    val response = apiService.postAttendanceSync(
+                        r = "api/v1/Att/ManageMarkingGlobalAtt",
+                        requestBody = requestBody
+                    )
+
+                    if (response.isSuccessful && response.body() != null) {
+                        val json = JSONObject(response.body()!!.string())
+                        val status = json.optJSONObject("collection")
+                            ?.optJSONObject("response")
+                            ?.optString("status", "FAILED") ?: "FAILED"
+
+                        if (status.equals("SUCCESS", ignoreCase = true)) {
+                            db.attendanceDao().updateSyncStatusBySession(sessionId, "complete")
+                            db.sessionDao().updateSessionSyncStatusToComplete(sessionId, "complete")
+                        } else {
+                            allSuccess = false
+                        }
+                    } else {
+                        allSuccess = false
+                    }
+                }
+
+                DatabaseCleanupUtils.deleteSyncedAttendances(context)
+                DatabaseCleanupUtils.deleteSyncedSessions(context)
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (allSuccess) {
+                        Toast.makeText(context, "Sync completed successfully!", Toast.LENGTH_SHORT).show()
+                        proceedWithLogout(true)
+                    } else {
+                        showSyncErrorDialog("Some attendance records failed to sync. Please try again or logout anyway.", pendingList)
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    showSyncErrorDialog("Error syncing data: ${e.message}", pendingList)
+                }
+            }
+        }
+    }
+
+    private fun showSyncErrorDialog(errorMessage: String, pendingList: List<Attendance>) {
+        val context = context ?: return
+        AlertDialog.Builder(context)
+            .setTitle("Sync Failed")
+            .setMessage(errorMessage)
+            .setPositiveButton("Retry Sync") { _, _ ->
+                syncAndThenLogout(pendingList)
+            }
+            .setNegativeButton("Logout Anyway (Delete Data)") { _, _ ->
+                proceedWithLogout(true)
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    private fun proceedWithLogout(clearDb: Boolean) {
+        val context = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            if (clearDb) {
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    db.clearAllTables()
+                    Log.d("LOGOUT", "Local database cleared completely.")
+                } catch (e: Exception) {
+                    Log.e("LOGOUT", "Error clearing local database: ${e.message}", e)
+                }
+            }
+
+            context.getSharedPreferences("LoginPrefs", Context.MODE_PRIVATE)
                 .edit().clear().apply()
 
-            requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
+            context.getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
                 .edit().clear().apply()
 
-            Toast.makeText(requireContext(), "Logged out", Toast.LENGTH_SHORT).show()
+            context.getSharedPreferences("AttendancePrefs", Context.MODE_PRIVATE)
+                .edit().clear().apply()
 
-            // Go to Login screen
-            val intent = Intent(requireContext(), LoginActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            startActivity(intent)
+            context.getSharedPreferences("SyncPrefs", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Logged out and local data destroyed.", Toast.LENGTH_SHORT).show()
+                val intent = Intent(context, LoginActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intent)
+                activity?.finish()
+            }
         }
     }
 
