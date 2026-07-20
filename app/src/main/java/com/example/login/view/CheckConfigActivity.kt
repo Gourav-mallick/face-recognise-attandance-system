@@ -32,10 +32,7 @@ class CheckConfigActivity : AppCompatActivity() {
         statusText.text = "Checking configuration..."
         progressBar.visibility = View.VISIBLE
 
-        // Simulate slight delay for UX (e.g. reading prefs)
-        Handler(Looper.getMainLooper()).postDelayed({
-            checkAppConfiguration()
-        }, 1500)
+        checkAppConfiguration()
     }
 
     private fun checkAppConfiguration() {
@@ -43,7 +40,7 @@ class CheckConfigActivity : AppCompatActivity() {
         val baseUrl = prefs.getString("baseUrl", null)
         val username = prefs.getString("username", null)
         val password = prefs.getString("password", null)
-        val instituteId = prefs.getString("selectedInstituteIds", null) //&& !instituteId.isNullOrEmpty()
+        val instituteId = prefs.getString("selectedInstituteIds", null)
 
         when {
             // All steps done: go to Attendance
@@ -54,7 +51,7 @@ class CheckConfigActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).postDelayed({
                     startActivity(Intent(this, AttendanceActivity::class.java))
                     finish()
-                }, 1000)
+                }, 800)
             }
             // Else: go to Login
             else -> {
@@ -63,7 +60,7 @@ class CheckConfigActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).postDelayed({
                     startActivity(Intent(this, LoginActivity::class.java))
                     finish()
-                }, 1500)
+                }, 800)
             }
         }
     }

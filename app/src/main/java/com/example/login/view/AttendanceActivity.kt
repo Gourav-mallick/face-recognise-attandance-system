@@ -104,37 +104,33 @@ class AttendanceActivity : AppCompatActivity() {
         }
 
 
-        checkDeviceTime {
-            // 🔹 Restore screen if app was killed mid-session
-            val statePrefs = getSharedPreferences("APP_STATE", MODE_PRIVATE)
+        // 🔹 Restore screen if app was killed mid-session (UI Thread)
+        val statePrefs = getSharedPreferences("APP_STATE", MODE_PRIVATE)
+        val currentScreen = statePrefs.getString("CURRENT_SCREEN", null)
 
-            //  If cleared or missing, always start fresh
-            val currentScreen = statePrefs.getString("CURRENT_SCREEN", null)
-
-            when (currentScreen) {
-                "TEACHER_SCAN" -> {
-                    val classId = statePrefs.getString("CLASSROOM_ID", "")
-                    val frag = TeacherScanFragment.newInstance(classId!!)
-                    supportFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, frag, "TEACHER")
-                        .commitAllowingStateLoss()
-
-                }
-
-                "STUDENT_SCAN" -> {
-                    val teacherName = statePrefs.getString("TEACHER_NAME", "")
-                    val sessionId = statePrefs.getString("SESSION_ID", "")
-                    val frag = StudentScanFragment.newInstance(teacherName ?: "", sessionId ?: "")
-                    supportFragmentManager.beginTransaction()
-                        .replace(R.id.fragment_container, frag, "STUDENT")
-                        .commitAllowingStateLoss()
-
-                }
-                else -> {
-                    startClassroomScanFragment()
-                }
+        when (currentScreen) {
+            "TEACHER_SCAN" -> {
+                val classId = statePrefs.getString("CLASSROOM_ID", "")
+                val frag = TeacherScanFragment.newInstance(classId!!)
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, frag, "TEACHER")
+                    .commitAllowingStateLoss()
+            }
+            "STUDENT_SCAN" -> {
+                val teacherName = statePrefs.getString("TEACHER_NAME", "")
+                val sessionId = statePrefs.getString("SESSION_ID", "")
+                val frag = StudentScanFragment.newInstance(teacherName ?: "", sessionId ?: "")
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, frag, "STUDENT")
+                    .commitAllowingStateLoss()
+            }
+            else -> {
+                startClassroomScanFragment()
             }
         }
+
+        // 🔹 Check device time validity in the background
+        checkDeviceTime()
 
         //if app exit then restore last cycle
         restoreLastCycleIfExists()
@@ -551,9 +547,9 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         }
     }
 
-    private fun checkDeviceTime(onChecked: (() -> Unit)? = null) {
+    private fun checkDeviceTime() {
         if (!isNetworkAvailable()) {
-            onChecked?.invoke() // skip check if offline
+            isTimeValid = true
             return
         }
 
@@ -576,12 +572,10 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                     runOnUiThread { showTimeMismatchDialog() }
                 } else {
                     isTimeValid = true
-                    runOnUiThread { onChecked?.invoke() }
                 }
             } catch (e: Exception) {
                 Log.e("TIME_CHECK", "Error checking time: ${e.message}")
                 isTimeValid = true
-                runOnUiThread { onChecked?.invoke() }
             }
         }
     }

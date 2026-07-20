@@ -55,7 +55,7 @@ class SplashActivity : AppCompatActivity() {
     private fun navigateToNextScreenWithDelay() {
         Handler(Looper.getMainLooper()).postDelayed({
             navigateToNextScreen()
-        }, 1500)
+        }, 500)
     }
 
     // Navigate to next screen
