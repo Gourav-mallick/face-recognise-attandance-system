@@ -379,21 +379,21 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 ivLeftArrow.alpha = 1f
                 ivCenterArrow.alpha = 0.1f
                 ivRightArrow.alpha = 0.1f
-                speak("Turn left and hold still, capturing left face")
+                speak("Turn left")
             }
             1 -> {
                 tvStep.text = "Turn RIGHT and hold still"
                 ivLeftArrow.alpha = 0.1f
                 ivCenterArrow.alpha = 0.1f
                 ivRightArrow.alpha = 1f
-                speak("Turn right and hold still, capturing right face")
+                speak("Turn right")
             }
             2 -> {
                 tvStep.text = "Look CENTER and hold still"
                 ivLeftArrow.alpha = 0.1f
                 ivCenterArrow.alpha = 1f
                 ivRightArrow.alpha = 0.1f
-                speak("Look straight at the camera and hold still")
+                speak("Look center")
             }
         }
     }
@@ -478,7 +478,7 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     && result != TextToSpeech.LANG_NOT_SUPPORTED
             if (isTtsReady) {
                 // Speak the first step instruction once TTS is ready
-                speak("Turn left and hold still, capturing left face")
+                speak("Turn left")
             }
         }
     }
