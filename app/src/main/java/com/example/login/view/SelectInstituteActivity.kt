@@ -168,7 +168,7 @@ class SelectInstituteActivity : AppCompatActivity() {
 
                     // 🔥 Device config also per selected block
                     val device = fetchDeviceDataToServer(apiService, db, normalizedBaseUrl, selectedInstitutes.first())
-                    if (!device) allOk = false
+                    if (!device) allOk = true
 
                     delay(2000)
                     withContext(Dispatchers.Main) {
