@@ -82,6 +82,7 @@
             android:exported="false" />
         <activity android:name=".view.FaceRecogniseActivity" />
         <activity android:name=".view.SettingsActivity" />
+        <activity android:name=".view.IncompleteSessionsActivity" />
 
     </application>
 

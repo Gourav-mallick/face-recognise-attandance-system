@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.login.R
 import com.example.login.databinding.ActivityPeriodSelectBinding
 import com.example.login.db.dao.AppDatabase
 import kotlinx.coroutines.launch
@@ -52,6 +53,22 @@ class PeriodSelectActivity : ComponentActivity() {
         binding.btnSkipPeriod.setOnClickListener {
             Log.d(TAG, "Teacher skipped period selection. Keeping auto-assigned spId=$autoAssignedSpId")
             navigateToClassSelect()
+        }
+
+        // 🔹 Setup WhatsApp-style 3-dots overflow menu
+        binding.ibOverflowMenu.setOnClickListener { anchorView ->
+            val popup = android.widget.PopupMenu(this, anchorView)
+            popup.menuInflater.inflate(R.menu.menu_incomplete_session, popup.menu)
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.menu_save_incomplete -> {
+                        saveCurrentSessionAsIncomplete()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
         }
 
         // Continue button → override with selected periods + duplicate for multi
@@ -180,5 +197,22 @@ class PeriodSelectActivity : ComponentActivity() {
             .putString("CURRENT_SCREEN", "PERIOD_SELECT")
             .putString("SESSION_ID", sessionId)
             .apply()
+    }
+
+    private fun saveCurrentSessionAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.example.login.repository.IncompleteSessionManager.saveAsIncompleteSession(
+                    context = this@PeriodSelectActivity,
+                    sessionId = sessionId,
+                    currentStage = "STAGE_PERIOD_SELECT"
+                )
+                Toast.makeText(this@PeriodSelectActivity, "Session saved as incomplete", Toast.LENGTH_SHORT).show()
+                com.example.login.repository.IncompleteSessionManager.navigateToHome(this@PeriodSelectActivity)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving incomplete session: ${e.message}", e)
+                Toast.makeText(this@PeriodSelectActivity, "Error saving session", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }

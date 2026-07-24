@@ -99,17 +99,22 @@ class FaceVerificationActivity : ComponentActivity() {
     private fun loadTargetEmbedding() {
         lifecycleScope.launch(Dispatchers.IO) {
             val student = db.studentsDao().getStudentById(studentId)
-            val embStr = student?.embedding
+            val teacher = db.teachersDao().getTeacherById(studentId)
+            val embStr = student?.embedding?.ifBlank { null } ?: teacher?.embedding?.ifBlank { null }
+            val displayName = student?.studentName?.ifBlank { null } ?: teacher?.staffName ?: studentName
 
             if (embStr.isNullOrBlank()) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@FaceVerificationActivity,
-                        "No face embedding registered for this student",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    setResult(Activity.RESULT_CANCELED)
-                    finish()
+                    androidx.appcompat.app.AlertDialog.Builder(this@FaceVerificationActivity)
+                        .setTitle("Face Not Registered")
+                        .setMessage("No registered face found for $displayName. Attendance can only be updated after successful face verification.")
+                        .setPositiveButton("OK") { dialog, _ ->
+                            dialog.dismiss()
+                            setResult(Activity.RESULT_CANCELED)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
                 }
                 return@launch
             }
@@ -117,13 +122,16 @@ class FaceVerificationActivity : ComponentActivity() {
             val parsed = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
             if (parsed.isEmpty()) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@FaceVerificationActivity,
-                        "Invalid face embedding format",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    setResult(Activity.RESULT_CANCELED)
-                    finish()
+                    androidx.appcompat.app.AlertDialog.Builder(this@FaceVerificationActivity)
+                        .setTitle("Invalid Face Registration")
+                        .setMessage("Face registration data for $displayName is invalid. Attendance can only be updated after successful face verification.")
+                        .setPositiveButton("OK") { dialog, _ ->
+                            dialog.dismiss()
+                            setResult(Activity.RESULT_CANCELED)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
                 }
                 return@launch
             }

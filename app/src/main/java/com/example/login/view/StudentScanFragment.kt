@@ -125,6 +125,23 @@ class StudentScanFragment : Fragment() {
         else requestPermissions(REQUIRED_PERMISSIONS, 101)
 
         updatePresentCountUI()
+
+        // 🔹 Setup WhatsApp-style 3-dots overflow menu
+        val ibOverflowMenu = view.findViewById<ImageButton>(R.id.ibOverflowMenu)
+        ibOverflowMenu.setOnClickListener { anchorView ->
+            val popup = android.widget.PopupMenu(requireContext(), anchorView)
+            popup.menuInflater.inflate(R.menu.menu_incomplete_session, popup.menu)
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.menu_save_incomplete -> {
+                        saveCurrentSessionAsIncomplete()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        }
     }
 
     override fun onDestroyView() {
@@ -662,6 +679,35 @@ class StudentScanFragment : Fragment() {
                     Toast.makeText(requireContext(), "Camera permission is required for scanning", Toast.LENGTH_LONG).show()
                     parentFragmentManager.popBackStack()
                 }
+            }
+        }
+    }
+
+    /**
+     * Saves the current attendance session as incomplete and navigates to Home Screen.
+     */
+    private fun saveCurrentSessionAsIncomplete() {
+        if (sessionIdArg.isEmpty()) {
+            Toast.makeText(requireContext(), "No active session to save", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                com.example.login.repository.IncompleteSessionManager.saveAsIncompleteSession(
+                    context = requireContext(),
+                    sessionId = sessionIdArg,
+                    currentStage = "STAGE_STUDENT_SCAN"
+                )
+
+                Toast.makeText(requireContext(), "Session saved as incomplete", Toast.LENGTH_SHORT).show()
+
+                // Navigate to Home Screen
+                val activity = requireActivity()
+                com.example.login.repository.IncompleteSessionManager.navigateToHome(activity)
+            } catch (e: Exception) {
+                Log.e("StudentScanFragment", "Error saving incomplete session: ${e.message}", e)
+                Toast.makeText(requireContext(), "Error saving session", Toast.LENGTH_SHORT).show()
             }
         }
     }

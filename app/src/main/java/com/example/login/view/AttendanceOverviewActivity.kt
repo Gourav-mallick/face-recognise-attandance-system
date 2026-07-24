@@ -64,7 +64,27 @@ class AttendanceOverviewActivity : ComponentActivity() {
             }
         })
 
+        // 🔹 Setup WhatsApp-style 3-dots overflow menu
+        binding.ibOverflowMenu.setOnClickListener { anchorView ->
+            val popup = android.widget.PopupMenu(this, anchorView)
+            popup.menuInflater.inflate(com.example.login.R.menu.menu_incomplete_session, popup.menu)
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    com.example.login.R.id.menu_save_incomplete -> {
+                        saveCurrentSessionAsIncomplete()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        }
+
+        Log.i("OVERVIEW_CARD_DEBUG", "=== AttendanceOverviewActivity onCreate() STARTED ===")
+        Log.i("OVERVIEW_CARD_DEBUG", "onCreate() received sessionId=$sessionId, selectedClassesCount=${selectedClasses.size}")
+
         loadOverviewData()
+
 
         binding.btnSubmitAttendance.setOnClickListener {
             submitAttendanceForSession()
@@ -78,42 +98,53 @@ class AttendanceOverviewActivity : ComponentActivity() {
     }
 
     private fun loadOverviewData() {
+        Log.i("OVERVIEW_CARD_DEBUG", "=== loadOverviewData() FUNCTION INVOKED ===")
         lifecycleScope.launch {
             val classSummaries = mutableListOf<ClassOverviewData>()
 
+            Log.i("OVERVIEW_CARD_DEBUG", "=== loadOverviewData() COROUTINE START ===")
+            Log.i("OVERVIEW_CARD_DEBUG", "Session ID: $sessionId")
+            Log.i("OVERVIEW_CARD_DEBUG", "Selected Classes Count: ${selectedClasses.size}")
+            Log.i("OVERVIEW_CARD_DEBUG", "Selected Classes List: $selectedClasses")
+
             for (classId in selectedClasses) {
                 val students = db.studentsDao().getAllStudents().filter { it.classId == classId }
-                val classObj=db.classDao().getClassById(classId)
+                val classObj = db.classDao().getClassById(classId)
                 val classShortName = classObj?.classShortName ?: classId
-                Log.d("ATTENDANCE_DEBUG", "classShortName is=$classShortName")
 
                 val attendance = db.attendanceDao().getAttendancesForClass(sessionId, classId)
 
                 val totalStudents = students.size
                 val presentCount = attendance.count { it.status == "P" }
                 val absentCount = totalStudents - presentCount
-          /*
-                val presentStudents = students.filter { s ->
-                    attendance.any { it.studentId == s.studentId && it.status == "P" }
-                }.map { it.studentName }
-
-          */
 
                 // Subject name (take from first attendance row)
-                val subjectName =
-                    attendance.firstOrNull()?.subjectTitle
+                val subjectName = attendance.firstOrNull()?.subjectTitle ?: "N/A"
 
-                classSummaries.add(
-                    ClassOverviewData(
-                        classId = classId,
-                        className = classShortName,
-                        totalStudents = totalStudents,
-                        presentCount = presentCount,
-                        absentCount = absentCount,
-                        subjectName = subjectName
-                    )
+                val overviewData = ClassOverviewData(
+                    classId = classId,
+                    className = classShortName,
+                    totalStudents = totalStudents,
+                    presentCount = presentCount,
+                    absentCount = absentCount,
+                    subjectName = subjectName
                 )
+
+                Log.i("OVERVIEW_CARD_DEBUG", "----------------------------------------")
+                Log.i("OVERVIEW_CARD_DEBUG", "Card Details:")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Class ID      : $classId")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Class Name    : $classShortName")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Subject Name  : $subjectName")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Total Students: $totalStudents")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Present Count : $presentCount")
+                Log.i("OVERVIEW_CARD_DEBUG", "  Absent Count  : $absentCount")
+                Log.i("OVERVIEW_CARD_DEBUG", "----------------------------------------")
+
+                classSummaries.add(overviewData)
             }
+
+            Log.i("OVERVIEW_CARD_DEBUG", "Total Class Cards Prepared: ${classSummaries.size}")
+            Log.i("OVERVIEW_CARD_DEBUG", "=== loadOverviewData() END ===")
 
             val adapter = AttendanceOverviewAdapter(classSummaries) { selectedClassId ->
                 val intent = Intent(this@AttendanceOverviewActivity, EditAttendanceActivity::class.java)
@@ -205,6 +236,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         val apiMsgArray = responseObj?.optJSONArray("msgAr")
                         val msg = apiMsgArray?.optString(0) ?: "Attendance synced successfully"
 
+                        // 🔹 Clear incomplete session record if it was previously saved as incomplete
+                        db.incompleteSessionDao().deleteIncompleteSession(sessionId)
+
                         if (apiStatus.equals("SUCCESS", ignoreCase = true)) {
                             Log.d("SYNC_RESPONSE", "Attendance synced successfully")
                             db.attendanceDao().updateSyncStatusBySession(sessionId, "complete")
@@ -223,11 +257,13 @@ class AttendanceOverviewActivity : ComponentActivity() {
                             }
                         }
                     } catch (e: Exception) {
+                        db.incompleteSessionDao().deleteIncompleteSession(sessionId)
                         withContext(Dispatchers.Main) {
                             showPopupWithOk("Attendance saved locally. You can sync later.")
                         }
                     }
                 } else {
+                    db.incompleteSessionDao().deleteIncompleteSession(sessionId)
                     withContext(Dispatchers.Main) {
                         showPopupWithOk("Attendance saved locally. You can sync later.")
                     }
@@ -354,6 +390,23 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 finish()
             }
             .show()
+    }
+
+    private fun saveCurrentSessionAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.example.login.repository.IncompleteSessionManager.saveAsIncompleteSession(
+                    context = this@AttendanceOverviewActivity,
+                    sessionId = sessionId,
+                    currentStage = "STAGE_OVERVIEW"
+                )
+                Toast.makeText(this@AttendanceOverviewActivity, "Session saved as incomplete", Toast.LENGTH_SHORT).show()
+                com.example.login.repository.IncompleteSessionManager.navigateToHome(this@AttendanceOverviewActivity)
+            } catch (e: Exception) {
+                Log.e("AttendanceOverview", "Error saving incomplete session: ${e.message}", e)
+                Toast.makeText(this@AttendanceOverviewActivity, "Error saving session", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
 }

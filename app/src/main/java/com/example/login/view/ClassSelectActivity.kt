@@ -39,6 +39,22 @@ class ClassSelectActivity : ComponentActivity() {
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
 
+        // 🔹 Setup WhatsApp-style 3-dots overflow menu
+        binding.ibOverflowMenu.setOnClickListener { anchorView ->
+            val popup = android.widget.PopupMenu(this, anchorView)
+            popup.menuInflater.inflate(com.example.login.R.menu.menu_incomplete_session, popup.menu)
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    com.example.login.R.id.menu_save_incomplete -> {
+                        saveCurrentSessionAsIncomplete()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        }
+
 
         val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
 
@@ -152,6 +168,23 @@ class ClassSelectActivity : ComponentActivity() {
                 }
             } else if (isChecked) {
                 selectedClassIds.add(classId)
+            }
+        }
+    }
+
+    private fun saveCurrentSessionAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.example.login.repository.IncompleteSessionManager.saveAsIncompleteSession(
+                    context = this@ClassSelectActivity,
+                    sessionId = sessionId,
+                    currentStage = "STAGE_CLASS_SELECT"
+                )
+                Toast.makeText(this@ClassSelectActivity, "Session saved as incomplete", Toast.LENGTH_SHORT).show()
+                com.example.login.repository.IncompleteSessionManager.navigateToHome(this@ClassSelectActivity)
+            } catch (e: Exception) {
+                android.util.Log.e("ClassSelectActivity", "Error saving incomplete session: ${e.message}", e)
+                Toast.makeText(this@ClassSelectActivity, "Error saving session", Toast.LENGTH_SHORT).show()
             }
         }
     }

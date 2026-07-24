@@ -14,23 +14,36 @@
             android:orientation="vertical"
             android:padding="10dp">
 
-            <!-- Your original content -->
-            <TextView
-                android:id="@+id/tvTitle"
-                android:text="Select Classes"
+            <!-- Title row with overflow menu -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_dark"
-                android:layout_gravity="center"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
                 android:layout_marginBottom="12dp"
                 android:paddingTop="12dp"
-                android:paddingBottom="12dp"
-                android:gravity="center"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"/>
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:text="Select Classes"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_dark"
+                    android:gravity="center" />
+
+                <ImageButton
+                    android:id="@+id/ibOverflowMenu"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_more_vert"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="More options"
+                    android:scaleType="centerInside" />
+            </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recyclerViewClasses"

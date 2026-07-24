@@ -168,6 +168,12 @@ class ClassroomScanFragment : Fragment() {
             startActivity(intent)
         }
 
+        val btnIncompleteSessions = view.findViewById<View>(R.id.btnIncompleteSessions)
+        btnIncompleteSessions?.setOnClickListener {
+            val intent = Intent(requireContext(), IncompleteSessionsActivity::class.java)
+            startActivity(intent)
+        }
+
 
 
     // Listen for broadcast updates
@@ -288,9 +294,29 @@ class ClassroomScanFragment : Fragment() {
         view.findViewById<View>(R.id.btnEditProfile)?.setOnClickListener {
             Toast.makeText(requireContext(), "Profile editing is managed by Administrator", Toast.LENGTH_LONG).show()
         }
-        // view.findViewById<View>(R.id.btnViewDetails)?.setOnClickListener {
+    // view.findViewById<View>(R.id.btnViewDetails)?.setOnClickListener {
         //     Toast.makeText(requireContext(), "Class CS101 in Room 302 is scheduled from 09:00 AM to 10:30 AM", Toast.LENGTH_LONG).show()
         // }
+    }
+
+    private fun refreshIncompleteBadge() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(requireContext())
+                val count = db.incompleteSessionDao().getAllIncompleteSessions().size
+                val badge = view?.findViewById<TextView>(R.id.tvIncompleteSessionsBadge)
+                if (badge != null) {
+                    if (count > 0) {
+                        badge.text = count.toString()
+                        badge.visibility = View.VISIBLE
+                    } else {
+                        badge.visibility = View.GONE
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ClassroomScanFragment", "Error updating incomplete badge: ${e.message}")
+            }
+        }
     }
 
     private fun selectTab(view: View, tabName: String) {
@@ -359,6 +385,7 @@ class ClassroomScanFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         updateUserCounters()
+        refreshIncompleteBadge()
     }
 
     private fun updateUserCounters() {

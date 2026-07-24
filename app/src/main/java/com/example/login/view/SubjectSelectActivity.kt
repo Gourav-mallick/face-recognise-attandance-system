@@ -73,6 +73,22 @@ class SubjectSelectActivity : ComponentActivity() {
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
 
+        // 🔹 Setup WhatsApp-style 3-dots overflow menu
+        binding.ibOverflowMenu.setOnClickListener { anchorView ->
+            val popup = android.widget.PopupMenu(this, anchorView)
+            popup.menuInflater.inflate(R.menu.menu_incomplete_session, popup.menu)
+            popup.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.menu_save_incomplete -> {
+                        saveCurrentSessionAsIncomplete()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        }
+
         //  Save app state so that reopening resumes here
         getSharedPreferences("APP_STATE", MODE_PRIVATE)
             .edit()
@@ -1411,6 +1427,20 @@ class SubjectSelectActivity : ComponentActivity() {
         }
     }
 
-
-
+    private fun saveCurrentSessionAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.example.login.repository.IncompleteSessionManager.saveAsIncompleteSession(
+                    context = this@SubjectSelectActivity,
+                    sessionId = sessionId,
+                    currentStage = "STAGE_SUBJECT_SELECT"
+                )
+                Toast.makeText(this@SubjectSelectActivity, "Session saved as incomplete", Toast.LENGTH_SHORT).show()
+                com.example.login.repository.IncompleteSessionManager.navigateToHome(this@SubjectSelectActivity)
+            } catch (e: Exception) {
+                Log.e("SubjectSelectActivity", "Error saving incomplete session: ${e.message}", e)
+                Toast.makeText(this@SubjectSelectActivity, "Error saving session", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 }

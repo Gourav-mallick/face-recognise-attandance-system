@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="12dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginEnd="12dp"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="6dp"
+    app:cardBackgroundColor="@color/white">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Top Header: Teacher Name & Incomplete Badge -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvCardTeacherName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Teacher Name"
+                android:textColor="@color/text_dark"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvCardStageBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Student Scan"
+                android:textColor="@color/blue_primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_pill_light"
+                android:paddingStart="10dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="4dp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E5E7EB"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Details Grid -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvCardSessionDate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📅 Date: 2026-07-24 | Start: 10:00 AM"
+                android:textColor="@color/text_dark"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvCardClassInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🏫 Class: Grade 10-A"
+                android:textColor="@color/text_dark"
+                android:textSize="14sp"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvCardSubjectInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📚 Subject: Mathematics"
+                android:textColor="@color/text_dark"
+                android:textSize="14sp"
+                android:layout_marginTop="4dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvCardPeriodInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="⏰ Period: Auto-Assigned (P1)"
+                android:textColor="@color/text_gray"
+                android:textSize="13sp"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvCardMarkedCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="👥 Marked Students: 15"
+                android:textColor="@color/text_dark"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvCardSyncStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="☁ Sync Status: Local"
+                android:textColor="@color/text_gray"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <!-- Action Button -->
+        <Button
+            android:id="@+id/btnResumeSession"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RESUME SESSION"
+            android:textColor="@android:color/white"
+            android:background="@drawable/btn_rounded"
+            android:textStyle="bold"
+            android:layout_marginTop="14dp" />
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

@@ -20,6 +20,7 @@ import com.example.login.db.entity.Institute
 import com.example.login.db.entity.PendingTeacherAllocationEntity
 import com.example.login.db.entity.SchoolPeriod
 import com.example.login.db.entity.AttendanceCode
+import com.example.login.db.entity.IncompleteSession
 
 
 
@@ -41,7 +42,8 @@ import com.example.login.db.entity.AttendanceCode
     Institute::class,
     PendingTeacherAllocationEntity::class,
     SchoolPeriod::class,
-    AttendanceCode::class
+    AttendanceCode::class,
+    IncompleteSession::class
     ],
     version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +69,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun schoolPeriodDao(): SchoolPeriodDao
     abstract fun attendanceCodeDao(): AttendanceCodeDao
+    abstract fun incompleteSessionDao(): IncompleteSessionDao
 
 
 

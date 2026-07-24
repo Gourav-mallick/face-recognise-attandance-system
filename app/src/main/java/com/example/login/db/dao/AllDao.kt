@@ -22,6 +22,7 @@ import com.example.login.db.entity.Session
 import com.example.login.db.entity.StudentSchedule
 import com.example.login.db.entity.TeacherClassMap
 import com.example.login.db.entity.AttendanceCode
+import com.example.login.db.entity.IncompleteSession
 
 
 @Dao
@@ -568,3 +569,34 @@ interface AttendanceCodeDao {
     suspend fun clear()
 }
 
+
+@Dao
+interface IncompleteSessionDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(session: IncompleteSession)
+
+    @Query("SELECT * FROM incomplete_sessions WHERE teacherId = :teacherId ORDER BY createdAt DESC")
+    suspend fun getIncompleteSessionsByTeacher(teacherId: String): List<IncompleteSession>
+
+    @Query("SELECT * FROM incomplete_sessions WHERE teacherId = :teacherId AND instId = :instId ORDER BY createdAt DESC")
+    suspend fun getIncompleteSessionsByTeacherAndInst(teacherId: String, instId: String): List<IncompleteSession>
+
+    @Query("SELECT COUNT(*) FROM incomplete_sessions WHERE teacherId = :teacherId")
+    suspend fun countIncompleteSessionsForTeacher(teacherId: String): Int
+
+    @Query("SELECT * FROM incomplete_sessions WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getIncompleteSessionById(sessionId: String): IncompleteSession?
+
+    @Query("SELECT * FROM incomplete_sessions ORDER BY createdAt DESC")
+    suspend fun getAllIncompleteSessions(): List<IncompleteSession>
+
+    @Query("DELETE FROM incomplete_sessions WHERE sessionId = :sessionId")
+    suspend fun deleteIncompleteSession(sessionId: String)
+
+    @Query("UPDATE incomplete_sessions SET syncStatus = :status, updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun updateSyncStatus(sessionId: String, status: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM incomplete_sessions WHERE syncStatus = 'LOCAL'")
+    suspend fun getUnsyncedSessions(): List<IncompleteSession>
+}

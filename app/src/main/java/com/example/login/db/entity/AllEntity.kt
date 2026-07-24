@@ -316,6 +316,31 @@ data class ActiveClassCycle(
 )
 
 
+@Entity(tableName = "incomplete_sessions")
+@Parcelize
+data class IncompleteSession(
+    @PrimaryKey
+    val sessionId: String,
+    val instId: String,
+    val classId: String?,                    // may be null if saved before class selection
+    val classShortName: String? = null,
+    val teacherId: String,
+    val teacherName: String? = null,
+    val attSchoolPeriodId: String? = null,
+    val autoAssignedPeriod: Int = 0,         // 1 if period was auto-assigned by time range
+    val deviceGuid: String? = null,
+    val sessionDate: String,
+    val startTime: String,
+    val currentStage: String = "STAGE_STUDENT_SCAN",  // STAGE_STUDENT_SCAN, STAGE_PERIOD_SELECT, STAGE_CLASS_SELECT, STAGE_SUBJECT_SELECT, STAGE_OVERVIEW
+    val markedStudentCount: Int = 0,
+    val attendancesJson: String? = null,     // JSON array of scanned student attendances
+    val sessionObjectJson: String? = null,   // full session metadata JSON for resumption
+    val syncStatus: String = "LOCAL",        // LOCAL, SYNCED
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) : Parcelable
+
+
 object AttendanceIdGenerator {
     private var counter = 0
     fun nextId(): String {
