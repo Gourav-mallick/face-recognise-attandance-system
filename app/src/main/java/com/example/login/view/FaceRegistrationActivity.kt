@@ -989,6 +989,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 var totalErrors = 0
                 var totalDuplicateSkipped = 0
                 val batchRegArray = org.json.JSONArray()
+                val registeredImageMap = HashMap<String, String>()
 
                 for (idx in 0 until totalToProcess) {
                     totalProcessed++
@@ -1039,7 +1040,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
                             minDist = dist
                             closestUserId = regS.studentId
                         }
-                        comparisonLines.add("   - Student ${regS.studentId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                        val regImgStr = registeredImageMap[regS.studentId]?.let { " (Reg Image: $it)" } ?: ""
+                        comparisonLines.add("   - Student ${regS.studentId}$regImgStr : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
                     }
 
                     for (regT in regTeachers) {
@@ -1049,30 +1051,33 @@ class FaceRegistrationActivity : AppCompatActivity() {
                             minDist = dist
                             closestUserId = regT.staffId
                         }
-                        comparisonLines.add("   - Teacher ${regT.staffId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                        val regImgStr = registeredImageMap[regT.staffId]?.let { " (Reg Image: $it)" } ?: ""
+                        comparisonLines.add("   - Teacher ${regT.staffId}$regImgStr : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
                     }
 
                     val totalCompared = regStudents.size + regTeachers.size
                     val formattedMinDist = if (minDist == Float.MAX_VALUE) "N/A" else String.format(java.util.Locale.US, "%.4f", minDist)
-                    val closestMatchText = if (closestUserId.isNotEmpty()) "Student $closestUserId (Distance = $formattedMinDist)" else "None"
+                    val closestRegImg = registeredImageMap[closestUserId]
+                    val closestMatchText = if (closestUserId.isNotEmpty()) {
+                        val imgLabel = if (closestRegImg != null) "Registered with Image: $closestRegImg | " else ""
+                        "Student $closestUserId (${imgLabel}Distance = $formattedMinDist)"
+                    } else "None"
 
                     TestBatchHelper.appendLine(logFile, "================================================================================")
                     TestBatchHelper.appendLine(logFile, "[Index: $currentTagIndex] Target Student ID: ${student.studentId} | Image File: ${picFile.name}")
                     TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
-                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
-                    for (compLine in comparisonLines) {
-                        TestBatchHelper.appendLine(logFile, compLine)
-                    }
                     TestBatchHelper.appendLine(logFile, "• Closest Match Found : $closestMatchText")
                     TestBatchHelper.appendLine(logFile, "• Acceptance Threshold: ${String.format(java.util.Locale.US, "%.2f", distThreshold)}")
 
                     if (minDist < distThreshold) {
                         Log.w("BATCH_REG", "Duplicate face detected using image '${picFile.name}' for student ${student.studentId} matching $closestUserId (dist=$minDist)")
                         totalDuplicateSkipped++
-                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ DUPLICATE_REJECTED (Matched with Student $closestUserId: $formattedMinDist < ${String.format(java.util.Locale.US, "%.2f", distThreshold)})")
+                        val regImgLabel = if (closestRegImg != null) " [Reg Image: $closestRegImg]" else ""
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ DUPLICATE_REJECTED (Matched with Student $closestUserId$regImgLabel: $formattedMinDist < ${String.format(java.util.Locale.US, "%.2f", distThreshold)})")
                     } else {
                         val embedStr = cSign.joinToString(",")
                         db.studentsDao().updateStudentEmbedding(student.studentId, embedStr)
+                        registeredImageMap[student.studentId] = picFile.name
                         totalRegistered++
 
                         val regObj = org.json.JSONObject().apply {
@@ -1083,8 +1088,13 @@ class FaceRegistrationActivity : AppCompatActivity() {
                         }
                         batchRegArray.put(regObj)
 
-                        Log.d("BATCH_REG", "Successfully registered face locally for student ${student.studentId}")
+                        Log.d("BATCH_REG", "Successfully registered face locally for student ${student.studentId} using image ${picFile.name}")
                         TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ✅ REGISTERED_LOCALLY (Queued for bulk server sync)")
+                    }
+
+                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
+                    for (compLine in comparisonLines) {
+                        TestBatchHelper.appendLine(logFile, compLine)
                     }
 
                     TestBatchHelper.appendLine(logFile, "~~~~~~~~")

@@ -779,10 +779,6 @@ class FaceRecogniseActivity : AppCompatActivity() {
                     TestBatchHelper.appendLine(logFile, "================================================================================")
                     TestBatchHelper.appendLine(logFile, "[Index: ${idx + 1}] Image File: ${picFile.name}")
                     TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
-                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
-                    for (compLine in comparisonLines) {
-                        TestBatchHelper.appendLine(logFile, compLine)
-                    }
                     TestBatchHelper.appendLine(logFile, "• Closest Match Found : $closestMatchText")
                     TestBatchHelper.appendLine(logFile, "• Acceptance Threshold: ${String.format(java.util.Locale.US, "%.2f", distThreshold)}")
 
@@ -794,6 +790,11 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         totalUnmatched++
                         android.util.Log.w("BATCH_RECOGNISE", "Image ${picFile.name} unmatched (minDist=$minDistance)")
                         TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ UNRECOGNIZED (Distance $formattedMinDist >= ${String.format(java.util.Locale.US, "%.2f", distThreshold)})")
+                    }
+
+                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
+                    for (compLine in comparisonLines) {
+                        TestBatchHelper.appendLine(logFile, compLine)
                     }
 
                     TestBatchHelper.appendLine(logFile, "~~~~~~~~")
