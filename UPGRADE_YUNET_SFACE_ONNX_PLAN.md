@@ -439,30 +439,6 @@ curl -L "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_s
 
 ---
 
-### 11.2. The Two Migration Strategies
-
-Depending on whether raw student face photos are stored locally / on S3 server, choose Strategy A or Strategy B:
-
-#### STRATEGY A: Automated Background Re-Embedding (ZERO User Action Required)
-* **Condition:** Raw student face photos exist in local storage (`app_textures/student_id.jpg`) or on your S3/Server storage.
-* **How it Works:** 
-  1. On first app launch after upgrading to YuNet + SFace, an automated background migration worker (`LegacyEmbeddingMigrator.kt`) runs.
-  2. It loads each student's saved photo file from disk/S3.
-  3. It runs YuNet 5-landmark detection $\rightarrow$ $112 \times 112$ Canonical Alignment $\rightarrow$ SFace 128-D embedding extraction.
-  4. It overwrites `Student.embedding` with the new SFace 128-D vector string.
-* **Result:** All 400+ existing students are **automatically converted** to SFace embeddings in under 30 seconds without needing to re-scan any student manually!
-
----
-
-#### STRATEGY B: Seamless Progressive Re-Registration (If Raw Photos Are Missing)
-* **Condition:** Raw face photo files are not saved locally or on the server (only old FaceNet vectors were saved).
-* **How it Works:**
-  1. Add a database migration flag `embedding_version = "SFACE_V1"`.
-  2. The 400+ existing students are marked as `"Pending Re-Scan"`.
-  3. The `UnregisteredUsersActivity` list shows these students as requiring a fast 3-second live video scan.
-  4. When a student comes for attendance, scanning their face using the new Registration screen automatically captures their new 5-landmark SFace embedding in 1 second.
-
----
 
 ## 12. Comprehensive UX & UI Engineering Improvements
 
@@ -509,5 +485,5 @@ Instead of generic error messages, the screen displays real-time actionable inst
 - [x] **Attendance & Server API:** 100% UNCHANGED.
 - [x] **Comparative Conditions:** Proved YuNet + SFace superiority over MLKit + FaceNet across 8 critical scenarios.
 - [x] **Model Download Links & Commands:** Added official download links and cURL terminal commands for `assets/models/`.
-- [x] **400+ Existing Student Migration:** Defined Automated Background Re-embedding (Strategy A) & Progressive Re-Scan (Strategy B).
+
 - [x] **UX & UI Engineering Improvements:** Restored dynamic oval camera guides, live landmark visualization, haptic/audio feedback, and non-blocking threading.
