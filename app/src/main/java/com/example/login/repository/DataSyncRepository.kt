@@ -581,9 +581,45 @@ class DataSyncRepository(private val context: Context) {
         }
     }
 
+    suspend fun fetchAndSaveProgramConfig(
+        apiService: ApiService,
+        schoolId: String = "1",
+        syear: String = "2025"
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val dataQuery = JSONObject().apply {
+                put("programName", "SelfieAttendance")
+                put("title", "FaceDetectionThreshold")
+                put("syear", syear)
+                put("school_id", schoolId)
+            }.toString()
 
+            val response = apiService.getProgramConfig(data = dataQuery)
+            if (response.isSuccessful && response.body() != null) {
+                val jsonStr = response.body()!!.string()
+                Log.d(TAG, "ManageProgramConfig Response: $jsonStr")
+                val json = JSONObject(jsonStr)
+                val collection = json.optJSONObject("collection")
+                val resp = collection?.optJSONObject("response")
+                val retConfigData = resp?.optJSONArray("retConfigData")
 
-
-
+                if (retConfigData != null && retConfigData.length() > 0) {
+                    val configObj = retConfigData.getJSONObject(0)
+                    val valStr = configObj.optString("value", "")
+                    Log.d("RECEIVED_THRESHOLD", valStr)
+                    val threshold = valStr.toFloatOrNull()
+                    if (threshold != null) {
+                        com.example.login.utility.ThresholdManager.saveThreshold(context, threshold)
+                        return@withContext true
+                    }
+                }
+            }
+            Log.w(TAG, "Failed to fetch program config or invalid value, using default threshold")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching program config: ${e.message}", e)
+            false
+        }
+    }
 
 }

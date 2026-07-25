@@ -62,7 +62,7 @@ class StudentScanFragment : Fragment() {
 
     private lateinit var faceNet: FaceNetHelper
 
-    private val DIST_THRESHOLD = 0.60f
+    private val distThreshold: Float get() = com.example.login.utility.ThresholdManager.getThreshold(requireContext())
     private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
@@ -294,7 +294,7 @@ class StudentScanFragment : Fragment() {
 
                 //If no match OR match is too far
 
-                if (!bestIsTeacher && (bestMatchId == null || minDist >= DIST_THRESHOLD)) {
+                if (!bestIsTeacher && (bestMatchId == null || minDist >= distThreshold)) {
 
                     studentFailCount++
 

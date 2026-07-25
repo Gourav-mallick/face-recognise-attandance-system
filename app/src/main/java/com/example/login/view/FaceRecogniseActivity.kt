@@ -65,7 +65,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private lateinit var faceNet: FaceNetHelper
     private lateinit var cameraExecutor: java.util.concurrent.ExecutorService
 
-    private val DIST_THRESHOLD = 0.60f
+    private val distThreshold: Float get() = com.example.login.utility.ThresholdManager.getThreshold(this)
     private val CROP_SCALE = 1.1f
 
     private var lastProcessTime = 0L
@@ -511,7 +511,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
             }
 
             withContext(Dispatchers.Main) {
-                if (bestDist >= DIST_THRESHOLD || bestUser == null) {
+                if (bestDist >= distThreshold || bestUser == null) {
                     showUnrecognizedResult()
                     return@withContext
                 }

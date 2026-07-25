@@ -60,7 +60,7 @@ class TeacherScanFragment : Fragment() {
     private var scanningPaused = false
 
 
-    private val DIST_THRESHOLD = 0.60f     // keep same as activity
+    private val distThreshold: Float get() = com.example.login.utility.ThresholdManager.getThreshold(requireContext())
     private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
@@ -231,7 +231,7 @@ class TeacherScanFragment : Fragment() {
                 progress.visibility = View.GONE
                 isVerifying = false
 
-                if (bestId != null && minDist < DIST_THRESHOLD) {
+                if (bestId != null && minDist < distThreshold) {
                     isVerifying = true
 
                     blinkDetected = false
