@@ -160,6 +160,9 @@ class SelectInstituteActivity : AppCompatActivity() {
                         // periods details
                         val pd = repository.fetchAndSaveSchoolPeriods(apiService, db, instId)
                         if (!pd) allOk = false
+
+                        // 🔥 Program Config (FaceDetectionThreshold)
+                        repository.fetchAndSaveProgramConfig(apiService, db, instId)
                     }
 
                     // 🔥 Subject Instances do NOT depend on institute

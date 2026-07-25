@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.ThresholdManager
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -65,7 +66,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private lateinit var faceNet: FaceNetHelper
     private lateinit var cameraExecutor: java.util.concurrent.ExecutorService
 
-    private val DIST_THRESHOLD = 0.60f
+    private val distThreshold: Float get() = ThresholdManager.getThreshold(this)
     private val CROP_SCALE = 1.1f
 
     private var lastProcessTime = 0L
@@ -511,7 +512,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
             }
 
             withContext(Dispatchers.Main) {
-                if (bestDist >= DIST_THRESHOLD || bestUser == null) {
+                if (bestDist >= distThreshold || bestUser == null) {
                     showUnrecognizedResult()
                     return@withContext
                 }

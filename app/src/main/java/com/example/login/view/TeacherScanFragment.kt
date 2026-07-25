@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.ThresholdManager
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -60,7 +61,7 @@ class TeacherScanFragment : Fragment() {
     private var scanningPaused = false
 
 
-    private val DIST_THRESHOLD = 0.60f     // keep same as activity
+    private val distThreshold: Float get() = ThresholdManager.getThreshold(requireContext())
     private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
@@ -231,7 +232,7 @@ class TeacherScanFragment : Fragment() {
                 progress.visibility = View.GONE
                 isVerifying = false
 
-                if (bestId != null && minDist < DIST_THRESHOLD) {
+                if (bestId != null && minDist < distThreshold) {
                     isVerifying = true
 
                     blinkDetected = false

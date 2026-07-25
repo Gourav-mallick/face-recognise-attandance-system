@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.ThresholdManager
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +57,7 @@ class FaceVerificationActivity : ComponentActivity() {
 
     private var attemptCount = 0
     private val MAX_ATTEMPTS = 3
-    private val DIST_THRESHOLD = 0.60f
+    private val distThreshold: Float get() = ThresholdManager.getThreshold(this)
     private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
@@ -311,7 +312,7 @@ class FaceVerificationActivity : ComponentActivity() {
 
         Log.d("FACE_VERIFY", "Matching distance: $dist")
 
-        if (dist < DIST_THRESHOLD) {
+        if (dist < distThreshold) {
             Toast.makeText(this, "Face Match Success!", Toast.LENGTH_SHORT).show()
             val resultIntent = Intent().apply {
                 putExtra("VERIFIED_STUDENT_ID", studentId)

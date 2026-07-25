@@ -8,6 +8,7 @@ import com.example.login.api.ApiClient
 import com.example.login.api.ApiService
 import com.example.login.db.dao.AppDatabase
 import com.example.login.db.entity.*
+import com.example.login.utility.ThresholdManager
 import com.example.login.utility.TripleDESUtility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -581,9 +582,67 @@ class DataSyncRepository(private val context: Context) {
         }
     }
 
+    suspend fun fetchAndSaveProgramConfig(
+        apiService: ApiService,
+        db: AppDatabase,
+        instId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val sYear = db.instituteDao().getInstituteYearById(instId) ?: "2025"
+            val effectiveYear = if (sYear.isNotBlank()) sYear else "2025"
+            val rParam = "api/v1/Config/ManageProgramConfig"
+            val dataParam = JSONObject().apply {
+                put("programName", "SelfieAttendance")
+                put("title", "FaceDetectionThreshold")
+                put("syear", effectiveYear)
+                put("school_id", instId)
+            }.toString()
 
+            Log.d(TAG, "Fetching FaceDetectionThreshold API -> r=$rParam, data=$dataParam")
+            val response = apiService.getProgramConfig(rParam, dataParam)
 
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                Log.d(TAG, "FaceDetectionThreshold Raw Response: $jsonString")
+                val json = JSONObject(jsonString)
+                val retConfigData = json.optJSONObject("collection")
+                    ?.optJSONObject("response")
+                    ?.optJSONArray("retConfigData")
 
+                if (retConfigData != null && retConfigData.length() > 0) {
+                    var foundThreshold: Float? = null
+                    for (i in 0 until retConfigData.length()) {
+                        val obj = retConfigData.getJSONObject(i)
+                        val title = obj.optString("title", "")
+                        if (title.equals("FaceDetectionThreshold", ignoreCase = true)) {
+                            val valStr = obj.optString("value", "")
+                            foundThreshold = valStr.toFloatOrNull()
+                            if (foundThreshold != null) {
+                                break
+                            }
+                        }
+                    }
 
+                    if (foundThreshold != null) {
+                        Log.i(TAG, "RECEIVED_THRESHOLD: Successfully received threshold $foundThreshold from DB/API")
+                        ThresholdManager.saveThreshold(context, foundThreshold)
+                        return@withContext true
+                    }
+                }
+            } else {
+                Log.e(TAG, "FaceDetectionThreshold API failed with code: ${response.code()}")
+            }
+
+            // Fallback to default 0.60f if config not received or API failed
+            val currentThreshold = ThresholdManager.getThreshold(context)
+            Log.w(TAG, "FaceDetectionThreshold not retrieved from DB/API. Using fallback/default threshold: $currentThreshold")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception while fetching FaceDetectionThreshold: ${e.message}", e)
+            val currentThreshold = ThresholdManager.getThreshold(context)
+            Log.w(TAG, "Using fallback threshold due to exception: $currentThreshold")
+            return@withContext false
+        }
+    }
 
 }

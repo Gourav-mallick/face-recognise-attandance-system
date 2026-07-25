@@ -19,6 +19,12 @@ interface ApiService {
     ): Response<ResponseBody>
 
     @GET("sims-services/digitalsims/")
+    suspend fun getProgramConfig(
+        @Query("r") r: String = "api/v1/Config/ManageProgramConfig",
+        @Query("data") data: String
+    ): Response<ResponseBody>
+
+    @GET("sims-services/digitalsims/")
     suspend fun authenticateStaff(
         @Query("r") r: String = "api/v1/Staff/AuthStaff",
         @Query("data") data: String

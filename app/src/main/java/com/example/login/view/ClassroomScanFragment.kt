@@ -526,6 +526,8 @@ class ClassroomScanFragment : Fragment() {
 
                     val sc = repository.fetchAndSaveStudentSchedulingData(apiService, db, instId)
                     if (!sc) allOk = false
+
+                    repository.fetchAndSaveProgramConfig(apiService, db, instId)
                 }
 
                 // Subjects do not depend on institute, sync once

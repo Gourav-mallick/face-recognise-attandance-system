@@ -20,6 +20,7 @@ import com.example.login.db.entity.Student
 import com.example.login.db.entity.Teacher
 import com.example.login.utility.CheckNetworkAndInternetUtils
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.ThresholdManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,7 +50,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private lateinit var btnEnrollFace: Button
     private var selectedStudent: Student? = null
     private var selectedTeacher: Teacher? = null
-    private val DIST_THRESHOLD = 0.80f
+    private val distThreshold: Float get() = ThresholdManager.getThreshold(this)
 
     private lateinit var listUsers: ListView
     private lateinit var adapter: ArrayAdapter<String>
@@ -541,7 +542,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                         val storedEmbedding = existingEmbedding.split(",").map { it.toFloat() }.toFloatArray()
                         val distSelf = FaceNetHelper(this@FaceRegistrationActivity)
                             .calculateDistance(storedEmbedding, embedding)
-                        if (distSelf >= DIST_THRESHOLD) {
+                        if (distSelf >= distThreshold) {
                             showMainToast("Verification failed: The face doesn't belong to the registered user.");
                             return@launch
                         }
@@ -596,7 +597,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     private suspend fun detectMatchingFace(
         newEmbedding: FloatArray,
-        threshold: Float = DIST_THRESHOLD
+        threshold: Float = distThreshold
     ): Triple<String, String, String>? {
         return try {
             val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)

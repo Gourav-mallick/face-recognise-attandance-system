@@ -19,6 +19,7 @@ import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.db.entity.Student
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.ThresholdManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,7 +63,7 @@ class StudentScanFragment : Fragment() {
 
     private lateinit var faceNet: FaceNetHelper
 
-    private val DIST_THRESHOLD = 0.60f
+    private val distThreshold: Float get() = ThresholdManager.getThreshold(requireContext())
     private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
@@ -294,7 +295,7 @@ class StudentScanFragment : Fragment() {
 
                 //If no match OR match is too far
 
-                if (!bestIsTeacher && (bestMatchId == null || minDist >= DIST_THRESHOLD)) {
+                if (!bestIsTeacher && (bestMatchId == null || minDist >= distThreshold)) {
 
                     studentFailCount++
 
