@@ -4,8 +4,10 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.ListPopupWindow
 import androidx.camera.core.*
@@ -17,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.TestBatchHelper
 import com.example.login.utility.ThresholdManager
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -110,6 +113,11 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
         if (allPermissionsGranted()) startCamera()
         else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
+
+        val btnBatchRecognise = findViewById<Button>(R.id.btnBatchRecognise)
+        btnBatchRecognise?.setOnClickListener {
+            runBatchRecognise()
+        }
     }
 
     override fun onDestroy() {
@@ -655,5 +663,169 @@ class FaceRecogniseActivity : AppCompatActivity() {
         return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
     }
 
+    private fun runBatchRecognise() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val picsDir = TestBatchHelper.getVerificationPicsDir(this@FaceRecogniseActivity)
+                val imageFiles = picsDir.listFiles { file ->
+                    file.isFile && (file.extension.equals("jpg", true) ||
+                                    file.extension.equals("jpeg", true) ||
+                                    file.extension.equals("png", true) ||
+                                    file.extension.equals("webp", true))
+                }?.sortedWith(Comparator { f1, f2 ->
+                    val num1 = f1.nameWithoutExtension.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                    val num2 = f2.nameWithoutExtension.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                    if (num1 != num2) num1.compareTo(num2) else f1.name.compareTo(f2.name)
+                }) ?: emptyList()
+
+                if (imageFiles.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@FaceRecogniseActivity,
+                            "No images found in VerificationPics folder:\n${picsDir.absolutePath}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                val db = AppDatabase.getDatabase(this@FaceRecogniseActivity)
+                val regStudents = db.studentsDao().getAllStudents().filter { !it.embedding.isNullOrEmpty() }
+                val regTeachers = db.teachersDao().getAllTeachers().filter { !it.embedding.isNullOrEmpty() }
+                val totalRegCount = regStudents.size + regTeachers.size
+
+                if (totalRegCount == 0) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@FaceRecogniseActivity,
+                            "No registered students or teachers in database to recognize against.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                val logFile = TestBatchHelper.getVerificationLogFile(this@FaceRecogniseActivity)
+                val header = "ACCEPTANCE THRESHOLD: $distThreshold | TOTAL VERIFICATION/RECOGNITION PICS: ${imageFiles.size}"
+                TestBatchHelper.writeHeader(logFile, header)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@FaceRecogniseActivity,
+                        "Starting Batch Recognition for ${imageFiles.size} images...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                var totalProcessed = 0
+                var totalMatched = 0
+                var totalUnmatched = 0
+                var totalErrors = 0
+
+                for ((idx, picFile) in imageFiles.withIndex()) {
+                    totalProcessed++
+                    val bmp = TestBatchHelper.loadBitmap(picFile)
+                    if (bmp == null) {
+                        android.util.Log.e("BATCH_RECOGNISE", "Failed to load bitmap: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "================================================================================")
+                        TestBatchHelper.appendLine(logFile, "[Index: ${idx + 1}] Image File: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ ERROR_LOADING_BITMAP")
+                        TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                        totalErrors++
+                        continue
+                    }
+
+                    val cSign = faceNet.getFaceEmbedding(bmp)
+                    if (cSign == null) {
+                        android.util.Log.e("BATCH_RECOGNISE", "Face detection failed on bitmap: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "================================================================================")
+                        TestBatchHelper.appendLine(logFile, "[Index: ${idx + 1}] Image File: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ FACE_NOT_DETECTED")
+                        TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                        totalErrors++
+                        continue
+                    }
+
+                    var minDistance = Float.MAX_VALUE
+                    var matchedUserId = ""
+                    val comparisonLines = mutableListOf<String>()
+
+                    for (s in regStudents) {
+                        val ersSign = s.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
+                        val dist = faceNet.calculateDistance(ersSign, cSign)
+                        if (dist < minDistance) {
+                            minDistance = dist
+                            matchedUserId = s.studentId
+                        }
+                        comparisonLines.add("   - Student ${s.studentId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                    }
+
+                    for (t in regTeachers) {
+                        val ersSign = t.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
+                        val dist = faceNet.calculateDistance(ersSign, cSign)
+                        if (dist < minDistance) {
+                            minDistance = dist
+                            matchedUserId = t.staffId
+                        }
+                        comparisonLines.add("   - Teacher ${t.staffId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                    }
+
+                    val totalCompared = regStudents.size + regTeachers.size
+                    val formattedMinDist = if (minDistance == Float.MAX_VALUE) "N/A" else String.format(java.util.Locale.US, "%.4f", minDistance)
+                    val closestMatchText = if (matchedUserId.isNotEmpty()) "User $matchedUserId (Distance = $formattedMinDist)" else "None"
+
+                    TestBatchHelper.appendLine(logFile, "================================================================================")
+                    TestBatchHelper.appendLine(logFile, "[Index: ${idx + 1}] Image File: ${picFile.name}")
+                    TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
+                    for (compLine in comparisonLines) {
+                        TestBatchHelper.appendLine(logFile, compLine)
+                    }
+                    TestBatchHelper.appendLine(logFile, "• Closest Match Found : $closestMatchText")
+                    TestBatchHelper.appendLine(logFile, "• Acceptance Threshold: ${String.format(java.util.Locale.US, "%.2f", distThreshold)}")
+
+                    if (minDistance < distThreshold) {
+                        totalMatched++
+                        android.util.Log.d("BATCH_RECOGNISE", "Image ${picFile.name} matched $matchedUserId (dist=$minDistance)")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ✅ RECOGNIZED_SUCCESSFULLY (Matched with User $matchedUserId)")
+                    } else {
+                        totalUnmatched++
+                        android.util.Log.w("BATCH_RECOGNISE", "Image ${picFile.name} unmatched (minDist=$minDistance)")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ UNRECOGNIZED (Distance $formattedMinDist >= ${String.format(java.util.Locale.US, "%.2f", distThreshold)})")
+                    }
+
+                    TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                }
+
+                val accuracyRate = if (totalProcessed > 0) (totalMatched.toFloat() / totalProcessed) * 100f else 0f
+                val summaryText = "SUMMARY: Total Pics=$totalProcessed | Matched=$totalMatched | Unmatched=$totalUnmatched | Errors=$totalErrors | AccuracyRate=${String.format(java.util.Locale.US, "%.2f", accuracyRate)}%"
+                TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                TestBatchHelper.appendLine(logFile, summaryText)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FaceRecogniseActivity, "Uploading test log file to server...", Toast.LENGTH_SHORT).show()
+                }
+                val (uploadSuccess, uploadResult) = TestBatchHelper.uploadLogFile(this@FaceRecogniseActivity, logFile)
+                val uploadMsg = if (uploadSuccess) "Server Log Upload: SUCCESS ($uploadResult)" else "Server Log Upload: FAILED ($uploadResult)"
+                TestBatchHelper.appendLine(logFile, uploadMsg)
+
+                withContext(Dispatchers.Main) {
+                    AlertDialog.Builder(this@FaceRecogniseActivity)
+                        .setTitle("Batch Recognition Complete")
+                        .setMessage("$summaryText\n\n$uploadMsg\n\nDump log file:\n${logFile.absolutePath}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
+            } catch (e: Exception) {
+                android.util.Log.e("BATCH_RECOGNISE", "Error in batch recognition", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FaceRecogniseActivity, "Error during batch recognition: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
 }

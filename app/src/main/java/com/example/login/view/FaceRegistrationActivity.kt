@@ -20,6 +20,7 @@ import com.example.login.db.entity.Student
 import com.example.login.db.entity.Teacher
 import com.example.login.utility.CheckNetworkAndInternetUtils
 import com.example.login.utility.FaceNetHelper
+import com.example.login.utility.TestBatchHelper
 import com.example.login.utility.ThresholdManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -48,6 +49,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     private lateinit var editName: EditText
     private lateinit var btnEnrollFace: Button
+    private lateinit var editTestIndex: EditText
+    private lateinit var btnBatchRegister: Button
     private var selectedStudent: Student? = null
     private var selectedTeacher: Teacher? = null
     private val distThreshold: Float get() = ThresholdManager.getThreshold(this)
@@ -165,6 +168,13 @@ class FaceRegistrationActivity : AppCompatActivity() {
         setupDropdownListeners()
 
         btnEnrollFace.setOnClickListener { handleActionClick() }
+
+        editTestIndex = findViewById(R.id.editTestIndex)
+        btnBatchRegister = findViewById(R.id.btnBatchRegister)
+        btnBatchRegister.setOnClickListener {
+            val startIndex = editTestIndex.text.toString().toIntOrNull() ?: 0
+            runBatchRegistration(startIndex)
+        }
 
         val cardCounter = findViewById<View>(R.id.cardCounter)
         cardCounter?.setOnClickListener {
@@ -651,8 +661,9 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private suspend fun sendFaceToServer(
         id: String,
         userType: String,
-        embeddingStr: String?
-    ) = withContext(Dispatchers.IO) {
+        embeddingStr: String?,
+        showToasts: Boolean = true
+    ): Boolean = withContext(Dispatchers.IO) {
         val json = """
         {
           "userRegParamData": {
@@ -682,10 +693,12 @@ class FaceRegistrationActivity : AppCompatActivity() {
             Log.d("EnrollActivity", "Response: $response")
 
             if (!response.isSuccessful) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FaceRegistrationActivity, "HTTP error: ${response.code()}", Toast.LENGTH_LONG).show()
+                if (showToasts) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FaceRegistrationActivity, "HTTP error: ${response.code()}", Toast.LENGTH_LONG).show()
+                    }
                 }
-                return@withContext
+                return@withContext false
             }
 
             val bodyStr = response.body()?.string() ?: ""
@@ -705,28 +718,87 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 }
                 allStudents = db.studentsDao().getAllStudents()
                 allTeachers = db.teachersDao().getAllTeachers()
-                updateUserCounters()
 
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FaceRegistrationActivity, "Face synced and stored locally!", Toast.LENGTH_LONG).show()
+                if (showToasts) {
+                    updateUserCounters()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FaceRegistrationActivity, "Face synced and stored locally!", Toast.LENGTH_LONG).show()
 
-                    // 🔹 Trigger local DB sync automatically
-                    val workRequest = OneTimeWorkRequestBuilder<AutoSyncWorker>()
-                       .setInitialDelay(3, TimeUnit.SECONDS)
-                        .build()
+                        val workRequest = OneTimeWorkRequestBuilder<AutoSyncWorker>()
+                           .setInitialDelay(3, TimeUnit.SECONDS)
+                            .build()
 
-                    WorkManager.getInstance(this@FaceRegistrationActivity).enqueue(workRequest)
+                        WorkManager.getInstance(this@FaceRegistrationActivity).enqueue(workRequest)
+                    }
                 }
+                return@withContext true
             } else {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FaceRegistrationActivity, "Server rejected data!", Toast.LENGTH_LONG).show()
+                if (showToasts) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FaceRegistrationActivity, "Server rejected data!", Toast.LENGTH_LONG).show()
+                    }
                 }
+                return@withContext false
             }
         } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(this@FaceRegistrationActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            if (showToasts) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FaceRegistrationActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
             Log.e("EnrollActivity", "sendFaceToServer error", e)
+            return@withContext false
+        }
+    }
+
+    private suspend fun sendBatchFaceToServer(
+        userType: String,
+        regParamDataArray: org.json.JSONArray
+    ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        if (regParamDataArray.length() == 0) return@withContext Pair(true, "No data to send")
+
+        val payload = org.json.JSONObject().apply {
+            put("userRegParamData", org.json.JSONObject().apply {
+                put("userType", userType)
+                put("registrationType", "Biometric")
+                put("regParamData", regParamDataArray)
+            })
+        }.toString()
+
+        try {
+            val mediaType = MediaType.parse("application/json; charset=utf-8")
+            val requestBody = RequestBody.create(mediaType, payload)
+            val baseUrl = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+                .getString("baseUrl", "")!!
+            val hash = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+                .getString("hash", null)
+
+            val api = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
+            Log.d("EnrollActivity", "Sending bulk registration API call for ${regParamDataArray.length()} users...")
+            val response = api.postUserRegistration(body = requestBody)
+
+            if (!response.isSuccessful) {
+                Log.e("EnrollActivity", "Bulk registration HTTP error: ${response.code()}")
+                return@withContext Pair(false, "HTTP error: ${response.code()}")
+            }
+
+            val bodyStr = response.body()?.string() ?: ""
+            Log.d("EnrollActivity", "Bulk registration API Response body: $bodyStr")
+
+            val jsonObj = org.json.JSONObject(bodyStr)
+            val collection = jsonObj.optJSONObject("collection")
+            val resp = collection?.optJSONObject("response")
+            val successStatus = resp?.optString("successStatus", "FALSE") ?: "FALSE"
+
+            if (successStatus.equals("TRUE", ignoreCase = true)) {
+                return@withContext Pair(true, "Bulk Sync SUCCESS (${regParamDataArray.length()} users)")
+            } else {
+                val statusMsg = resp?.optString("statusMsg", "Server rejected bulk data") ?: "Server rejected bulk data"
+                return@withContext Pair(false, statusMsg)
+            }
+        } catch (e: Exception) {
+            Log.e("EnrollActivity", "sendBatchFaceToServer error", e)
+            return@withContext Pair(false, e.localizedMessage ?: "Bulk sync error")
         }
     }
 
@@ -868,6 +940,192 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 textView.text = fullText
             }
             return view
+        }
+    }
+
+    private fun runBatchRegistration(startIndex: Int) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val picsDir = TestBatchHelper.getRegistrationPicsDir(this@FaceRegistrationActivity)
+                val imageFiles = picsDir.listFiles { file ->
+                    file.isFile && (file.extension.equals("jpg", true) ||
+                                    file.extension.equals("jpeg", true) ||
+                                    file.extension.equals("png", true) ||
+                                    file.extension.equals("webp", true))
+                }?.sortedWith(Comparator { f1, f2 ->
+                    val num1 = f1.nameWithoutExtension.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                    val num2 = f2.nameWithoutExtension.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                    if (num1 != num2) num1.compareTo(num2) else f1.name.compareTo(f2.name)
+                }) ?: emptyList()
+
+                if (imageFiles.isEmpty()) {
+                    showMainToast("No images found in RegistrationPics folder:\n${picsDir.absolutePath}")
+                    return@launch
+                }
+
+                val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
+                val unRegStudents = db.studentsDao().getAllStudents()
+                    .filter { it.embedding.isNullOrEmpty() }
+                    .sortedWith(Comparator { s1, s2 ->
+                        val num1 = s1.studentId.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                        val num2 = s2.studentId.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+                        if (num1 != num2) num1.compareTo(num2) else s1.studentId.compareTo(s2.studentId)
+                    })
+
+                if (unRegStudents.isEmpty()) {
+                    showMainToast("No unregistered students found in database to register.")
+                    return@launch
+                }
+
+                val totalToProcess = kotlin.math.min(imageFiles.size, unRegStudents.size)
+                val logFile = TestBatchHelper.getRegistrationLogFile(this@FaceRegistrationActivity)
+                val header = "ACCEPTANCE THRESHOLD: $distThreshold | START INDEX/TAG: $startIndex | TOTAL UNREGISTERED DB STUDENTS: ${unRegStudents.size} | TEST PICS TO PROCESS: $totalToProcess (out of ${imageFiles.size} files)"
+                TestBatchHelper.writeHeader(logFile, header)
+                showMainToast("Starting Batch Registration for $totalToProcess images/students...")
+
+                val faceNet = FaceNetHelper(this@FaceRegistrationActivity)
+                var totalProcessed = 0
+                var totalRegistered = 0
+                var totalErrors = 0
+                var totalDuplicateSkipped = 0
+                val batchRegArray = org.json.JSONArray()
+
+                for (idx in 0 until totalToProcess) {
+                    totalProcessed++
+                    val student = unRegStudents[idx]
+                    val picFile = imageFiles[idx]
+                    val currentTagIndex = idx + startIndex
+
+                    val bmp = TestBatchHelper.loadBitmap(picFile)
+                    if (bmp == null) {
+                        Log.e("BATCH_REG", "Failed to load bitmap: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "================================================================================")
+                        TestBatchHelper.appendLine(logFile, "[Index: $currentTagIndex] Target Student ID: ${student.studentId} | Image File: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ ERROR_LOADING_BITMAP")
+                        TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                        totalErrors++
+                        continue
+                    }
+
+                    val e1 = faceNet.getFaceEmbedding(bmp)
+                    val e2 = faceNet.getFaceEmbedding(bmp)
+                    val e3 = faceNet.getFaceEmbedding(bmp)
+
+                    if (e1 == null || e2 == null || e3 == null) {
+                        Log.e("BATCH_REG", "Face detection failed on bitmap: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "================================================================================")
+                        TestBatchHelper.appendLine(logFile, "[Index: $currentTagIndex] Target Student ID: ${student.studentId} | Image File: ${picFile.name}")
+                        TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ FACE_NOT_DETECTED")
+                        TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                        totalErrors++
+                        continue
+                    }
+
+                    val cSign = FloatArray(e1.size) { i -> (e1[i] + e2[i] + e3[i]) / 3f }
+
+                    val regStudents = db.studentsDao().getAllStudents().filter { !it.embedding.isNullOrEmpty() && it.studentId != student.studentId }
+                    val regTeachers = db.teachersDao().getAllTeachers().filter { !it.embedding.isNullOrEmpty() }
+
+                    var minDist = Float.MAX_VALUE
+                    var closestUserId = ""
+                    val comparisonLines = mutableListOf<String>()
+
+                    for (regS in regStudents) {
+                        val ersSign = regS.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
+                        val dist = faceNet.calculateDistance(ersSign, cSign)
+                        if (dist < minDist) {
+                            minDist = dist
+                            closestUserId = regS.studentId
+                        }
+                        comparisonLines.add("   - Student ${regS.studentId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                    }
+
+                    for (regT in regTeachers) {
+                        val ersSign = regT.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
+                        val dist = faceNet.calculateDistance(ersSign, cSign)
+                        if (dist < minDist) {
+                            minDist = dist
+                            closestUserId = regT.staffId
+                        }
+                        comparisonLines.add("   - Teacher ${regT.staffId} : Distance = ${String.format(java.util.Locale.US, "%.4f", dist)}")
+                    }
+
+                    val totalCompared = regStudents.size + regTeachers.size
+                    val formattedMinDist = if (minDist == Float.MAX_VALUE) "N/A" else String.format(java.util.Locale.US, "%.4f", minDist)
+                    val closestMatchText = if (closestUserId.isNotEmpty()) "Student $closestUserId (Distance = $formattedMinDist)" else "None"
+
+                    TestBatchHelper.appendLine(logFile, "================================================================================")
+                    TestBatchHelper.appendLine(logFile, "[Index: $currentTagIndex] Target Student ID: ${student.studentId} | Image File: ${picFile.name}")
+                    TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                    TestBatchHelper.appendLine(logFile, "• Compared against $totalCompared registered users:")
+                    for (compLine in comparisonLines) {
+                        TestBatchHelper.appendLine(logFile, compLine)
+                    }
+                    TestBatchHelper.appendLine(logFile, "• Closest Match Found : $closestMatchText")
+                    TestBatchHelper.appendLine(logFile, "• Acceptance Threshold: ${String.format(java.util.Locale.US, "%.2f", distThreshold)}")
+
+                    if (minDist < distThreshold) {
+                        Log.w("BATCH_REG", "Duplicate face detected using image '${picFile.name}' for student ${student.studentId} matching $closestUserId (dist=$minDist)")
+                        totalDuplicateSkipped++
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ❌ DUPLICATE_REJECTED (Matched with Student $closestUserId: $formattedMinDist < ${String.format(java.util.Locale.US, "%.2f", distThreshold)})")
+                    } else {
+                        val embedStr = cSign.joinToString(",")
+                        db.studentsDao().updateStudentEmbedding(student.studentId, embedStr)
+                        totalRegistered++
+
+                        val regObj = org.json.JSONObject().apply {
+                            put("userId", student.studentId)
+                            put("metricType", "faceSignature")
+                            put("fingerType", "faceSignature")
+                            put("template", embedStr)
+                        }
+                        batchRegArray.put(regObj)
+
+                        Log.d("BATCH_REG", "Successfully registered face locally for student ${student.studentId}")
+                        TestBatchHelper.appendLine(logFile, "• RESULT STATUS       : ✅ REGISTERED_LOCALLY (Queued for bulk server sync)")
+                    }
+
+                    TestBatchHelper.appendLine(logFile, "~~~~~~~~")
+                }
+
+                val accuracyRate = if (totalProcessed > 0) (totalRegistered.toFloat() / totalProcessed) * 100f else 0f
+                val summaryText = "SUMMARY: Attempted=$totalProcessed | Registered=$totalRegistered | Duplicate/Skipped=$totalDuplicateSkipped | Errors=$totalErrors | AccuracyRate=${String.format(java.util.Locale.US, "%.2f", accuracyRate)}%"
+                TestBatchHelper.appendLine(logFile, "--------------------------------------------------------------------------------")
+                TestBatchHelper.appendLine(logFile, summaryText)
+
+                // Perform Bulk API Sync for all registered students in batch
+                val bulkSyncMsg: String = if (batchRegArray.length() > 0) {
+                    showMainToast("Syncing ${batchRegArray.length()} registered student templates to server...")
+                    val (bulkSuccess, bulkResult) = sendBatchFaceToServer("student", batchRegArray)
+                    if (bulkSuccess) {
+                        "Bulk User Registration Sync: SUCCESS ($bulkResult)"
+                    } else {
+                        "Bulk User Registration Sync: FAILED ($bulkResult)"
+                    }
+                } else {
+                    "Bulk User Registration Sync: SKIPPED (No new students registered)"
+                }
+                TestBatchHelper.appendLine(logFile, bulkSyncMsg)
+
+                showMainToast("Uploading test log file to server...")
+                val (uploadSuccess, uploadResult) = TestBatchHelper.uploadLogFile(this@FaceRegistrationActivity, logFile)
+                val uploadMsg = if (uploadSuccess) "Server Log Upload: SUCCESS ($uploadResult)" else "Server Log Upload: FAILED ($uploadResult)"
+                TestBatchHelper.appendLine(logFile, uploadMsg)
+
+                withContext(Dispatchers.Main) {
+                    AlertDialog.Builder(this@FaceRegistrationActivity)
+                        .setTitle("Batch Registration Complete")
+                        .setMessage("$summaryText\n\n$bulkSyncMsg\n\n$uploadMsg\n\nDump log file:\n${logFile.absolutePath}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
+            } catch (e: Exception) {
+                Log.e("BATCH_REG", "Error in batch registration", e)
+                showMainToast("Error during batch registration: ${e.message}")
+            }
         }
     }
 

@@ -274,7 +274,16 @@
             android:textSize="15sp"
             android:layout_marginTop="4dp" />
 
-
+        <Button
+            android:id="@+id/btnBatchRecognise"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="10dp"
+            android:background="#2E7D32"
+            android:text="Run Batch Recognition Test"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textStyle="bold" />
 
     </LinearLayout>
 

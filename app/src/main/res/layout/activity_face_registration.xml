@@ -317,6 +317,49 @@
                     android:textSize="16sp"
                     android:textColor="@color/white" />
 
+                <!-- Batch Testing Section -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="16dp"
+                    android:padding="12dp"
+                    android:background="@drawable/bg_container">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Batch Testing (Model Evaluation)"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_dark" />
+
+                    <EditText
+                        android:id="@+id/editTestIndex"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="8dp"
+                        android:hint="Start Test Index / Filename Tag (e.g. 0)"
+                        android:inputType="number"
+                        android:text="0"
+                        android:textColor="@color/text_dark"
+                        android:textColorHint="@color/text_gray"
+                        android:background="@drawable/card_white_rounded"
+                        android:paddingHorizontal="12dp"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnBatchRegister"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:layout_marginTop="8dp"
+                        android:background="#2E7D32"
+                        android:text="Run Batch Registration Test"
+                        android:textAllCaps="false"
+                        android:textColor="@color/white"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/tvSecurityNote"
                     android:layout_width="match_parent"

@@ -221,7 +221,7 @@ interface TeacherClassMapDao {
     @Query("SELECT classId FROM teacher_class_map WHERE teacherId = :teacherId")
     suspend fun getClassesForTeacher(teacherId: String): List<String>
 
-    @Query("DELETE  FROM teacher_class_map")
+    @Query("DELETE FROM teacher_class_map")
     suspend fun clear()
 }
 
