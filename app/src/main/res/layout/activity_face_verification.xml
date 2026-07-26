@@ -49,9 +49,14 @@
             <View
                 android:id="@+id/faceGuide"
                 android:layout_width="240dp"
-                android:layout_height="240dp"
+                android:layout_height="300dp"
                 android:layout_gravity="center"
-                android:background="@drawable/circle_overlay" />
+                android:background="@drawable/oval_face_guide" />
+
+            <com.example.login.view.FaceLandmarkOverlay
+                android:id="@+id/landmarkOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
             <TextView
                 android:id="@+id/tvBlinkWarning"
@@ -59,8 +64,8 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
                 android:layout_marginBottom="16dp"
-                android:text="for detaction face please blink eyes .."
-                android:textColor="#FFEB3B"
+                android:text="Complete the liveness instructions"
+                android:textColor="#FFFFFF"
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:shadowColor="#80000000"
@@ -123,7 +128,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:text="Align face inside circle to verify"
+                android:text="Align your live face inside the oval"
                 android:textColor="@color/text_gray"
                 android:textSize="13sp" />
 

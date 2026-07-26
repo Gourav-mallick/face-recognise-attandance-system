@@ -18,23 +18,23 @@ import androidx.camera.view.PreviewView
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
 import com.example.login.db.entity.Student
-import com.example.login.utility.FaceNetHelper
+import com.example.login.ml.ActiveLivenessVerifier
+import com.example.login.ml.YuNetFace
+import com.example.login.ml.YuNetSFaceEngine
+import com.example.login.utility.VoiceGuidance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.math.max
-import kotlin.math.min
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
 
 class StudentScanFragment : Fragment() {
 
     // Camera UI components
     private lateinit var viewFinder: PreviewView
     private lateinit var faceGuide: View
+    private lateinit var landmarkOverlay: FaceLandmarkOverlay
     private lateinit var tvLightWarning: TextView
 
     // Info UI components
@@ -43,11 +43,7 @@ class StudentScanFragment : Fragment() {
     private lateinit var tvLastStudent: TextView
     private lateinit var tvInstruction: TextView
     private lateinit var tvLatestCardTapStudentLabel: TextView
-    private var prevFace: com.google.mlkit.vision.face.Face? = null
-    // Blink detection variables
-    private var lastLeftProb = -1f
-    private var lastRightProb = -1f
-    private var blinkDetected = false
+    private var prevFace: YuNetFace? = null
 
 
     // Args
@@ -56,14 +52,16 @@ class StudentScanFragment : Fragment() {
 
     // Camera Vars
     private lateinit var cameraExecutor: ExecutorService
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var isVerifying = false
+    private var scanningPausedForDialog = false
     private var faceStableStart = 0L
     private var lastProcessTime = 0L
 
-    private lateinit var faceNet: FaceNetHelper
-
-    private val DIST_THRESHOLD = 0.60f
-    private val CROP_SCALE = 1.1f
+    private lateinit var faceEngine: YuNetSFaceEngine
+    private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var voiceGuidance: VoiceGuidance
     private val MIRROR_FRONT = true
 
     private var studentFailCount = 0
@@ -100,6 +98,7 @@ class StudentScanFragment : Fragment() {
         // Bind UI
         viewFinder = view.findViewById(R.id.viewFinder)
         faceGuide = view.findViewById(R.id.faceGuide)
+        landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
         tvLightWarning = view.findViewById(R.id.tvLightWarning)
 
         tvTeacherName = view.findViewById(R.id.tvTeacherName)
@@ -114,7 +113,9 @@ class StudentScanFragment : Fragment() {
         tvTeacherName.text = teacherNameArg
         tvInstruction.text = "Scan Student Face"
 
-        faceNet = FaceNetHelper(requireContext())
+        faceEngine = YuNetSFaceEngine(requireContext().applicationContext)
+        livenessVerifier = ActiveLivenessVerifier()
+        voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // ---------- LOAD CACHE ONCE ----------
@@ -128,8 +129,15 @@ class StudentScanFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        imageAnalysis?.clearAnalyzer()
+        imageAnalysis = null
+        cameraProvider?.unbindAll()
+        cameraProvider = null
         cameraExecutor.shutdown()
+        faceEngine.close()
+        livenessVerifier.close()
+        voiceGuidance.close()
+        super.onDestroyView()
     }
 
     // -----------------------------------------------------------------------
@@ -137,9 +145,12 @@ class StudentScanFragment : Fragment() {
     // -----------------------------------------------------------------------
 
     private fun startCamera() {
+        if (scanningPausedForDialog || !isAdded) return
         val providerFuture = ProcessCameraProvider.getInstance(requireContext())
         providerFuture.addListener({
-            val cameraProvider = providerFuture.get()
+            if (scanningPausedForDialog || !isAdded || view == null) return@addListener
+            val provider = providerFuture.get()
+            cameraProvider = provider
 
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(viewFinder.surfaceProvider)
@@ -148,11 +159,12 @@ class StudentScanFragment : Fragment() {
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
+            imageAnalysis = analysis
 
             analysis.setAnalyzer(cameraExecutor) { proxy -> processFrame(proxy) }
 
-            cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
+            provider.unbindAll()
+            provider.bindToLifecycle(
                 viewLifecycleOwner,
                 CameraSelector.DEFAULT_FRONT_CAMERA,
                 preview,
@@ -162,84 +174,107 @@ class StudentScanFragment : Fragment() {
         }, ContextCompat.getMainExecutor(requireContext()))
     }
 
-    private val detector by lazy {
-        FaceDetection.getClient(
-            FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-                .build()
-        )
-    }
-
-
-
     private fun processFrame(imageProxy: ImageProxy) {
+        if (scanningPausedForDialog) {
+            imageProxy.close()
+            return
+        }
         val now = System.currentTimeMillis()
-        if (now - lastProcessTime < 130) {
+        if (now - lastProcessTime < 160 || isVerifying) {
             imageProxy.close()
             return
         }
         lastProcessTime = now
 
+        var displayBitmap: Bitmap? = null
         try {
+            val yBuffer = imageProxy.planes[0].buffer.duplicate()
+            var brightnessSum = 0L
+            val brightnessSamples = yBuffer.remaining()
+            while (yBuffer.hasRemaining()) brightnessSum += yBuffer.get().toInt() and 0xFF
+            val brightness = if (brightnessSamples > 0) brightnessSum / brightnessSamples else 0L
+
             val bmp = imageProxyToBitmapUpright(imageProxy)
-            val displayBmp = if (MIRROR_FRONT) mirrorBitmap(bmp) else bmp
+            val frame = if (MIRROR_FRONT) mirrorBitmap(bmp) else bmp
+            displayBitmap = frame
+            if (frame !== bmp) bmp.recycle()
+            val liveness = livenessVerifier.update(frame)
+            val face = faceEngine.detect(frame)
+                .maxByOrNull { it.bounds.width() * it.bounds.height() }
 
-            val image = com.google.mlkit.vision.common.InputImage.fromBitmap(displayBmp, 0)
-
-            detector.process(image)
-                .addOnSuccessListener { faces ->
-                    if (faces.isEmpty()) {
-                        faceGuide.background.setTint(Color.RED)
-                        faceStableStart = 0L
-                    } else {
-                        val face = faces[0]
-                        // 🔹 LIVENESS CHECK (eye open probability)
-                        if (!isLiveFace(face, prevFace)) {
-                            faceGuide.background.setTint(Color.RED)
-                            faceStableStart = 0L
-                            prevFace = face
-                            return@addOnSuccessListener
-                        }
-
-
-                        val rect = face.boundingBox
-
-                        val isCentered = kotlin.math.abs(rect.centerX() - displayBmp.width / 2) < rect.width() * 0.3 &&
-                                kotlin.math.abs(rect.centerY() - displayBmp.height / 2) < rect.height() * 0.3
-
-                        if (isCentered) {
-                            if (faceStableStart == 0L) faceStableStart = System.currentTimeMillis()
-                            val elapsed = System.currentTimeMillis() - faceStableStart
-                            faceGuide.background.setTint(if (elapsed >= 300) Color.GREEN else Color.WHITE)
-
-                            if (elapsed >= 1000 && !isVerifying) {
-                                isVerifying = true
-
-                                lifecycleScope.launch(Dispatchers.Default) {
-
-                                    val cropped = cropWithScale(displayBmp, face.boundingBox, CROP_SCALE)
-                                    val embedding = faceNet.getFaceEmbedding(cropped)
-
-                                    withContext(Dispatchers.Main) {
-                                        verifyFace(embedding)
-                                        faceStableStart = 0L
-                                        isVerifying = false
-                                    }
-                                }
-                            }
-                        } else {
-                            faceGuide.background.setTint(Color.RED)
-                            faceStableStart = 0L
-                        }
-                    }
+            if (face == null) {
+                faceStableStart = 0L
+                prevFace = null
+                activity?.runOnUiThread {
+                    landmarkOverlay.clear()
+                    faceGuide.background.setTint(Color.YELLOW)
+                    tvInstruction.text = "Place student face inside the oval"
+                    tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+                    voiceGuidance.guide(
+                        "Student, place your face inside the oval",
+                        "student_no_face"
+                    )
                 }
-                .addOnCompleteListener { imageProxy.close() }
+                return
+            }
 
+            val quality = faceEngine.assessQuality(frame, face, strict = false)
+            val stable = isStable(face)
+            if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
+            else if (faceStableStart == 0L) faceStableStart = now
+            prevFace = face
+
+            activity?.runOnUiThread {
+                landmarkOverlay.show(face.landmarks, frame.width, frame.height)
+                faceGuide.background.setTint(
+                    when {
+                        liveness.passed && quality.accepted && stable -> Color.GREEN
+                        quality.accepted -> Color.rgb(30, 94, 255)
+                        else -> Color.YELLOW
+                    }
+                )
+                tvInstruction.text = if (liveness.passed) quality.guidance else liveness.guidance
+                voiceGuidance.guide(
+                    if (liveness.passed) quality.guidance else liveness.guidance,
+                    if (liveness.passed) {
+                        "student_quality:${quality.guidance}"
+                    } else {
+                        "student_liveness:${liveness.guidance}"
+                    }
+                )
+                tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+            }
+
+            if (
+                quality.accepted &&
+                stable &&
+                liveness.passed &&
+                now - faceStableStart >= 700 &&
+                !isVerifying
+            ) {
+                isVerifying = true
+                val embedding = faceEngine.embedding(frame, face)
+                verifyFace(embedding)
+                faceStableStart = 0L
+            }
         } catch (e: Exception) {
+            Log.e("StudentScan", "YuNet/SFace processing failed", e)
+            faceStableStart = 0L
+            activity?.runOnUiThread {
+                landmarkOverlay.clear()
+                tvInstruction.text = "Face scanner unavailable — retrying"
+            }
+        } finally {
+            displayBitmap?.recycle()
             imageProxy.close()
         }
+    }
+
+    private fun isStable(face: YuNetFace): Boolean {
+        val previous = prevFace ?: return false
+        val tolerance = face.bounds.width() * 0.045f
+        return kotlin.math.abs(face.bounds.centerX() - previous.bounds.centerX()) < tolerance &&
+            kotlin.math.abs(face.bounds.centerY() - previous.bounds.centerY()) < tolerance
     }
 
     // -----------------------------------------------------------------------
@@ -263,13 +298,13 @@ class StudentScanFragment : Fragment() {
             var bestMatchName = "Unknown"
             var bestMatchId: String? = null
             var bestIsTeacher = false
-            var minDist = Float.MAX_VALUE
+            var bestSimilarity = -1f
 
             // Compare faceEmbedding with teachers
             for ((id, name, emb) in cachedTeacherEmbeddings) {
-                val dist = faceNet.calculateDistance(emb, faceEmbedding)
-                if (dist < minDist) {
-                    minDist = dist
+                val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity
                     bestMatchName = name
                     bestMatchId = id
                     bestIsTeacher = true
@@ -279,9 +314,9 @@ class StudentScanFragment : Fragment() {
 
             // Compare faceEmbedding with students
             for ((id, name, emb) in cachedStudentEmbeddings) {
-                val dist = faceNet.calculateDistance(emb, faceEmbedding)
-                if (dist < minDist) {
-                    minDist = dist
+                val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity
                     bestMatchName = name
                     bestMatchId = id
                     bestIsTeacher = false
@@ -294,7 +329,11 @@ class StudentScanFragment : Fragment() {
 
                 //If no match OR match is too far
 
-                if (!bestIsTeacher && (bestMatchId == null || minDist >= DIST_THRESHOLD)) {
+                if (!bestIsTeacher && (
+                        bestMatchId == null ||
+                            bestSimilarity < YuNetSFaceEngine.COSINE_THRESHOLD
+                        )
+                ) {
 
                     studentFailCount++
 
@@ -305,6 +344,10 @@ class StudentScanFragment : Fragment() {
                             "You are not enrolled for this class.\nPlease contact the administration to complete your enrollment.",
                             Toast.LENGTH_LONG
                         ).show()
+                        voiceGuidance.announce(
+                            "Face not recognized. You may not be registered for this class. Please contact the administration.",
+                            "student_not_enrolled"
+                        )
 
                         // Stop verification temporarily to prevent spam scanning
                         isVerifying = true
@@ -320,6 +363,10 @@ class StudentScanFragment : Fragment() {
                     }
 
                     toast("Face not matched. Adjust your face and try again.")
+                    voiceGuidance.announce(
+                        "Face not matched. Please blink once, then try again.",
+                        "student_match_failed_$studentFailCount"
+                    )
                     done()
                     return@withContext
                 }
@@ -328,13 +375,20 @@ class StudentScanFragment : Fragment() {
                 // 1) If the best match is a teacher
                 if (bestIsTeacher) {
                     if (bestMatchId == teacherId) {
+                        pauseCameraForDialog()
                         // Check if there are any students marked present in this session
                         lifecycleScope.launch(Dispatchers.IO) {
-                            val db = AppDatabase.getDatabase(requireContext())
-                            val attendanceCount = db.attendanceDao().getAttendancesForSession(sessionIdArg).size
+                            try {
+                                val db = AppDatabase.getDatabase(requireContext())
+                                val attendanceCount =
+                                    db.attendanceDao().getAttendancesForSession(sessionIdArg).size
 
-                            withContext(Dispatchers.Main) {
-                                if (attendanceCount == 0) {
+                                withContext(Dispatchers.Main) {
+                                    if (attendanceCount == 0) {
+                                    voiceGuidance.announce(
+                                        "Teacher verified. No students are marked yet. Choose a session action.",
+                                        "teacher_end_empty_session"
+                                    )
                                     AlertDialog.Builder(requireContext())
                                         .setTitle("Empty Session")
                                         .setMessage("No students were scanned in this session.")
@@ -345,7 +399,7 @@ class StudentScanFragment : Fragment() {
                                         }
                                         .setNeutralButton("Start Cycle") { dialog, _ ->
                                             dialog.dismiss()
-                                            done()
+                                            resumeCameraAfterDialog()
                                         }
                                         .setNegativeButton("Discard Cycle") { dialog, _ ->
                                             dialog.dismiss()
@@ -359,44 +413,63 @@ class StudentScanFragment : Fragment() {
                                                 }
                                                 .setNegativeButton("Cancel") { confDialog, _ ->
                                                      confDialog.dismiss()
-                                                     done()
+                                                     resumeCameraAfterDialog()
                                                 }
                                                 .show()
                                         }
                                         .show()
-                                } else {
-                                    AlertDialog.Builder(requireContext())
-                                        .setTitle("Session Completed")
-                                        .setMessage("Students have been scanned in this session.\n\nChoose 'Proceed' to save and select periods, or 'Mistakenly Started' to discard this session.")
-                                        .setCancelable(false)
-                                        .setPositiveButton("Proceed") { dialog, _ ->
-                                            dialog.dismiss()
-                                            (requireActivity() as AttendanceActivity).showEndClassDialogForVisibleClass()
-                                        }
-                                        .setNegativeButton("Mistakenly Started") { dialog, _ ->
-                                            dialog.dismiss()
-                                            AlertDialog.Builder(requireContext())
-                                                .setTitle("Discard Session?")
-                                                .setMessage("Are you sure you want to discard this session? All marked attendance will be deleted.")
-                                                .setCancelable(false)
-                                                .setPositiveButton("Discard") { confDialog, _ ->
-                                                     confDialog.dismiss()
-                                                     discardSessionAndExit(sessionIdArg)
-                                                }
-                                                .setNegativeButton("Cancel") { confDialog, _ ->
-                                                     confDialog.dismiss()
-                                                }
-                                                .show()
-                                        }
-                                        .show()
+                                    } else {
+                                        voiceGuidance.announce(
+                                            "Teacher verified. Choose proceed to complete the attendance session.",
+                                            "teacher_end_active_session"
+                                        )
+                                        AlertDialog.Builder(requireContext())
+                                            .setTitle("Session Completed")
+                                            .setMessage("Students have been scanned in this session.\n\nChoose 'Proceed' to save and select periods, or 'Mistakenly Started' to discard this session.")
+                                            .setCancelable(false)
+                                            .setPositiveButton("Proceed") { dialog, _ ->
+                                                dialog.dismiss()
+                                                (requireActivity() as AttendanceActivity)
+                                                    .showEndClassDialogForVisibleClass {
+                                                        resumeCameraAfterDialog()
+                                                    }
+                                            }
+                                            .setNegativeButton("Mistakenly Started") { dialog, _ ->
+                                                dialog.dismiss()
+                                                AlertDialog.Builder(requireContext())
+                                                    .setTitle("Discard Session?")
+                                                    .setMessage("Are you sure you want to discard this session? All marked attendance will be deleted.")
+                                                    .setCancelable(false)
+                                                    .setPositiveButton("Discard") { confDialog, _ ->
+                                                         confDialog.dismiss()
+                                                         discardSessionAndExit(sessionIdArg)
+                                                    }
+                                                    .setNegativeButton("Cancel") { confDialog, _ ->
+                                                         confDialog.dismiss()
+                                                         resumeCameraAfterDialog()
+                                                    }
+                                                    .show()
+                                            }
+                                            .show()
+                                    }
+                                }
+                            } catch (error: Exception) {
+                                Log.e("StudentScan", "Unable to prepare session dialog", error)
+                                withContext(Dispatchers.Main) {
+                                    toast("Unable to load the session. Please try again.")
+                                    resumeCameraAfterDialog()
                                 }
                             }
                         }
                     } else {
                         toast("This face belongs to a different teacher.")
+                        voiceGuidance.announce(
+                            "A different teacher was recognized. The session teacher must verify.",
+                            "different_teacher"
+                        )
                     }
 
-                    done()
+                    if (!scanningPausedForDialog) done()
                     return@withContext
                 }
 
@@ -405,6 +478,10 @@ class StudentScanFragment : Fragment() {
                 val matchedStudent = db.studentsDao().getStudentById(bestMatchId!!)
                 if (matchedStudent == null) {
                     toast("Unable to identify the student. Please try again.")
+                    voiceGuidance.announce(
+                        "Unable to identify the student. Please try again.",
+                        "student_lookup_failed"
+                    )
                     done()
                     return@withContext
                 }
@@ -413,10 +490,34 @@ class StudentScanFragment : Fragment() {
 
 
                 // Mark attendance through AttendanceActivity logic (preserve everything)
-                (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent)
+                (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent) { result ->
+                    when (result) {
+                        AttendanceActivity.StudentAttendanceResult.MARKED ->
+                            voiceGuidance.announce(
+                                "Thank you, ${matchedStudent.studentName}. Your attendance is marked.",
+                                "student_marked:${matchedStudent.studentId}"
+                            )
 
-                addStudentUI(matchedStudent)
-                done()
+                        AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
+                            voiceGuidance.announce(
+                                "${matchedStudent.studentName}, your attendance is already marked.",
+                                "student_already_marked:${matchedStudent.studentId}"
+                            )
+
+                        AttendanceActivity.StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS ->
+                            voiceGuidance.announce(
+                                "You are already marked present in another active class.",
+                                "student_other_class:${matchedStudent.studentId}"
+                            )
+
+                        AttendanceActivity.StudentAttendanceResult.NO_ACTIVE_SESSION ->
+                            voiceGuidance.announce(
+                                "No active attendance session was found. Please ask the teacher to start the session.",
+                                "student_no_session"
+                            )
+                    }
+                    done()
+                }
             }
         }
     }
@@ -453,11 +554,28 @@ class StudentScanFragment : Fragment() {
     //  UTILITIES for Reset eye probabilities when face changes
     // -----------------------------------------------------------------------
     private fun done() {
-        isVerifying = false
-        blinkDetected = false
-        lastLeftProb = -1f        //  reset
-        lastRightProb = -1f       //  reset
+        isVerifying = scanningPausedForDialog
+        livenessVerifier.reset()
+        voiceGuidance.resetGuidance()
         prevFace = null           //  reset motion reference
+    }
+
+    private fun pauseCameraForDialog() {
+        scanningPausedForDialog = true
+        isVerifying = true
+        faceStableStart = 0L
+        prevFace = null
+        landmarkOverlay.clear()
+        imageAnalysis?.clearAnalyzer()
+        imageAnalysis = null
+        cameraProvider?.unbindAll()
+    }
+
+    private fun resumeCameraAfterDialog() {
+        if (!isAdded || view == null) return
+        scanningPausedForDialog = false
+        done()
+        startCamera()
     }
 
 
@@ -510,66 +628,6 @@ class StudentScanFragment : Fragment() {
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
     }
 
-    private fun cropWithScale(bmp: Bitmap, rect: Rect, scale: Float): Bitmap {
-        val cx = rect.centerX()
-        val cy = rect.centerY()
-        val halfW = (rect.width() * scale / 2).toInt()
-        val halfH = (rect.height() * scale / 2).toInt()
-
-        val x = max(0, cx - halfW)
-        val y = max(0, cy - halfH)
-        val w = min(bmp.width - x, halfW * 2)
-        val h = min(bmp.height - y, halfH * 2)
-
-        return Bitmap.createBitmap(bmp, x, y, w, h)
-    }
-
-
-    private fun isLiveFace(
-        face: com.google.mlkit.vision.face.Face,
-        prevFace: com.google.mlkit.vision.face.Face?
-    ): Boolean {
-
-        val left = face.leftEyeOpenProbability ?: -1f
-        val right = face.rightEyeOpenProbability ?: -1f
-
-        Log.d("BLINK_DEBUG_STUDENT", "Left=$left Right=$right")
-
-        // ------------ 1) REAL BLINK DETECTION ------------
-        if (left >= 0 && right >= 0) {
-
-            val eyesWereOpen = lastLeftProb > 0.6f && lastRightProb > 0.6f
-            val eyesNowClosed = left < 0.3f && right < 0.3f
-
-            // detect blink: open → closed
-            if (eyesWereOpen && eyesNowClosed) {
-                blinkDetected = true
-                Log.d("BLINK_DEBUG_STUDENT", "Blink detected on student!")
-            }
-
-            lastLeftProb = left
-            lastRightProb = right
-        }
-
-        // require 1 blink before considering liveness
-        if (!blinkDetected) {
-            return false
-        }
-
-        // ------------ 2) MOTION LIVENESS ------------
-        if (prevFace != null) {
-            val moveX = kotlin.math.abs(face.boundingBox.centerX() - prevFace.boundingBox.centerX())
-            val moveY = kotlin.math.abs(face.boundingBox.centerY() - prevFace.boundingBox.centerY())
-
-            if (moveX < 1 && moveY < 1) {
-                return false // still → printed photo
-            }
-        }
-
-        return true
-    }
-
-
     private fun loadFaceEmbeddingCache() {
         if (cacheLoaded) return      // prevents double load
         cacheLoaded = true
@@ -581,8 +639,10 @@ class StudentScanFragment : Fragment() {
             db.teachersDao().getAllTeachers().forEach { t ->
                 val embStr = t.embedding ?: return@forEach
                 val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
-                if (emb.isNotEmpty()) {
-                    cachedTeacherEmbeddings.add(Triple(t.staffId, t.staffName, emb))
+                if (emb.size == YuNetSFaceEngine.SFACE_DIMENSIONS) {
+                    cachedTeacherEmbeddings.add(
+                        Triple(t.staffId, t.staffName, YuNetSFaceEngine.l2Normalize(emb))
+                    )
                 }
             }
 
@@ -593,8 +653,10 @@ class StudentScanFragment : Fragment() {
             db.studentsDao().getStudentsByClasses(allowedClassIds).forEach { s ->
                 val embStr = s.embedding ?: return@forEach
                 val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
-                if (emb.isNotEmpty()) {
-                    cachedStudentEmbeddings.add(Triple(s.studentId, s.studentName, emb))
+                if (emb.size == YuNetSFaceEngine.SFACE_DIMENSIONS) {
+                    cachedStudentEmbeddings.add(
+                        Triple(s.studentId, s.studentName, YuNetSFaceEngine.l2Normalize(emb))
+                    )
                 }
             }
 
@@ -639,7 +701,7 @@ class StudentScanFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        if (allPermissionsGranted()) {
+        if (allPermissionsGranted() && !scanningPausedForDialog) {
             startCamera()
         }
     }

@@ -1,9 +1,6 @@
 package com.example.login.view
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -19,7 +16,7 @@ import com.example.login.db.dao.AppDatabase
 import com.example.login.db.entity.Student
 import com.example.login.db.entity.Teacher
 import com.example.login.utility.CheckNetworkAndInternetUtils
-import com.example.login.utility.FaceNetHelper
+import com.example.login.ml.YuNetSFaceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,6 +37,13 @@ import androidx.core.widget.addTextChangedListener
 
 class FaceRegistrationActivity : AppCompatActivity() {
 
+    private data class RegisteredFaceMatch(
+        val role: String,
+        val name: String,
+        val userId: String,
+        val similarity: Float
+    )
+
     private lateinit var radioUserType: RadioGroup
     private lateinit var radioActionType: RadioGroup
 
@@ -49,7 +53,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private lateinit var btnEnrollFace: Button
     private var selectedStudent: Student? = null
     private var selectedTeacher: Teacher? = null
-    private val DIST_THRESHOLD = 0.80f
+    private val MATCH_THRESHOLD = YuNetSFaceEngine.COSINE_THRESHOLD
 
     private lateinit var listUsers: ListView
     private lateinit var adapter: ArrayAdapter<String>
@@ -66,51 +70,10 @@ class FaceRegistrationActivity : AppCompatActivity() {
     ) { result ->
         try {
             if (result.resultCode == RESULT_OK) {
-
-
-                // 🔹 Get all 3 images from camera
-
-                val img1 = result.data?.getByteArrayExtra("face_img_1")
-                val img2 = result.data?.getByteArrayExtra("face_img_2")
-                val img3 = result.data?.getByteArrayExtra("face_img_3")
-
-                if (img1 == null || img2 == null || img3 == null) {
-                    Toast.makeText(this, "Capture failed (missing images)", Toast.LENGTH_LONG).show()
+                val embedding = result.data?.getFloatArrayExtra(CameraCaptureActivity.EXTRA_FACE_EMBEDDING)
+                if (embedding == null || embedding.size != YuNetSFaceEngine.SFACE_DIMENSIONS) {
+                    Toast.makeText(this, "Capture failed (invalid SFace template)", Toast.LENGTH_LONG).show()
                     return@registerForActivityResult
-                }
-
-                // -----------------------------
-                //  Convert to Bitmaps
-                // -----------------------------
-                val bmp1 = BitmapFactory.decodeByteArray(img1, 0, img1.size)
-                val bmp2 = BitmapFactory.decodeByteArray(img2, 0, img2.size)
-                val bmp3 = BitmapFactory.decodeByteArray(img3, 0, img3.size)
-
-
-
-                //  ADD THIS MIRRORING (Same as Teacher & Student scan)
-                fun mirrorBitmap(src: Bitmap): Bitmap {
-                    val m = Matrix().apply { preScale(-1f, 1f) }
-                    return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
-                }
-
-                val bmp1m = mirrorBitmap(bmp1)
-                val bmp2m = mirrorBitmap(bmp2)
-                val bmp3m = mirrorBitmap(bmp3)
-
-                // -----------------------------
-                // 🔹 Generate embeddings
-                // -----------------------------
-                val helper = FaceNetHelper(this)
-                val e1 = helper.getFaceEmbedding(bmp1m)
-                val e2 = helper.getFaceEmbedding(bmp2m)
-                val e3 = helper.getFaceEmbedding(bmp3m)
-
-                // -----------------------------
-                // 🔹 AVERAGE embedding (final stored)
-                // -----------------------------
-                val avgEmbedding = FloatArray(e1.size) { i ->
-                    (e1[i] + e2[i] + e3[i]) / 3f
                 }
 
                 val id = selectedStudent?.studentId ?: selectedTeacher?.staffId
@@ -122,7 +85,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 // -----------------------------
                 // 🔹 Save final averaged embedding
                 // -----------------------------
-                saveFace(id, avgEmbedding)
+                saveFace(id, embedding)
             }
 
         } catch (e: Exception) {
@@ -170,40 +133,6 @@ class FaceRegistrationActivity : AppCompatActivity() {
             val intent = Intent(this, UnregisteredUsersActivity::class.java)
             startActivity(intent)
         }
-
-
-        //only for test - other no use
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
-                val testId = "2234"
-
-                val stud = db.studentsDao().getStudentById(testId)
-                val emb = stud?.embedding
-
-                Log.e("DEBUG_DB_EMBED",
-                    if (emb.isNullOrEmpty())
-                        " Student 2234 has NO embedding stored!"
-                    else
-                        " Student 2234 embedding exists! Length = ${emb.length}"
-                )
-
-                if (!emb.isNullOrEmpty()) {
-                    try {
-                        val helper = FaceNetHelper(this@FaceRegistrationActivity)
-                        val testArr = emb.split(",").map { it.toFloat() }.toFloatArray()
-                        Log.e("DEBUG_DB_EMBED", "Converted embedding size: ${testArr.size}")
-                    } catch (er: Exception) {
-                        Log.e("DEBUG_DB_EMBED", "❌ Corrupted embedding data: ${er.message}")
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e("DEBUG_DB_EMBED", "ERROR reading DB: ${e.message}")
-            }
-        }
-
-
 
 
     }
@@ -499,33 +428,31 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
                         Log.d("DUPLICATE_FOUND", "Matched with: $match")
 
-                        val (type, name, matchedId) = match
-               /*
-                        if (matchedId != id) {
-                            showMainToast("Registered User belongs to $type $name")
+                        val isSameUser = match.userId == id
+                        if (!isSameUser || action == "add") {
+                            showAlreadyRegisteredDialog(
+                                match = match,
+                                allowUpdateHint = isSameUser
+                            )
                             return@launch
                         }
-                        if (action == "add") {
-                            showMainToast("This user already Registered..")
-                            return@launch
-                        }
-
-                */
-                        runOnUiThread {
-                            Toast.makeText(
-                                this@FaceRegistrationActivity,
-                                "This face already registered as $name $type ($matchedId)",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        return@launch
                     }
                 }
 
                 when (action) {
                     "add" -> {
                         if (!existingEmbedding.isNullOrEmpty()) {
-                            showMainToast("Face is already registered. Would you like to update it?");
+                            val existingName = student?.studentName ?: teacher?.staffName ?: "Selected user"
+                            showAlreadyRegisteredDialog(
+                                RegisteredFaceMatch(
+                                    role = if (userType == "student") "Student" else "Teacher",
+                                    name = existingName,
+                                    userId = id,
+                                    similarity = 1f
+                                ),
+                                allowUpdateHint = true,
+                                showSimilarity = false
+                            )
                             return@launch
                         }
                         if (embedding == null) return@launch
@@ -538,13 +465,9 @@ class FaceRegistrationActivity : AppCompatActivity() {
                             return@launch
                         }
                         if (embedding == null) return@launch
-                        val storedEmbedding = existingEmbedding.split(",").map { it.toFloat() }.toFloatArray()
-                        val distSelf = FaceNetHelper(this@FaceRegistrationActivity)
-                            .calculateDistance(storedEmbedding, embedding)
-                        if (distSelf >= DIST_THRESHOLD) {
-                            showMainToast("Verification failed: The face doesn't belong to the registered user.");
-                            return@launch
-                        }
+                        // A legacy FaceNet template cannot be compared with SFace. An authorized
+                        // Update intentionally replaces it; the cross-user duplicate gate above
+                        // still protects already-migrated SFace users.
                         sendFaceToServer(id, userType, embedStr)
                     }
 
@@ -596,13 +519,12 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
     private suspend fun detectMatchingFace(
         newEmbedding: FloatArray,
-        threshold: Float = DIST_THRESHOLD
-    ): Triple<String, String, String>? {
+        threshold: Float = MATCH_THRESHOLD
+    ): RegisteredFaceMatch? {
         return try {
             val db = AppDatabase.getDatabase(this@FaceRegistrationActivity)
-            val faceNet = FaceNetHelper(this)
 
-            var minDist = Float.MAX_VALUE
+            var bestSimilarity = -1f
             var matchType = ""
             var matchName = ""
             var matchId = ""
@@ -610,40 +532,82 @@ class FaceRegistrationActivity : AppCompatActivity() {
             val students = db.studentsDao().getAllStudents().filter { !it.embedding.isNullOrEmpty() }
             Log.e("MATCH_DEBUG", "Total students with embeddings = ${students.size}")
             for (s in students) {
-                val stored = s.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
-                val dist = faceNet.calculateDistance(stored, newEmbedding)
-                if (dist < minDist) {
-                    minDist = dist
+                val stored = s.embedding!!.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
+                if (stored.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
+                val similarity = YuNetSFaceEngine.cosineSimilarity(stored, newEmbedding)
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity
                     matchType = "student"
                     matchName = s.studentName
                     matchId = s.studentId
                 }
-                Log.d("DISTANCE", "Comparing with ${s.studentName}(${s.studentId}) = $dist")
+                Log.d("SFACE_MATCH", "${s.studentName}(${s.studentId}) cosine=$similarity")
 
             }
 
             val teachers = db.teachersDao().getAllTeachers().filter { !it.embedding.isNullOrEmpty() }
             Log.e("MATCH_DEBUG", "Total teachers with embeddings = ${teachers.size}")
             for (t in teachers) {
-                val stored = t.embedding!!.split(",").map { it.toFloat() }.toFloatArray()
-                val dist = faceNet.calculateDistance(stored, newEmbedding)
-                if (dist < minDist) {
-                    minDist = dist
+                val stored = t.embedding!!.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
+                if (stored.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
+                val similarity = YuNetSFaceEngine.cosineSimilarity(stored, newEmbedding)
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity
                     matchType = "teacher"
                     matchName = t.staffName
                     matchId = t.staffId
                 }
-                Log.d("DISTANCE", "Comparing with ${t.staffName}(${t.staffId}) = $dist")
+                Log.d("SFACE_MATCH", "${t.staffName}(${t.staffId}) cosine=$similarity")
 
             }
-            Log.e("MATCH_RESULT", "MinDist=$minDist, Threshold=$threshold, Match=$matchName ($matchId)")
+            Log.d("SFACE_MATCH", "Best=$bestSimilarity threshold=$threshold match=$matchName ($matchId)")
 
-            if (minDist < threshold) Triple(matchType, matchName, matchId) else null
+            if (bestSimilarity >= threshold) {
+                RegisteredFaceMatch(
+                    role = matchType.replaceFirstChar { it.uppercase() },
+                    name = matchName,
+                    userId = matchId,
+                    similarity = bestSimilarity
+                )
+            } else {
+                null
+            }
 
 
         } catch (e: Exception) {
             Log.e("EnrollActivity", "detectMatchingFace error", e)
             null
+        }
+    }
+
+    private suspend fun showAlreadyRegisteredDialog(
+        match: RegisteredFaceMatch,
+        allowUpdateHint: Boolean,
+        showSimilarity: Boolean = true
+    ) {
+        withContext(Dispatchers.Main) {
+            val message = buildString {
+                append("This captured face is already registered.\n\n")
+                append("Name: ${match.name}\n")
+                append("ID: ${match.userId}\n")
+                append("Role: ${match.role}")
+                if (showSimilarity) {
+                    append("\nFace match: ${(match.similarity * 100).toInt()}%")
+                }
+                append(
+                    if (allowUpdateHint) {
+                        "\n\nSelect Update to replace this user's existing face."
+                    } else {
+                        ""
+                    }
+                )
+            }
+            AlertDialog.Builder(this@FaceRegistrationActivity)
+                .setTitle("Face Already Registered")
+                .setMessage(message)
+                .setCancelable(false)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 

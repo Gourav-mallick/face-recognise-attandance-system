@@ -44,7 +44,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Select action and register face for attendance"
+                    android:text="Automatic YuNet landmark capture with SFace"
                     android:textColor="@color/text_gray"
                     android:textSize="13sp"
                     android:gravity="center" />
@@ -311,7 +311,7 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="18dp"
                     android:background="@drawable/btn_rounded"
-                    android:text="Register Face"
+                    android:text="Start Automatic Face Scan"
                     android:textAllCaps="false"
                     android:textStyle="bold"
                     android:textSize="16sp"
@@ -322,7 +322,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="Ensure good lighting and remove face coverings for accurate capture."
+                    android:text="The camera automatically combines 3 consistent samples after landmarks, pose, and sharpness pass."
                     android:textColor="@color/text_gray"
                     android:textSize="12sp" />
 
@@ -342,7 +342,7 @@
                     android:id="@+id/tvInstructionTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Before Capturing"
+                    android:text="During Automatic Capture"
                     android:textColor="@color/text_dark"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -352,7 +352,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Follow these steps to improve recognition accuracy:"
+                    android:text="Follow the live oval and landmark guidance:"
                     android:textColor="@color/text_gray"
                     android:textSize="13sp" />
 
@@ -365,7 +365,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="• Turn face slightly LEFT"
+                        android:text="• Keep both eyes, nose, and mouth corners visible"
                         android:textColor="@color/text_dark"
                         android:textSize="14sp"
                         android:layout_marginBottom="6dp" />
@@ -373,7 +373,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="• Turn face slightly RIGHT"
+                        android:text="• Look straight and hold still in good light"
                         android:textColor="@color/text_dark"
                         android:textSize="14sp"
                         android:layout_marginBottom="6dp" />
@@ -381,7 +381,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="• Keep your face CENTERED"
+                        android:text="• Hold still while 3 consistent quality samples are combined"
                         android:textColor="@color/text_dark"
                         android:textSize="14sp" />
                 </LinearLayout>

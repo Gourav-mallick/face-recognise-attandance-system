@@ -18,10 +18,10 @@ import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
 import com.example.login.R
 import com.example.login.db.dao.AppDatabase
-import com.example.login.utility.FaceNetHelper
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.example.login.ml.ActiveLivenessVerifier
+import com.example.login.ml.YuNetFace
+import com.example.login.ml.YuNetSFaceEngine
+import com.example.login.utility.VoiceGuidance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,21 +37,22 @@ class TeacherScanFragment : Fragment() {
 
     private lateinit var viewFinder: androidx.camera.view.PreviewView
     private lateinit var faceGuide: View
+    private lateinit var landmarkOverlay: FaceLandmarkOverlay
     private lateinit var tvLightWarning: TextView
     private lateinit var tvClassCard: TextView
     private lateinit var tvStart: TextView
     private lateinit var progress: ProgressBar
 
-    private lateinit var faceNet: FaceNetHelper
+    private lateinit var faceEngine: YuNetSFaceEngine
+    private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var voiceGuidance: VoiceGuidance
     private var cameraExecutor: ExecutorService? = null
+    private var imageAnalysis: ImageAnalysis? = null
 
     private var faceStableStart = 0L
     private var isVerifying = false
     private var lastProcessTime = 0L
-    private var prevFace: com.google.mlkit.vision.face.Face? = null
-    private var lastLeftProb = -1f
-    private var lastRightProb = -1f
-    private var blinkDetected = false
+    private var prevFace: YuNetFace? = null
 
 
     private var sessionTeacherId: String? = null
@@ -60,8 +61,6 @@ class TeacherScanFragment : Fragment() {
     private var scanningPaused = false
 
 
-    private val DIST_THRESHOLD = 0.60f     // keep same as activity
-    private val CROP_SCALE = 1.1f
     private val MIRROR_FRONT = true
 
     private var sessionCreated = false
@@ -78,23 +77,13 @@ class TeacherScanFragment : Fragment() {
         }
     }
 
-    private val detector by lazy {
-        FaceDetection.getClient(
-            FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) // 🔥 Required!
-                .build()
-        )
-    }
-
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?)
             = inflater.inflate(R.layout.fragment_teacher_scan, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         viewFinder = view.findViewById(R.id.viewFinder)
         faceGuide = view.findViewById(R.id.faceGuide)
+        landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
         tvLightWarning = view.findViewById(R.id.tvLightWarning)
         tvClassCard = view.findViewById(R.id.tvClassCard)
         tvStart = view.findViewById(R.id.tvStart)
@@ -103,7 +92,9 @@ class TeacherScanFragment : Fragment() {
 
         tvClassCard.text = "Class-Room : ${arguments?.getString(ARG_CLASSID) ?: "-"}"
 
-        faceNet = FaceNetHelper(requireContext())
+        faceEngine = YuNetSFaceEngine(requireContext().applicationContext)
+        livenessVerifier = ActiveLivenessVerifier()
+        voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
@@ -123,6 +114,7 @@ class TeacherScanFragment : Fragment() {
                 .build().also { ia ->
                     ia.setAnalyzer(cameraExecutor!!) { imageProxy -> processFrame(imageProxy) }
                 }
+            imageAnalysis = analysis
 
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
@@ -135,7 +127,6 @@ class TeacherScanFragment : Fragment() {
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
-
         if (scanningPaused) {
             imageProxy.close()
             return
@@ -147,56 +138,95 @@ class TeacherScanFragment : Fragment() {
         }
         lastProcessTime = now
 
-        val mediaImage = imageProxy.image ?: run { imageProxy.close(); return }
-        val rotated = imageProxyToBitmapUpright(imageProxy)
-        val prepared = if (MIRROR_FRONT) mirrorBitmap(rotated) else rotated
+        var prepared: Bitmap? = null
+        try {
+            val yBuffer: ByteBuffer = imageProxy.planes[0].buffer.duplicate()
+            var sum = 0L
+            val count = yBuffer.remaining()
+            while (yBuffer.hasRemaining()) sum += yBuffer.get().toInt() and 0xFF
+            val brightness = if (count > 0) sum / count else 0L
 
-        // Light warning using Y plane mean
-        val yBuffer: ByteBuffer = imageProxy.planes[0].buffer.duplicate()
-        var sum = 0L; val count = yBuffer.remaining()
-        while (yBuffer.hasRemaining()) sum += (yBuffer.get().toInt() and 0xFF)
-        val brightness = if (count > 0) sum / count else 0L
-        requireActivity().runOnUiThread {
-            tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
-        }
+            val rotated = imageProxyToBitmapUpright(imageProxy)
+            prepared = if (MIRROR_FRONT) mirrorBitmap(rotated) else rotated
+            if (prepared !== rotated) rotated.recycle()
+            val liveness = livenessVerifier.update(prepared)
+            val face = faceEngine.detect(prepared)
+                .maxByOrNull { it.bounds.width() * it.bounds.height() }
 
-        val image = InputImage.fromBitmap(prepared, 0)
-        detector.process(image)
-            .addOnSuccessListener { faces ->
-                if (faces.isNotEmpty()) {
-
-                    val face = faces[0]   // ← moved here before liveness check
-
-                    // 🔹 LIVENESS CHECK (Eye open probability)
-                    if (!isLiveFace(face,prevFace)) {
-                        faceGuide.background.setTint(Color.WHITE)
-                        faceStableStart = 0L
-                        prevFace = face
-                        return@addOnSuccessListener
-                    }
-
-                    faceGuide.background.setTint(Color.GREEN)
-                    if (faceStableStart == 0L) faceStableStart = now
-
-                    if (now - faceStableStart > 1000 && !isVerifying) {
-                        isVerifying = true
-
-                        requireActivity().runOnUiThread { progress.visibility = View.VISIBLE }
-
-                       // val face = faces[0]
-                        val cropped = cropWithScale(prepared, face.boundingBox, CROP_SCALE)
-                        val embedding = faceNet.getFaceEmbedding(cropped)
-
-                        recognizeTeacher(embedding)
-                        faceStableStart = 0L
-                    }
-                } else {
-                    faceGuide.background.setTint(Color.RED)
-                    faceStableStart = 0L
+            if (face == null) {
+                faceStableStart = 0L
+                prevFace = null
+                activity?.runOnUiThread {
+                    landmarkOverlay.clear()
+                    faceGuide.background.setTint(Color.YELLOW)
+                    tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+                    tvStart.text = "Awaiting teacher face verification"
+                    voiceGuidance.guide(
+                        "Teacher, place your face inside the oval",
+                        "teacher_no_face"
+                    )
                 }
+                return
             }
-            .addOnFailureListener { Log.e("TeacherScan", "Face detect error: ${it.message}") }
-            .addOnCompleteListener { imageProxy.close() }
+
+            val quality = faceEngine.assessQuality(prepared, face, strict = false)
+            val stable = isStable(face)
+            if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
+            else if (faceStableStart == 0L) faceStableStart = now
+            prevFace = face
+
+            activity?.runOnUiThread {
+                landmarkOverlay.show(face.landmarks, prepared.width, prepared.height)
+                faceGuide.background.setTint(
+                    when {
+                        liveness.passed && quality.accepted && stable -> Color.GREEN
+                        quality.accepted -> Color.rgb(30, 94, 255)
+                        else -> Color.YELLOW
+                    }
+                )
+                tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+                tvStart.text = if (liveness.passed) quality.guidance else liveness.guidance
+                voiceGuidance.guide(
+                    if (liveness.passed) quality.guidance else liveness.guidance,
+                    if (liveness.passed) {
+                        "teacher_quality:${quality.guidance}"
+                    } else {
+                        "teacher_liveness:${liveness.guidance}"
+                    }
+                )
+            }
+
+            if (
+                quality.accepted &&
+                stable &&
+                liveness.passed &&
+                now - faceStableStart >= 700 &&
+                !isVerifying
+            ) {
+                isVerifying = true
+                activity?.runOnUiThread { progress.visibility = View.VISIBLE }
+                val embedding = faceEngine.embedding(prepared, face)
+                recognizeTeacher(embedding)
+                faceStableStart = 0L
+            }
+        } catch (error: Exception) {
+            Log.e("TeacherScan", "YuNet/SFace processing failed", error)
+            faceStableStart = 0L
+            activity?.runOnUiThread {
+                landmarkOverlay.clear()
+                tvStart.text = "Face scanner unavailable — retrying"
+            }
+        } finally {
+            prepared?.recycle()
+            imageProxy.close()
+        }
+    }
+
+    private fun isStable(face: YuNetFace): Boolean {
+        val previous = prevFace ?: return false
+        val tolerance = face.bounds.width() * 0.045f
+        return kotlin.math.abs(face.bounds.centerX() - previous.bounds.centerX()) < tolerance &&
+            kotlin.math.abs(face.bounds.centerY() - previous.bounds.centerY()) < tolerance
     }
 
     private fun recognizeTeacher(embedding: FloatArray) {
@@ -205,7 +235,11 @@ class TeacherScanFragment : Fragment() {
             val teachers = db.teachersDao().getAllTeachers() // has embedding String? field
             if (teachers.isEmpty()) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(requireContext(), "No teachers Found!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "No registered teachers found", Toast.LENGTH_SHORT).show()
+                    voiceGuidance.announce(
+                        "No registered teachers were found. Please contact the administration.",
+                        "no_registered_teachers"
+                    )
                     progress.visibility = View.GONE; isVerifying = false
                 }
                 return@launch
@@ -213,15 +247,15 @@ class TeacherScanFragment : Fragment() {
 
             var bestId: String? = null
             var bestName: String? = null
-            var minDist = Float.MAX_VALUE
+            var bestSimilarity = -1f
 
             for (t in teachers) {
                 val embStr = t.embedding ?: continue
                 val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
-                if (emb.isEmpty()) continue
-                val dist = faceNet.calculateDistance(emb, embedding)
-                if (dist < minDist) {
-                    minDist = dist
+                if (emb.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
+                val similarity = YuNetSFaceEngine.cosineSimilarity(emb, embedding)
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity
                     bestId = t.staffId
                     bestName = t.staffName
                 }
@@ -230,13 +264,11 @@ class TeacherScanFragment : Fragment() {
             withContext(Dispatchers.Main) {
                 progress.visibility = View.GONE
                 isVerifying = false
+                livenessVerifier.reset()
 
-                if (bestId != null && minDist < DIST_THRESHOLD) {
+                if (bestId != null && bestSimilarity >= YuNetSFaceEngine.COSINE_THRESHOLD) {
                     isVerifying = true
 
-                    blinkDetected = false
-                    lastLeftProb = -1f
-                    lastRightProb = -1f
                     prevFace = null
                     faceStableStart = 0L
                     // 🔥 1) Check assigned classes
@@ -261,6 +293,10 @@ class TeacherScanFragment : Fragment() {
                                 isVerifying = false
                             }
                             .show()
+                        voiceGuidance.announce(
+                            "Face verified, but no class is assigned to $bestName. Please contact the administration.",
+                            "teacher_no_assigned_class"
+                        )
 
                         return@withContext
                     }
@@ -286,6 +322,10 @@ class TeacherScanFragment : Fragment() {
                         sessionDialogShown = true
                         scanningPaused = true  // stop analyzer while dialog is open
 
+                        voiceGuidance.announce(
+                            "Thank you, $bestName. Face verified. Please confirm to start student attendance.",
+                            "teacher_verified:$bestId"
+                        )
                         showStartStudentAttendanceDialog(bestId!!, bestName!!)
                     }
 
@@ -300,6 +340,10 @@ class TeacherScanFragment : Fragment() {
                             "Face not recognized.\nFace may not be registered or you may not be enrolled in any class.\nPlease contact the authorities.",
                             Toast.LENGTH_LONG
                         ).show();
+                        voiceGuidance.announce(
+                            "Face not recognized. You may not be registered as a teacher. Please contact the administration.",
+                            "teacher_final_failure"
+                        )
 
 
                         // OPTIONAL: stop scanning for 3 seconds
@@ -318,6 +362,10 @@ class TeacherScanFragment : Fragment() {
                         "Face not matched. Adjust your face and try again.",
                         Toast.LENGTH_SHORT
                     ).show()
+                    voiceGuidance.announce(
+                        "Face not matched. Please blink once, then try again.",
+                        "teacher_match_failed_$failCount"
+                    )
                 }
 
             }
@@ -379,8 +427,13 @@ class TeacherScanFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        imageAnalysis?.clearAnalyzer()
+        imageAnalysis = null
         cameraExecutor?.shutdown()
+        faceEngine.close()
+        livenessVerifier.close()
+        voiceGuidance.close()
+        super.onDestroyView()
         if (!sessionCreated) {
             // Clear saved screen only if no session was started
             val prefs = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
@@ -441,49 +494,6 @@ class TeacherScanFragment : Fragment() {
         }
     }
 
-    private fun isLiveFace(face: com.google.mlkit.vision.face.Face, prevFace: com.google.mlkit.vision.face.Face?): Boolean {
-
-        val left = face.leftEyeOpenProbability ?: -1f
-        val right = face.rightEyeOpenProbability ?: -1f
-       // Toast.makeText(requireContext(), "Blink your Eyes", Toast.LENGTH_SHORT).show()
-
-        Log.d("BLINK_DEBUG", "Left=$left Right=$right")
-
-        // ----- 1) REAL BLINK DETECTION -----
-        if (left >= 0 && right >= 0) {
-
-            val eyesWereOpen = lastLeftProb > 0.6f && lastRightProb > 0.6f
-            val eyesNowClosed = left < 0.3f && right < 0.3f
-
-            // BLINK event: open → closed
-            if (eyesWereOpen && eyesNowClosed) {
-                blinkDetected = true
-                Log.d("BLINK_DEBUG", "Blink DETECTED!")
-            }
-
-            lastLeftProb = left
-            lastRightProb = right
-        }
-
-        // REQUIRE blink for liveness
-        if (!blinkDetected) {
-            return false
-        }
-
-        // ----- 2) MOTION LIVENESS -----
-        if (prevFace != null) {
-            val moveX = kotlin.math.abs(face.boundingBox.centerX() - prevFace.boundingBox.centerX())
-            val moveY = kotlin.math.abs(face.boundingBox.centerY() - prevFace.boundingBox.centerY())
-
-            if (moveX < 1 && moveY < 1) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-
     private fun logTeacherAssignedClasses(teacherId: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -521,9 +531,14 @@ class TeacherScanFragment : Fragment() {
             .setMessage("Teacher: $teacherName\n\nStart student attendance capturing now?")
             .setCancelable(false)
             .setPositiveButton("Yes") { _, _ ->
-                // Move to Student Scan only when user confirms
-                (requireActivity() as AttendanceActivity).simulateTeacherScan(teacherId)
-                scanningPaused = false
+                voiceGuidance.announceThen(
+                    message = "Attendance session started. Students may now scan their faces.",
+                    key = "teacher_session_started"
+                ) {
+                    if (!isAdded) return@announceThen
+                    (requireActivity() as AttendanceActivity).simulateTeacherScan(teacherId)
+                    scanningPaused = false
+                }
             }
 //            .setNegativeButton("No") { _, _ ->
 //                // Keep teacher screen active, allow scanning again if needed

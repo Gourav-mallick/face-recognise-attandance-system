@@ -126,7 +126,7 @@
                     android:id="@+id/tvScreenTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Varify your identity "
+                    android:text="Verify your identity"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -141,13 +141,18 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-            <!-- Round face overlay -->
+            <!-- Oval guide + live YuNet five-point landmark overlay -->
             <View
                 android:id="@+id/faceGuide"
-                android:layout_width="260dp"
-                android:layout_height="260dp"
+                android:layout_width="240dp"
+                android:layout_height="300dp"
                 android:layout_gravity="center"
-                android:background="@drawable/circle_overlay" />
+                android:background="@drawable/oval_face_guide" />
+
+            <com.example.login.view.FaceLandmarkOverlay
+                android:id="@+id/landmarkOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
             <!-- Bottom overlay hint (optional) -->
             <TextView

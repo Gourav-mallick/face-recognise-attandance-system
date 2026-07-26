@@ -18,7 +18,7 @@
             android:id="@+id/tvTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Face Capture"
+            android:text="Automatic Face Registration"
             android:textColor="@color/white"
             android:textSize="24sp"
             android:textStyle="bold"
@@ -56,15 +56,31 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"/>
 
-                <!-- Step Text (CENTERED) -->
+                <View
+                    android:id="@+id/faceGuide"
+                    android:layout_width="250dp"
+                    android:layout_height="310dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/oval_face_guide" />
+
+                <com.example.login.view.FaceLandmarkOverlay
+                    android:id="@+id/landmarkOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
                 <TextView
                     android:id="@+id/tvStep"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Turn LEFT and hold still"
-                    android:textSize="22sp"
+                    android:text="Look straight at the camera"
+                    android:textSize="18sp"
                     android:textColor="#FFFFFF"
-                    android:layout_gravity="center"/>
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_hint_pill"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="8dp"
+                    android:layout_gravity="top|center_horizontal"
+                    android:layout_marginTop="18dp"/>
 
 
                 <!-- FACE POSITION ARROWS -->
@@ -75,7 +91,8 @@
                     android:orientation="horizontal"
                     android:gravity="center"
                     android:layout_gravity="bottom|center_horizontal"
-                    android:layout_marginBottom="24dp">
+                    android:layout_marginBottom="24dp"
+                    android:visibility="gone">
 
                     <ImageView
                         android:id="@+id/ivLeftArrow"

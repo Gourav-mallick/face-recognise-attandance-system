@@ -122,6 +122,7 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.5")
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
 
 
     implementation("androidx.camera:camera-core:1.3.4")

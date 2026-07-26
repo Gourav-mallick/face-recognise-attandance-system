@@ -487,3 +487,28 @@ Instead of generic error messages, the screen displays real-time actionable inst
 - [x] **Model Download Links & Commands:** Added official download links and cURL terminal commands for `assets/models/`.
 
 - [x] **UX & UI Engineering Improvements:** Restored dynamic oval camera guides, live landmark visualization, haptic/audio feedback, and non-blocking threading.
+
+---
+
+## 14. Implementation Update (26 July 2026)
+
+The first production upgrade slice is now implemented in the Android project:
+
+- **Model runtime:** Added ONNX Runtime Android `1.17.0` and a shared `YuNetSFaceEngine`.
+- **Model input contract:** The engine reads YuNet's ONNX input tensor shape at runtime (the bundled model is `640 × 640`) instead of assuming a fixed detector size.
+- **Registration:** `CameraCaptureActivity` now uses a live CameraX analyzer with YuNet, draws the five facial landmarks, checks frontal pose and sharpness, automatically locks a stable best frame, performs five-point alignment to `112 × 112`, and returns a normalized 128-D SFace template. Manual left/right/center photo confirmation is no longer required.
+- **Multi-observation enrollment:** After the strict landmark/pose/sharpness gate locks, registration collects three frontal SFace observations at least `350 ms` apart. Every new observation must have cosine similarity `≥ 0.55` with the earlier observations. A disagreement rejects and restarts the sample set. Three consistent normalized vectors are averaged and L2-normalized again before the unchanged save/duplicate-check flow receives the final 128-D template.
+- **Registration safety:** `FaceRegistrationActivity` stores the SFace template through the existing Room field and existing server request. Duplicate matching now uses cosine similarity (`≥ 0.42`) and blocks only a match belonging to another user; a same-user match is allowed for Update.
+- **Duplicate result UI:** Immediately after landmark capture, the new SFace template is checked against both student and teacher galleries. An existing match opens a non-cancelable **Face Already Registered** dialog showing the registered user's name, ID, role, and match percentage. Only a same-user **Update** may continue.
+- **Recognition:** `FaceRecogniseActivity` now uses the same YuNet → alignment → SFace pipeline, shows the five live landmark dots, provides pose/light/quality guidance, and matches the selected student/teacher gallery with cosine similarity.
+- **Attendance fragments:** `TeacherScanFragment` and `StudentScanFragment` now also use the shared YuNet → five-point alignment → SFace pipeline. Both camera layouts render the five green landmark dots and dynamic oval state while preserving the existing teacher-session and student-attendance workflows.
+- **Active liveness gate:** Registration, standalone recognition, direct student verification, teacher verification, and student attendance now require one open→closed→open blink before SFace extraction or matching. The challenge expires after `12 seconds`, resets when the face disappears, and resets after every recognition result. This blocks static printed photos and static images displayed on a phone.
+- **Direct verification migration:** `FaceVerificationActivity` now uses YuNet landmarks, five-point SFace alignment, cosine similarity `≥ 0.42`, the shared active-liveness gate, and the green five-point overlay instead of legacy FaceNet matching.
+- **UI:** Registration and recognition camera previews now use a dynamic oval guide (yellow searching, blue evaluating, green locked/matched, red rejected), visible landmark dots, live guidance text, and haptic confirmation.
+- **Unchanged contracts:** Room entities/DAOs, attendance records, REST endpoints, and the face-template JSON field remain unchanged.
+
+> [!WARNING]
+> Existing FaceNet 128-D values cannot be converted into SFace values even though both contain
+> 128 numbers. Existing users must be re-enrolled with **Update**. During a staged rollout, do not
+> interpret successful parsing of an old 128-D value as proof that it is an SFace template. A future
+> backend/template-version field is recommended if legacy and SFace users must coexist across devices.

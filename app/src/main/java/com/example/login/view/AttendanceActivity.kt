@@ -66,6 +66,13 @@ class AttendanceActivity : AppCompatActivity() {
         var startedAtMillis: Long = System.currentTimeMillis()
     )
 
+    enum class StudentAttendanceResult {
+        MARKED,
+        ALREADY_MARKED,
+        ACTIVE_IN_ANOTHER_CLASS,
+        NO_ACTIVE_SESSION
+    }
+
     private val activeSessions = mutableMapOf<Pair<String, String>, AttendanceCycle>()
 
     //  Track which teacher is currently active for student scans
@@ -349,7 +356,10 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
 
     // ----------------- Scan: Student -----------------
-    private fun handleStudentScan(student: Student) {
+    private fun handleStudentScan(
+        student: Student,
+        onResult: (StudentAttendanceResult) -> Unit = {}
+    ) {
         lifecycleScope.launch {
 
             // ✅ If no classroom started yet show student card details
@@ -382,22 +392,29 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 ).show()
 
                 Log.d(TAG, "Student scanned without classroom: ID=${student.studentId}, Name=${student.studentName}")
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
                 return@launch
             }
 
-            val classroomId = currentVisibleClassroomId ?: return@launch
+            val classroomId = currentVisibleClassroomId ?: run {
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
+                return@launch
+            }
             val teacherId = currentTeacherId ?: run {
                 Toast.makeText(this@AttendanceActivity, "Please scan teacher  first!", Toast.LENGTH_SHORT).show()
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
                 return@launch
             }
             val cycle = activeSessions[Pair(classroomId, teacherId)] ?: run {
                 Toast.makeText(this@AttendanceActivity, "No active session found for this teacher!", Toast.LENGTH_SHORT).show()
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
                 return@launch
             }
 
 
             if (cycle.sessionId.isNullOrEmpty()) {
                 Toast.makeText(this@AttendanceActivity, "Scan teacher first!", Toast.LENGTH_SHORT).show()
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
                 return@launch
             }
 
@@ -406,6 +423,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             val existing = db.attendanceDao().getAttendanceForStudentInSession(cycle.sessionId!!, student.studentId)
             if (existing != null) {
                 Toast.makeText(this@AttendanceActivity, "${student.studentName} already marked!", Toast.LENGTH_SHORT).show()
+                onResult(StudentAttendanceResult.ALREADY_MARKED)
                 return@launch
             }
 
@@ -417,6 +435,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
             if (alreadyActive > 0) {
                 Toast.makeText(this@AttendanceActivity, "You are already marked present in another ongoing class.", Toast.LENGTH_LONG).show()
+                onResult(StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS)
                 return@launch
             }
 
@@ -474,6 +493,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             saveCurrentCycle()
             val frag = supportFragmentManager.findFragmentByTag(TAG_STUDENT)
             if (frag is StudentScanFragment) frag.addStudentUI(student)
+            onResult(StudentAttendanceResult.MARKED)
 
         }
     }
@@ -481,7 +501,10 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
 
     // ----------------- End Class -----------------
-    private fun showEndClassDialog(classroomId: String) {
+    private fun showEndClassDialog(
+        classroomId: String,
+        onCancelled: () -> Unit = {}
+    ) {
         val teacherId = currentTeacherId ?: return
         val cycle = activeSessions[Pair(classroomId, teacherId)] ?: return
         lifecycleScope.launch {
@@ -527,7 +550,10 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
                     }
                 }
-                .setNegativeButton("No", null)
+                .setNegativeButton("No") { dialog, _ ->
+                    dialog.dismiss()
+                    onCancelled()
+                }
                 .show()
 
             val prefs = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
@@ -836,17 +862,20 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
     }
 
 
-    fun simulateStudentScan(student: Student) {
-        handleStudentScan(student)   // call your private logic safely
+    fun simulateStudentScan(
+        student: Student,
+        onResult: (StudentAttendanceResult) -> Unit = {}
+    ) {
+        handleStudentScan(student, onResult)
     }
 
 
-    fun showEndClassDialogForVisibleClass() {
+    fun showEndClassDialogForVisibleClass(onCancelled: () -> Unit = {}) {
         // just expose the existing private one
         // (if you have a private method with same name, rename that to something like doShowEndClassDialogForVisibleClass())
         val classroomId = /* your existing field */ currentVisibleClassroomId ?: return
         // call the existing private showEndClassDialog(classroomId)
-        showEndClassDialog(classroomId)
+        showEndClassDialog(classroomId, onCancelled)
     }
 
     fun startMassBunkFlow() {
