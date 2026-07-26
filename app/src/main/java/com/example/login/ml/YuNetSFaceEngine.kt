@@ -68,62 +68,65 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
     fun detect(bitmap: Bitmap, scoreThreshold: Float = DETECTION_THRESHOLD): List<YuNetFace> {
         check(!closed) { "YuNet/SFace engine is closed" }
         val resized = Bitmap.createScaledBitmap(bitmap, detectorWidth, detectorHeight, true)
-        val input = bitmapToNchw(resized, rgbOrder = false)
-        val candidates = mutableListOf<YuNetFace>()
+        try {
+            val input = bitmapToNchw(resized, rgbOrder = false)
+            val candidates = mutableListOf<YuNetFace>()
 
-        OnnxTensor.createTensor(
-            environment,
-            FloatBuffer.wrap(input),
-            longArrayOf(1, 3, detectorHeight.toLong(), detectorWidth.toLong())
-        ).use { tensor ->
-            detector.run(mapOf(detectorInput to tensor)).use { output ->
-                for (stride in STRIDES) {
-                    val suffix = stride.toString()
-                    val cls = outputFloats(output, "cls_$suffix")
-                    val obj = outputFloats(output, "obj_$suffix")
-                    val boxes = outputFloats(output, "bbox_$suffix")
-                    val keypoints = outputFloats(output, "kps_$suffix")
-                    val columns = detectorWidth / stride
-                    val count = min(cls.size, obj.size)
+            OnnxTensor.createTensor(
+                environment,
+                FloatBuffer.wrap(input),
+                longArrayOf(1, 3, detectorHeight.toLong(), detectorWidth.toLong())
+            ).use { tensor ->
+                detector.run(mapOf(detectorInput to tensor)).use { output ->
+                    for (stride in STRIDES) {
+                        val suffix = stride.toString()
+                        val cls = outputFloats(output, "cls_$suffix")
+                        val obj = outputFloats(output, "obj_$suffix")
+                        val boxes = outputFloats(output, "bbox_$suffix")
+                        val keypoints = outputFloats(output, "kps_$suffix")
+                        val columns = detectorWidth / stride
+                        val count = min(cls.size, obj.size)
 
-                    for (index in 0 until count) {
-                        val score = sqrt(max(0f, cls[index] * obj[index]))
-                        if (score < scoreThreshold) continue
+                        for (index in 0 until count) {
+                            val score = sqrt(max(0f, cls[index] * obj[index]))
+                            if (score < scoreThreshold) continue
 
-                        val row = index / columns
-                        val col = index % columns
-                        val boxOffset = index * 4
-                        val keypointOffset = index * 10
-                        if (boxOffset + 3 >= boxes.size || keypointOffset + 9 >= keypoints.size) continue
+                            val row = index / columns
+                            val col = index % columns
+                            val boxOffset = index * 4
+                            val keypointOffset = index * 10
+                            if (boxOffset + 3 >= boxes.size || keypointOffset + 9 >= keypoints.size) continue
 
-                        val centerX = (boxes[boxOffset] + col) * stride
-                        val centerY = (boxes[boxOffset + 1] + row) * stride
-                        val width = exp(boxes[boxOffset + 2].coerceIn(-10f, 10f)) * stride
-                        val height = exp(boxes[boxOffset + 3].coerceIn(-10f, 10f)) * stride
-                        val scaleX = bitmap.width.toFloat() / detectorWidth
-                        val scaleY = bitmap.height.toFloat() / detectorHeight
-                        val landmarks = List(5) { point ->
-                            PointF(
-                                (keypoints[keypointOffset + point * 2] + col) * stride * scaleX,
-                                (keypoints[keypointOffset + point * 2 + 1] + row) * stride * scaleY
+                            val centerX = (boxes[boxOffset] + col) * stride
+                            val centerY = (boxes[boxOffset + 1] + row) * stride
+                            val width = exp(boxes[boxOffset + 2].coerceIn(-10f, 10f)) * stride
+                            val height = exp(boxes[boxOffset + 3].coerceIn(-10f, 10f)) * stride
+                            val scaleX = bitmap.width.toFloat() / detectorWidth
+                            val scaleY = bitmap.height.toFloat() / detectorHeight
+                            val landmarks = List(5) { point ->
+                                PointF(
+                                    (keypoints[keypointOffset + point * 2] + col) * stride * scaleX,
+                                    (keypoints[keypointOffset + point * 2 + 1] + row) * stride * scaleY
+                                )
+                            }
+                            candidates += YuNetFace(
+                                RectF(
+                                    (centerX - width / 2f) * scaleX,
+                                    (centerY - height / 2f) * scaleY,
+                                    (centerX + width / 2f) * scaleX,
+                                    (centerY + height / 2f) * scaleY
+                                ),
+                                landmarks,
+                                score
                             )
                         }
-                        candidates += YuNetFace(
-                            RectF(
-                                (centerX - width / 2f) * scaleX,
-                                (centerY - height / 2f) * scaleY,
-                                (centerX + width / 2f) * scaleX,
-                                (centerY + height / 2f) * scaleY
-                            ),
-                            landmarks,
-                            score
-                        )
                     }
                 }
             }
+            return nonMaximumSuppression(candidates)
+        } finally {
+            if (resized !== bitmap) resized.recycle()
         }
-        if (resized !== bitmap) resized.recycle()
-        return nonMaximumSuppression(candidates)
     }
 
     fun assessQuality(bitmap: Bitmap, face: YuNetFace, strict: Boolean): FaceQuality {
@@ -175,21 +178,24 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         } else {
             Bitmap.createScaledBitmap(alignedFace, SFACE_SIZE, SFACE_SIZE, true)
         }
-        // This mirrors OpenCV FaceRecognizerSF: blobFromImage(..., scale=1,
-        // mean=0, swapRB=true). Normalization is part of the SFace ONNX graph.
-        val input = bitmapToNchw(resized, rgbOrder = true)
-        val raw: FloatArray
-        OnnxTensor.createTensor(
-            environment,
-            FloatBuffer.wrap(input),
-            longArrayOf(1, 3, SFACE_SIZE.toLong(), SFACE_SIZE.toLong())
-        ).use { tensor ->
-            recognizer.run(mapOf(recognizerInput to tensor)).use { output ->
-                raw = flatten(output[0].value)
+        try {
+            // This mirrors OpenCV FaceRecognizerSF: blobFromImage(..., scale=1,
+            // mean=0, swapRB=true). Normalization is part of the SFace ONNX graph.
+            val input = bitmapToNchw(resized, rgbOrder = true)
+            val raw: FloatArray
+            OnnxTensor.createTensor(
+                environment,
+                FloatBuffer.wrap(input),
+                longArrayOf(1, 3, SFACE_SIZE.toLong(), SFACE_SIZE.toLong())
+            ).use { tensor ->
+                recognizer.run(mapOf(recognizerInput to tensor)).use { output ->
+                    raw = flatten(output[0].value)
+                }
             }
+            return l2Normalize(raw)
+        } finally {
+            if (resized !== alignedFace) resized.recycle()
         }
-        if (resized !== alignedFace) resized.recycle()
-        return l2Normalize(raw)
     }
 
     fun embedding(bitmap: Bitmap, face: YuNetFace): FloatArray {

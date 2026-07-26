@@ -169,6 +169,7 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
     override fun close() {
         closed = true
         pending = null
+        mainHandler.removeCallbacksAndMessages(null)
         synchronized(callbacks) {
             callbacks.clear()
         }
@@ -181,8 +182,50 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
         val onComplete: (() -> Unit)?
     )
 
-    private companion object {
+    companion object {
         const val TAG = "VoiceGuidance"
         const val OUTCOME_GUIDANCE_PAUSE_MS = 2_200L
+
+        /**
+         * Converts database-style names such as "GOURAV KUMAR" or
+         * "G O U R A V" into natural TTS text without changing the UI value.
+         */
+        fun speakableName(rawName: String): String {
+            val cleaned = rawName
+                .trim()
+                .replace(Regex("[._-]+"), " ")
+                .replace(Regex("\\s+"), " ")
+            if (cleaned.isBlank()) return "User"
+
+            val output = mutableListOf<String>()
+            val separatedLetters = StringBuilder()
+
+            fun flushSeparatedLetters() {
+                if (separatedLetters.isEmpty()) return
+                output += separatedLetters.toString().replaceFirstChar { character ->
+                    character.titlecase(Locale.getDefault())
+                }
+                separatedLetters.clear()
+            }
+
+            cleaned.split(" ").forEach { token ->
+                if (token.length == 1 && token[0].isLetter()) {
+                    separatedLetters.append(token[0].lowercaseChar())
+                } else {
+                    flushSeparatedLetters()
+                    output += token.toNaturalCase()
+                }
+            }
+            flushSeparatedLetters()
+            return output.joinToString(" ")
+        }
+
+        private fun String.toNaturalCase(): String {
+            val letters = filter(Char::isLetter)
+            if (letters.isEmpty() || letters.any(Char::isLowerCase)) return this
+            return lowercase(Locale.getDefault()).replaceFirstChar { character ->
+                character.titlecase(Locale.getDefault())
+            }
+        }
     }
 }

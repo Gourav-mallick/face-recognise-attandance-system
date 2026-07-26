@@ -10,7 +10,7 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.math.*
 
-class FaceNetHelper(context: Context) {
+class FaceNetHelper(context: Context) : AutoCloseable {
     private val interpreter: Interpreter
 
     init {
@@ -20,12 +20,17 @@ class FaceNetHelper(context: Context) {
     }
 
     private fun loadModelFile(assetManager: AssetManager, filename: String): MappedByteBuffer {
-        val fileDescriptor = assetManager.openFd(filename)
-        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
-        val fileChannel = inputStream.channel
-        val startOffset = fileDescriptor.startOffset
-        val declaredLength = fileDescriptor.declaredLength
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+        return assetManager.openFd(filename).use { fileDescriptor ->
+            FileInputStream(fileDescriptor.fileDescriptor).use { inputStream ->
+                inputStream.channel.use { fileChannel ->
+                    fileChannel.map(
+                        FileChannel.MapMode.READ_ONLY,
+                        fileDescriptor.startOffset,
+                        fileDescriptor.declaredLength
+                    )
+                }
+            }
+        }
     }
 
     fun getFaceEmbedding(bitmap: Bitmap): FloatArray {
@@ -39,21 +44,29 @@ class FaceNetHelper(context: Context) {
         val resized = Bitmap.createScaledBitmap(bitmap, 160, 160, true)
         val input = Array(1) { Array(160) { Array(160) { FloatArray(3) } } }
 
-        for (y in 0 until 160) {
-            for (x in 0 until 160) {
-                val pixel = resized.getPixel(x, y)
+        try {
+            for (y in 0 until 160) {
+                for (x in 0 until 160) {
+                    val pixel = resized.getPixel(x, y)
 
-                val r = (Color.red(pixel) - 127.5f) / 128f
-                val g = (Color.green(pixel) - 127.5f) / 128f
-                val b = (Color.blue(pixel) - 127.5f) / 128f
+                    val r = (Color.red(pixel) - 127.5f) / 128f
+                    val g = (Color.green(pixel) - 127.5f) / 128f
+                    val b = (Color.blue(pixel) - 127.5f) / 128f
 
-                input[0][y][x][0] = r
-                input[0][y][x][1] = g
-                input[0][y][x][2] = b
+                    input[0][y][x][0] = r
+                    input[0][y][x][1] = g
+                    input[0][y][x][2] = b
+                }
             }
+        } finally {
+            if (resized !== bitmap) resized.recycle()
         }
 
         return input
+    }
+
+    override fun close() {
+        interpreter.close()
     }
 
     // Normalize embedding to unit length

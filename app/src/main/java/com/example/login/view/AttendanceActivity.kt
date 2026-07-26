@@ -21,7 +21,6 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.String
-import kotlin.concurrent.thread
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.view.View
@@ -32,8 +31,6 @@ import com.example.login.utility.AutoSyncWorker
 import java.util.concurrent.TimeUnit
 import android.os.SystemClock
 import android.net.ConnectivityManager
-import android.os.Handler
-import android.os.Looper
 import com.example.login.db.entity.ActiveClassCycle
 import android.Manifest
 import android.content.pm.PackageManager
@@ -41,6 +38,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 
@@ -215,11 +213,12 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             dialog.show()
 
             // 🕒 Auto-dismiss after 3 seconds (3000 ms)
-            Handler(Looper.getMainLooper()).postDelayed({
+            lifecycleScope.launch {
+                delay(2_000)
                 if (dialog.isShowing) {
                     dialog.dismiss()
                 }
-            }, 2000)
+            }
 
             Toast.makeText(
                 this@AttendanceActivity,
@@ -379,11 +378,12 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 dialog.show()
 
                 // 🕒 Auto-dismiss after 3 seconds
-                Handler(Looper.getMainLooper()).postDelayed({
+                lifecycleScope.launch {
+                    delay(2_000)
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                }, 2000)
+                }
 
                 Toast.makeText(
                     this@AttendanceActivity,
@@ -579,9 +579,12 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             return
         }
 
-        thread {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val connection = URL("https://google.com").openConnection()
+                val connection = URL("https://google.com").openConnection().apply {
+                    connectTimeout = 5_000
+                    readTimeout = 5_000
+                }
                 connection.connect()
                 val networkTime = Date(connection.date)
                 val deviceTime = Date(System.currentTimeMillis())
@@ -595,7 +598,9 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
                 if (diffMinutes > 2) {
                     isTimeValid = false
-                    runOnUiThread { showTimeMismatchDialog() }
+                    withContext(Dispatchers.Main) {
+                        if (!isFinishing && !isDestroyed) showTimeMismatchDialog()
+                    }
                 } else {
                     isTimeValid = true
                 }

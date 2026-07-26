@@ -45,8 +45,10 @@ import kotlinx.coroutines.withContext
 
 class ClassroomScanFragment : Fragment() {
 
-    private lateinit var tvSyncStatus: LinearLayout
-    private lateinit var tvVersion:TextView
+    private var _tvSyncStatus: LinearLayout? = null
+    private val tvSyncStatus get() = requireNotNull(_tvSyncStatus)
+    private var syncUpdateReceiver: BroadcastReceiver? = null
+    private var syncReceiverContext: Context? = null
 
 
 //    private val updateReceiver = object : BroadcastReceiver() {
@@ -69,7 +71,7 @@ class ClassroomScanFragment : Fragment() {
     ) = inflater.inflate(R.layout.fragment_classroom_scan, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        tvSyncStatus = view.findViewById(R.id.tvSyncStatus)
+        _tvSyncStatus = view.findViewById(R.id.tvSyncStatus)
         //val tvUnsubmittedCount = view.findViewById<TextView>(R.id.tvUnsubmittedCount)
         val prefs = requireContext().getSharedPreferences("SyncPrefs", Context.MODE_PRIVATE)
         val tvLastSync = view.findViewById<TextView>(R.id.tvLastSync)
@@ -178,12 +180,15 @@ class ClassroomScanFragment : Fragment() {
             }
         }
         val filter = IntentFilter("SYNC_UPDATE")
+        val receiverContext = requireContext().applicationContext
         @Suppress("UnspecifiedRegisterReceiverFlag")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requireContext().registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            receiverContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            requireContext().registerReceiver(receiver, filter)
+            receiverContext.registerReceiver(receiver, filter)
         }
+        syncUpdateReceiver = receiver
+        syncReceiverContext = receiverContext
 
 
         // show offline hours
@@ -397,11 +402,17 @@ class ClassroomScanFragment : Fragment() {
 
 
     override fun onDestroyView() {
-        super.onDestroyView()
-        try {
-           // requireContext().unregisterReceiver(updateReceiver)
-        } catch (_: Exception) {
+        syncUpdateReceiver?.let { receiver ->
+            try {
+                syncReceiverContext?.unregisterReceiver(receiver)
+            } catch (_: IllegalArgumentException) {
+                // Receiver was already unregistered.
+            }
         }
+        syncUpdateReceiver = null
+        syncReceiverContext = null
+        _tvSyncStatus = null
+        super.onDestroyView()
     }
 
     private fun showAuthDialogForSync() {
@@ -480,7 +491,7 @@ class ClassroomScanFragment : Fragment() {
 
         progressDialog.show()
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             // Simulate loading delay for 3 seconds (visual feedback)
             delay(3000)
 
@@ -1080,4 +1091,3 @@ class ClassroomScanFragment : Fragment() {
 
 
 }
-

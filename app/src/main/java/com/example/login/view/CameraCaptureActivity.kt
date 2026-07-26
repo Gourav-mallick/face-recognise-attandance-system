@@ -104,9 +104,11 @@ class CameraCaptureActivity : AppCompatActivity() {
             imageProxy.close()
             return
         }
+        var frameToRecycle: Bitmap? = null
         try {
             val upright = imageProxyToBitmapUpright(imageProxy)
             val frame = mirrorBitmap(upright)
+            frameToRecycle = frame
             if (upright !== frame) upright.recycle()
             val liveness = livenessVerifier.update(frame)
             val faces = engine.detect(frame)
@@ -126,7 +128,6 @@ class CameraCaptureActivity : AppCompatActivity() {
                     setGuide(Color.YELLOW, "Place your face inside the oval", "Searching for face…")
                     voiceGuidance.guide("Face in oval", "registration_no_face")
                 }
-                frame.recycle()
                 return
             }
             faceMissingSince = 0L
@@ -181,13 +182,13 @@ class CameraCaptureActivity : AppCompatActivity() {
             ) {
                 captureEnrollmentObservation(frame, face, now)
             }
-            frame.recycle()
         } catch (error: Exception) {
             Log.e("CameraCapture", "YuNet/SFace frame processing failed", error)
             runOnUiThread {
                 tvClass.text = "Face scanner unavailable — please try again"
             }
         } finally {
+            frameToRecycle?.recycle()
             imageProxy.close()
         }
     }

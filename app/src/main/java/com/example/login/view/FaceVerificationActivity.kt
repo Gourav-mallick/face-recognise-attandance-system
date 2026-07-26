@@ -238,12 +238,13 @@ class FaceVerificationActivity : ComponentActivity() {
 
         if (similarity >= YuNetSFaceEngine.COSINE_THRESHOLD) {
             Toast.makeText(this, "Face verified successfully", Toast.LENGTH_SHORT).show()
+            val spokenName = VoiceGuidance.speakableName(studentName)
             setResult(
                 Activity.RESULT_OK,
                 Intent().putExtra("VERIFIED_STUDENT_ID", studentId)
             )
             voiceGuidance.announceThen(
-                message = "Thank you, $studentName. Verified.",
+                message = "Thank you, $spokenName. Verified.",
                 key = "verification_success"
             ) {
                 if (!isFinishing) finish()

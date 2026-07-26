@@ -35,6 +35,7 @@ import com.example.login.ml.YuNetFace
 import com.example.login.ml.YuNetSFaceEngine
 import com.example.login.utility.VoiceGuidance
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -136,10 +137,12 @@ class FaceRecogniseActivity : AppCompatActivity() {
         }
         lastProcessTime = now
 
+        var frameToRecycle: Bitmap? = null
         try {
             val brightness = averageBrightness(imageProxy)
             val upright = imageProxyToBitmapUpright(imageProxy)
             val frame = mirrorBitmap(upright)
+            frameToRecycle = frame
             upright.recycle()
             val liveness = livenessVerifier.update(frame)
             val face = engine.detect(frame).maxByOrNull { it.bounds.width() * it.bounds.height() }
@@ -157,7 +160,6 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         "recognition_no_face"
                     )
                 }
-                frame.recycle()
                 return
             }
 
@@ -197,7 +199,6 @@ class FaceRecogniseActivity : AppCompatActivity() {
                     verifyFace(embedding)
                 }
             }
-            frame.recycle()
         } catch (error: Exception) {
             Log.e("FaceRecognise", "YuNet/SFace frame processing failed", error)
             runOnUiThread {
@@ -210,6 +211,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 resetAfterDelay()
             }
         } finally {
+            frameToRecycle?.recycle()
             imageProxy.close()
         }
     }
@@ -250,8 +252,9 @@ class FaceRecogniseActivity : AppCompatActivity() {
         tvUserName.text = user.name
         tvUserRole.text = user.role
         tvExtraInfo.text = extra
+        val spokenName = VoiceGuidance.speakableName(user.name)
         voiceGuidance.announce(
-            "${user.name} verified.",
+            "$spokenName verified.",
             "recognition_success:${user.id}"
         )
         androidx.appcompat.app.AlertDialog.Builder(this)
@@ -293,7 +296,10 @@ class FaceRecogniseActivity : AppCompatActivity() {
     }
 
     private fun resetAfterDelay() {
-        tvMatchStatus.postDelayed({ resetScanner() }, 1800)
+        lifecycleScope.launch {
+            delay(1_800)
+            resetScanner()
+        }
     }
 
     private fun resetScanner() {
@@ -351,7 +357,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                     tvSelectClass.text = classNames[position]
                     updateMatchingCache()
                     voiceGuidance.announce(
-                        "${classNames[position]} selected.",
+                        "Class selected.",
                         "recognition_class:${classNames[position]}"
                     )
                     dismiss()

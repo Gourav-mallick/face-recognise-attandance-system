@@ -23,6 +23,7 @@ import com.example.login.ml.YuNetFace
 import com.example.login.ml.YuNetSFaceEngine
 import com.example.login.utility.VoiceGuidance
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -35,13 +36,20 @@ import kotlin.math.min
 
 class TeacherScanFragment : Fragment() {
 
-    private lateinit var viewFinder: androidx.camera.view.PreviewView
-    private lateinit var faceGuide: View
-    private lateinit var landmarkOverlay: FaceLandmarkOverlay
-    private lateinit var tvLightWarning: TextView
-    private lateinit var tvClassCard: TextView
-    private lateinit var tvStart: TextView
-    private lateinit var progress: ProgressBar
+    private var _viewFinder: androidx.camera.view.PreviewView? = null
+    private val viewFinder get() = requireNotNull(_viewFinder)
+    private var _faceGuide: View? = null
+    private val faceGuide get() = requireNotNull(_faceGuide)
+    private var _landmarkOverlay: FaceLandmarkOverlay? = null
+    private val landmarkOverlay get() = requireNotNull(_landmarkOverlay)
+    private var _tvLightWarning: TextView? = null
+    private val tvLightWarning get() = requireNotNull(_tvLightWarning)
+    private var _tvClassCard: TextView? = null
+    private val tvClassCard get() = requireNotNull(_tvClassCard)
+    private var _tvStart: TextView? = null
+    private val tvStart get() = requireNotNull(_tvStart)
+    private var _progress: ProgressBar? = null
+    private val progress get() = requireNotNull(_progress)
 
     private lateinit var faceEngine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
@@ -81,13 +89,13 @@ class TeacherScanFragment : Fragment() {
             = inflater.inflate(R.layout.fragment_teacher_scan, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        viewFinder = view.findViewById(R.id.viewFinder)
-        faceGuide = view.findViewById(R.id.faceGuide)
-        landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
-        tvLightWarning = view.findViewById(R.id.tvLightWarning)
-        tvClassCard = view.findViewById(R.id.tvClassCard)
-        tvStart = view.findViewById(R.id.tvStart)
-        progress = ProgressBar(requireContext()).apply { visibility = View.GONE }
+        _viewFinder = view.findViewById(R.id.viewFinder)
+        _faceGuide = view.findViewById(R.id.faceGuide)
+        _landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
+        _tvLightWarning = view.findViewById(R.id.tvLightWarning)
+        _tvClassCard = view.findViewById(R.id.tvClassCard)
+        _tvStart = view.findViewById(R.id.tvStart)
+        _progress = ProgressBar(requireContext()).apply { visibility = View.GONE }
         (view as ViewGroup).addView(progress)
 
         tvClassCard.text = "Class-Room : ${arguments?.getString(ARG_CLASSID) ?: "-"}"
@@ -156,7 +164,7 @@ class TeacherScanFragment : Fragment() {
             if (face == null) {
                 faceStableStart = 0L
                 prevFace = null
-                activity?.runOnUiThread {
+                runOnViewThread {
                     landmarkOverlay.clear()
                     faceGuide.background.setTint(Color.YELLOW)
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
@@ -175,7 +183,7 @@ class TeacherScanFragment : Fragment() {
             else if (faceStableStart == 0L) faceStableStart = now
             prevFace = face
 
-            activity?.runOnUiThread {
+            runOnViewThread {
                 landmarkOverlay.show(face.landmarks, prepared.width, prepared.height)
                 faceGuide.background.setTint(
                     when {
@@ -204,7 +212,7 @@ class TeacherScanFragment : Fragment() {
                 !isVerifying
             ) {
                 isVerifying = true
-                activity?.runOnUiThread { progress.visibility = View.VISIBLE }
+                runOnViewThread { progress.visibility = View.VISIBLE }
                 val embedding = faceEngine.embedding(prepared, face)
                 recognizeTeacher(embedding)
                 faceStableStart = 0L
@@ -212,7 +220,7 @@ class TeacherScanFragment : Fragment() {
         } catch (error: Exception) {
             Log.e("TeacherScan", "YuNet/SFace processing failed", error)
             faceStableStart = 0L
-            activity?.runOnUiThread {
+            runOnViewThread {
                 landmarkOverlay.clear()
                 tvStart.text = "Face scanner unavailable — retrying"
             }
@@ -229,8 +237,15 @@ class TeacherScanFragment : Fragment() {
             kotlin.math.abs(face.bounds.centerY() - previous.bounds.centerY()) < tolerance
     }
 
+    private fun runOnViewThread(action: () -> Unit) {
+        val host = activity ?: return
+        host.runOnUiThread {
+            if (_viewFinder != null) action()
+        }
+    }
+
     private fun recognizeTeacher(embedding: FloatArray) {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val db = AppDatabase.getDatabase(requireContext())
             val teachers = db.teachersDao().getAllTeachers() // has embedding String? field
             if (teachers.isEmpty()) {
@@ -322,8 +337,9 @@ class TeacherScanFragment : Fragment() {
                         sessionDialogShown = true
                         scanningPaused = true  // stop analyzer while dialog is open
 
+                        val spokenName = VoiceGuidance.speakableName(bestName!!)
                         voiceGuidance.announce(
-                            "$bestName verified.",
+                            "$spokenName verified.",
                             "teacher_verified:$bestId"
                         )
                         showStartStudentAttendanceDialog(bestId!!, bestName!!)
@@ -348,10 +364,11 @@ class TeacherScanFragment : Fragment() {
 
                         // OPTIONAL: stop scanning for 3 seconds
                         isVerifying = true
-                        view?.postDelayed({
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            delay(3_000)
                             isVerifying = false
                             failCount = 0   // reset so next teacher can try
-                        }, 3000)
+                        }
 
                         return@withContext
                     }
@@ -395,7 +412,9 @@ class TeacherScanFragment : Fragment() {
         val rotation = imageProxy.imageInfo.rotationDegrees.toFloat()
         if (rotation == 0f) return raw
         val m = Matrix().apply { postRotate(rotation) }
-        return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+        val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+        if (upright !== raw) raw.recycle()
+        return upright
     }
 
     private fun yuv420ToNv21(imageProxy: ImageProxy): ByteArray {
@@ -433,6 +452,13 @@ class TeacherScanFragment : Fragment() {
         faceEngine.close()
         livenessVerifier.close()
         voiceGuidance.close()
+        _viewFinder = null
+        _faceGuide = null
+        _landmarkOverlay = null
+        _tvLightWarning = null
+        _tvClassCard = null
+        _tvStart = null
+        _progress = null
         super.onDestroyView()
         if (!sessionCreated) {
             // Clear saved screen only if no session was started

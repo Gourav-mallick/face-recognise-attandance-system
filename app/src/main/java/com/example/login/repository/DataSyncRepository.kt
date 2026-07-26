@@ -15,7 +15,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 
-class DataSyncRepository(private val context: Context) {
+class DataSyncRepository(context: Context) {
+    private val context = context.applicationContext
 
     private val TAG = "DataSyncRepository"
 

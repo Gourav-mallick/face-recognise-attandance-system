@@ -19,6 +19,7 @@ import kotlin.text.trimIndent
 class SplashActivity : AppCompatActivity() {
 
     private lateinit var logo: ImageView
+    private val navigationHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,9 +54,15 @@ class SplashActivity : AppCompatActivity() {
 
     // Delay navigation to next activity
     private fun navigateToNextScreenWithDelay() {
-        Handler(Looper.getMainLooper()).postDelayed({
+        navigationHandler.postDelayed({
             navigateToNextScreen()
         }, 500)
+    }
+
+    override fun onDestroy() {
+        navigationHandler.removeCallbacksAndMessages(null)
+        logo.clearAnimation()
+        super.onDestroy()
     }
 
     // Navigate to next screen

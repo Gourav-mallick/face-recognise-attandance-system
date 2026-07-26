@@ -19,6 +19,7 @@ class CheckConfigActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var layoutContainer: ConstraintLayout
+    private val navigationHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +49,7 @@ class CheckConfigActivity : AppCompatActivity() {
                     !password.isNullOrEmpty() && !instituteId.isNullOrEmpty() -> {
                 statusText.text = "Configuration found! Redirecting..."
                 progressBar.visibility = View.VISIBLE
-                Handler(Looper.getMainLooper()).postDelayed({
+                navigationHandler.postDelayed({
                     startActivity(Intent(this, AttendanceActivity::class.java))
                     finish()
                 }, 800)
@@ -57,12 +58,16 @@ class CheckConfigActivity : AppCompatActivity() {
             else -> {
                 statusText.text = "Configuration missing. Redirecting to Login..."
                 progressBar.visibility = View.VISIBLE
-                Handler(Looper.getMainLooper()).postDelayed({
+                navigationHandler.postDelayed({
                     startActivity(Intent(this, LoginActivity::class.java))
                     finish()
                 }, 800)
             }
         }
     }
-}
 
+    override fun onDestroy() {
+        navigationHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+}

@@ -23,6 +23,7 @@ import com.example.login.ml.YuNetFace
 import com.example.login.ml.YuNetSFaceEngine
 import com.example.login.utility.VoiceGuidance
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -32,17 +33,26 @@ import java.util.concurrent.Executors
 class StudentScanFragment : Fragment() {
 
     // Camera UI components
-    private lateinit var viewFinder: PreviewView
-    private lateinit var faceGuide: View
-    private lateinit var landmarkOverlay: FaceLandmarkOverlay
-    private lateinit var tvLightWarning: TextView
+    private var _viewFinder: PreviewView? = null
+    private val viewFinder get() = requireNotNull(_viewFinder)
+    private var _faceGuide: View? = null
+    private val faceGuide get() = requireNotNull(_faceGuide)
+    private var _landmarkOverlay: FaceLandmarkOverlay? = null
+    private val landmarkOverlay get() = requireNotNull(_landmarkOverlay)
+    private var _tvLightWarning: TextView? = null
+    private val tvLightWarning get() = requireNotNull(_tvLightWarning)
 
     // Info UI components
-    private lateinit var tvTeacherName: TextView
-    private lateinit var tvPresentCount: TextView
-    private lateinit var tvLastStudent: TextView
-    private lateinit var tvInstruction: TextView
-    private lateinit var tvLatestCardTapStudentLabel: TextView
+    private var _tvTeacherName: TextView? = null
+    private val tvTeacherName get() = requireNotNull(_tvTeacherName)
+    private var _tvPresentCount: TextView? = null
+    private val tvPresentCount get() = requireNotNull(_tvPresentCount)
+    private var _tvLastStudent: TextView? = null
+    private val tvLastStudent get() = requireNotNull(_tvLastStudent)
+    private var _tvInstruction: TextView? = null
+    private val tvInstruction get() = requireNotNull(_tvInstruction)
+    private var _tvLatestCardTapStudentLabel: TextView? = null
+    private val tvLatestCardTapStudentLabel get() = requireNotNull(_tvLatestCardTapStudentLabel)
     private var prevFace: YuNetFace? = null
 
 
@@ -96,16 +106,16 @@ class StudentScanFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 
         // Bind UI
-        viewFinder = view.findViewById(R.id.viewFinder)
-        faceGuide = view.findViewById(R.id.faceGuide)
-        landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
-        tvLightWarning = view.findViewById(R.id.tvLightWarning)
+        _viewFinder = view.findViewById(R.id.viewFinder)
+        _faceGuide = view.findViewById(R.id.faceGuide)
+        _landmarkOverlay = view.findViewById(R.id.landmarkOverlay)
+        _tvLightWarning = view.findViewById(R.id.tvLightWarning)
 
-        tvTeacherName = view.findViewById(R.id.tvTeacherName)
-        tvPresentCount = view.findViewById(R.id.tvPresentCount)
-        tvLastStudent = view.findViewById(R.id.tvLastStudent)
-        tvInstruction = view.findViewById(R.id.tvInstruction)
-        tvLatestCardTapStudentLabel = view.findViewById(R.id.tvLatestCardTapStudentLabel)
+        _tvTeacherName = view.findViewById(R.id.tvTeacherName)
+        _tvPresentCount = view.findViewById(R.id.tvPresentCount)
+        _tvLastStudent = view.findViewById(R.id.tvLastStudent)
+        _tvInstruction = view.findViewById(R.id.tvInstruction)
+        _tvLatestCardTapStudentLabel = view.findViewById(R.id.tvLatestCardTapStudentLabel)
 
         teacherNameArg = arguments?.getString(ARG_TEACHER, "") ?: ""
         sessionIdArg = arguments?.getString(ARG_SESSION_ID, "") ?: ""
@@ -137,6 +147,15 @@ class StudentScanFragment : Fragment() {
         faceEngine.close()
         livenessVerifier.close()
         voiceGuidance.close()
+        _viewFinder = null
+        _faceGuide = null
+        _landmarkOverlay = null
+        _tvLightWarning = null
+        _tvTeacherName = null
+        _tvPresentCount = null
+        _tvLastStudent = null
+        _tvInstruction = null
+        _tvLatestCardTapStudentLabel = null
         super.onDestroyView()
     }
 
@@ -205,7 +224,7 @@ class StudentScanFragment : Fragment() {
             if (face == null) {
                 faceStableStart = 0L
                 prevFace = null
-                activity?.runOnUiThread {
+                runOnViewThread {
                     landmarkOverlay.clear()
                     faceGuide.background.setTint(Color.YELLOW)
                     tvInstruction.text = "Place student face inside the oval"
@@ -224,7 +243,7 @@ class StudentScanFragment : Fragment() {
             else if (faceStableStart == 0L) faceStableStart = now
             prevFace = face
 
-            activity?.runOnUiThread {
+            runOnViewThread {
                 landmarkOverlay.show(face.landmarks, frame.width, frame.height)
                 faceGuide.background.setTint(
                     when {
@@ -260,7 +279,7 @@ class StudentScanFragment : Fragment() {
         } catch (e: Exception) {
             Log.e("StudentScan", "YuNet/SFace processing failed", e)
             faceStableStart = 0L
-            activity?.runOnUiThread {
+            runOnViewThread {
                 landmarkOverlay.clear()
                 tvInstruction.text = "Face scanner unavailable — retrying"
             }
@@ -277,11 +296,18 @@ class StudentScanFragment : Fragment() {
             kotlin.math.abs(face.bounds.centerY() - previous.bounds.centerY()) < tolerance
     }
 
+    private fun runOnViewThread(action: () -> Unit) {
+        val host = activity ?: return
+        host.runOnUiThread {
+            if (_viewFinder != null) action()
+        }
+    }
+
     // -----------------------------------------------------------------------
     // FACE MATCHING LOGIC ( use teachers.embedding + students.embedding)
     // -----------------------------------------------------------------------
     private fun verifyFace(faceEmbedding: FloatArray) {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val db = AppDatabase.getDatabase(requireContext())
 
             val session = db.sessionDao().getSessionById(sessionIdArg)
@@ -353,10 +379,11 @@ class StudentScanFragment : Fragment() {
                         isVerifying = true
 
                         // Reset after 3 seconds so next student can try
-                        view?.postDelayed({
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            delay(1_000)
                             isVerifying = false
                             studentFailCount = 0
-                        }, 1000)
+                        }
 
                         done()
                         return@withContext
@@ -377,7 +404,7 @@ class StudentScanFragment : Fragment() {
                     if (bestMatchId == teacherId) {
                         pauseCameraForDialog()
                         // Check if there are any students marked present in this session
-                        lifecycleScope.launch(Dispatchers.IO) {
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
                             try {
                                 val db = AppDatabase.getDatabase(requireContext())
                                 val attendanceCount =
@@ -491,16 +518,17 @@ class StudentScanFragment : Fragment() {
 
                 // Mark attendance through AttendanceActivity logic (preserve everything)
                 (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent) { result ->
+                    val spokenName = VoiceGuidance.speakableName(matchedStudent.studentName)
                     when (result) {
                         AttendanceActivity.StudentAttendanceResult.MARKED ->
                             voiceGuidance.announce(
-                                "${matchedStudent.studentName}, attendance marked.",
+                                "$spokenName, attendance marked.",
                                 "student_marked:${matchedStudent.studentId}"
                             )
 
                         AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
                             voiceGuidance.announce(
-                                "${matchedStudent.studentName}, already marked.",
+                                "$spokenName, already marked.",
                                 "student_already_marked:${matchedStudent.studentId}"
                             )
 
@@ -532,7 +560,7 @@ class StudentScanFragment : Fragment() {
     }
 
     private fun updatePresentCountUI() {
-        lifecycleScope.launch(Dispatchers.IO) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(requireContext())
             // Total count of students marked
             val count = db.attendanceDao().getAttendancesForSession(sessionIdArg).size
@@ -603,7 +631,9 @@ class StudentScanFragment : Fragment() {
         if (rotation == 0f) return raw
 
         val m = Matrix().apply { postRotate(rotation) }
-        return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+        val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+        if (upright !== raw) raw.recycle()
+        return upright
     }
 
     private fun yuv420ToNv21(imageProxy: ImageProxy): ByteArray {
@@ -668,7 +698,7 @@ class StudentScanFragment : Fragment() {
     }
 
     private fun discardSessionAndExit(sessionId: String) {
-        lifecycleScope.launch(Dispatchers.IO) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(requireContext())
             db.attendanceDao().deleteAttendanceForSession(sessionId)
             db.sessionDao().deleteSessionById(sessionId)
