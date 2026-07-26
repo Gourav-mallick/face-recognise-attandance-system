@@ -81,7 +81,7 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
             key == lastGuidanceKey
         ) return
         lastGuidanceKey = key
-        enqueue(message, null)
+        enqueue(shortGuidance(message), null)
     }
 
     /** Interrupt guidance to announce a recognition or attendance outcome. */
@@ -123,6 +123,24 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
             return
         }
         speakInternal(message, onComplete)
+    }
+
+    private fun shortGuidance(message: String): String {
+        val normalized = message.lowercase(Locale.US)
+        return when {
+            "blink" in normalized -> "Blink once"
+            "open your eyes" in normalized || "eyes open" in normalized -> "Open eyes"
+            "move closer" in normalized -> "Move closer"
+            "look straight" in normalized -> "Look at camera"
+            "inside the oval" in normalized ||
+                "inside the guide" in normalized ||
+                "whole face" in normalized -> "Face in oval"
+            "hold still" in normalized ||
+                "blurry" in normalized ||
+                "landmarks locked" in normalized -> "Hold still"
+            "unable" in normalized || "unavailable" in normalized -> "Try again"
+            else -> message
+        }
     }
 
     private fun speakInternal(message: String, onComplete: (() -> Unit)?) {

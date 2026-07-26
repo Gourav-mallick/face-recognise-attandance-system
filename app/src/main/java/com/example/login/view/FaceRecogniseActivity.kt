@@ -100,7 +100,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         setPausedUi()
         voiceGuidance.guide(
-            "Select students or teachers to begin face recognition",
+            "Select user type",
             "recognition_select_type"
         )
         setupSelectors()
@@ -204,7 +204,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 tvMatchStatus.text = "Recognition unavailable"
                 tvExtraInfo.text = "Please reopen the scanner"
                 voiceGuidance.announce(
-                    "Face recognition is temporarily unavailable. Please reopen the scanner.",
+                    "Scanner unavailable.",
                     "recognition_unavailable"
                 )
                 resetAfterDelay()
@@ -251,7 +251,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
         tvUserRole.text = user.role
         tvExtraInfo.text = extra
         voiceGuidance.announce(
-            "Thank you, ${user.name}. Face verified as ${user.role}.",
+            "${user.name} verified.",
             "recognition_success:${user.id}"
         )
         androidx.appcompat.app.AlertDialog.Builder(this)
@@ -280,12 +280,12 @@ class FaceRecogniseActivity : AppCompatActivity() {
         tvExtraInfo.text = ""
         if (cachedUsersToMatch.isEmpty()) {
             voiceGuidance.announce(
-                "No registered faces were found for this selection.",
+                "No registered faces.",
                 "recognition_no_registered_faces"
             )
         } else {
             voiceGuidance.announce(
-                "Face not matched. Please blink once and try again.",
+                "No match. Try again.",
                 "recognition_not_matched"
             )
         }
@@ -331,7 +331,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                     layoutClassSelector.visibility = if (types[position] == "Teachers") View.GONE else View.VISIBLE
                     resetScanner()
                     voiceGuidance.guide(
-                        "${types[position]} selected. Place your face inside the oval.",
+                        "${types[position]} selected.",
                         "recognition_type:${types[position]}"
                     )
                     updateMatchingCache()
@@ -419,14 +419,14 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         tvScreenHint.text = "Choose another user type or class"
                         tvBottomHint.text = "No registered faces found for this selection"
                         voiceGuidance.guide(
-                            "No registered faces found for this selection",
+                            "No registered faces",
                             "recognition_cache_empty:${type}:${selectedClass}"
                         )
                     } else {
                         scanningEnabled = true
                         resetScanner()
                         voiceGuidance.guide(
-                            "Ready. Place your face inside the oval",
+                            "Ready",
                             "recognition_cache_ready:${type}:${selectedClass}"
                         )
                     }
@@ -437,7 +437,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     scanningEnabled = false
                     voiceGuidance.announce(
-                        "Unable to load registered faces. Please try the selection again.",
+                        "Load failed. Try again.",
                         "recognition_cache_error"
                     )
                 }

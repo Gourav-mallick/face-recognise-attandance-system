@@ -211,7 +211,7 @@ class StudentScanFragment : Fragment() {
                     tvInstruction.text = "Place student face inside the oval"
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
                     voiceGuidance.guide(
-                        "Student, place your face inside the oval",
+                        "Face in oval",
                         "student_no_face"
                     )
                 }
@@ -345,7 +345,7 @@ class StudentScanFragment : Fragment() {
                             Toast.LENGTH_LONG
                         ).show()
                         voiceGuidance.announce(
-                            "Face not recognized. You may not be registered for this class. Please contact the administration.",
+                            "Student not registered.",
                             "student_not_enrolled"
                         )
 
@@ -364,7 +364,7 @@ class StudentScanFragment : Fragment() {
 
                     toast("Face not matched. Adjust your face and try again.")
                     voiceGuidance.announce(
-                        "Face not matched. Please blink once, then try again.",
+                        "No match. Try again.",
                         "student_match_failed_$studentFailCount"
                     )
                     done()
@@ -386,7 +386,7 @@ class StudentScanFragment : Fragment() {
                                 withContext(Dispatchers.Main) {
                                     if (attendanceCount == 0) {
                                     voiceGuidance.announce(
-                                        "Teacher verified. No students are marked yet. Choose a session action.",
+                                        "Teacher verified. Choose action.",
                                         "teacher_end_empty_session"
                                     )
                                     AlertDialog.Builder(requireContext())
@@ -420,7 +420,7 @@ class StudentScanFragment : Fragment() {
                                         .show()
                                     } else {
                                         voiceGuidance.announce(
-                                            "Teacher verified. Choose proceed to complete the attendance session.",
+                                            "Teacher verified. Complete session.",
                                             "teacher_end_active_session"
                                         )
                                         AlertDialog.Builder(requireContext())
@@ -464,7 +464,7 @@ class StudentScanFragment : Fragment() {
                     } else {
                         toast("This face belongs to a different teacher.")
                         voiceGuidance.announce(
-                            "A different teacher was recognized. The session teacher must verify.",
+                            "Wrong teacher.",
                             "different_teacher"
                         )
                     }
@@ -479,7 +479,7 @@ class StudentScanFragment : Fragment() {
                 if (matchedStudent == null) {
                     toast("Unable to identify the student. Please try again.")
                     voiceGuidance.announce(
-                        "Unable to identify the student. Please try again.",
+                        "Student not found.",
                         "student_lookup_failed"
                     )
                     done()
@@ -494,25 +494,25 @@ class StudentScanFragment : Fragment() {
                     when (result) {
                         AttendanceActivity.StudentAttendanceResult.MARKED ->
                             voiceGuidance.announce(
-                                "Thank you, ${matchedStudent.studentName}. Your attendance is marked.",
+                                "${matchedStudent.studentName}, attendance marked.",
                                 "student_marked:${matchedStudent.studentId}"
                             )
 
                         AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
                             voiceGuidance.announce(
-                                "${matchedStudent.studentName}, your attendance is already marked.",
+                                "${matchedStudent.studentName}, already marked.",
                                 "student_already_marked:${matchedStudent.studentId}"
                             )
 
                         AttendanceActivity.StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS ->
                             voiceGuidance.announce(
-                                "You are already marked present in another active class.",
+                                "Already marked in another class.",
                                 "student_other_class:${matchedStudent.studentId}"
                             )
 
                         AttendanceActivity.StudentAttendanceResult.NO_ACTIVE_SESSION ->
                             voiceGuidance.announce(
-                                "No active attendance session was found. Please ask the teacher to start the session.",
+                                "No active session.",
                                 "student_no_session"
                             )
                     }

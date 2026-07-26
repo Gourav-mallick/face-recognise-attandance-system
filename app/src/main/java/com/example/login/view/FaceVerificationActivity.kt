@@ -243,7 +243,7 @@ class FaceVerificationActivity : ComponentActivity() {
                 Intent().putExtra("VERIFIED_STUDENT_ID", studentId)
             )
             voiceGuidance.announceThen(
-                message = "Thank you, $studentName. Your face is verified.",
+                message = "Thank you, $studentName. Verified.",
                 key = "verification_success"
             ) {
                 if (!isFinishing) finish()
@@ -257,7 +257,7 @@ class FaceVerificationActivity : ComponentActivity() {
             Toast.makeText(this, "Face verification failed after 3 attempts", Toast.LENGTH_LONG).show()
             setResult(Activity.RESULT_CANCELED)
             voiceGuidance.announceThen(
-                message = "Face not matched. Verification failed. Please contact the administrator.",
+                message = "Verification failed.",
                 key = "verification_final_failure"
             ) {
                 if (!isFinishing) finish()
@@ -265,7 +265,7 @@ class FaceVerificationActivity : ComponentActivity() {
         } else {
             Toast.makeText(this, "Face not matched. Complete liveness and try again.", Toast.LENGTH_SHORT).show()
             voiceGuidance.announce(
-                "Face not matched. Please blink once, then try again.",
+                "No match. Try again.",
                 "verification_failure_$attemptCount"
             )
             updateAttemptUi()

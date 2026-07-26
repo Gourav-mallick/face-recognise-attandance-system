@@ -162,7 +162,7 @@ class TeacherScanFragment : Fragment() {
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
                     tvStart.text = "Awaiting teacher face verification"
                     voiceGuidance.guide(
-                        "Teacher, place your face inside the oval",
+                        "Face in oval",
                         "teacher_no_face"
                     )
                 }
@@ -237,7 +237,7 @@ class TeacherScanFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(requireContext(), "No registered teachers found", Toast.LENGTH_SHORT).show()
                     voiceGuidance.announce(
-                        "No registered teachers were found. Please contact the administration.",
+                        "No teachers registered.",
                         "no_registered_teachers"
                     )
                     progress.visibility = View.GONE; isVerifying = false
@@ -294,7 +294,7 @@ class TeacherScanFragment : Fragment() {
                             }
                             .show()
                         voiceGuidance.announce(
-                            "Face verified, but no class is assigned to $bestName. Please contact the administration.",
+                            "No class assigned.",
                             "teacher_no_assigned_class"
                         )
 
@@ -323,7 +323,7 @@ class TeacherScanFragment : Fragment() {
                         scanningPaused = true  // stop analyzer while dialog is open
 
                         voiceGuidance.announce(
-                            "Thank you, $bestName. Face verified. Please confirm to start student attendance.",
+                            "$bestName verified.",
                             "teacher_verified:$bestId"
                         )
                         showStartStudentAttendanceDialog(bestId!!, bestName!!)
@@ -341,7 +341,7 @@ class TeacherScanFragment : Fragment() {
                             Toast.LENGTH_LONG
                         ).show();
                         voiceGuidance.announce(
-                            "Face not recognized. You may not be registered as a teacher. Please contact the administration.",
+                            "Teacher not recognized.",
                             "teacher_final_failure"
                         )
 
@@ -363,7 +363,7 @@ class TeacherScanFragment : Fragment() {
                         Toast.LENGTH_SHORT
                     ).show()
                     voiceGuidance.announce(
-                        "Face not matched. Please blink once, then try again.",
+                        "No match. Try again.",
                         "teacher_match_failed_$failCount"
                     )
                 }
@@ -532,7 +532,7 @@ class TeacherScanFragment : Fragment() {
             .setCancelable(false)
             .setPositiveButton("Yes") { _, _ ->
                 voiceGuidance.announceThen(
-                    message = "Attendance session started. Students may now scan their faces.",
+                    message = "Session started.",
                     key = "teacher_session_started"
                 ) {
                     if (!isAdded) return@announceThen

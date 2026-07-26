@@ -8,7 +8,6 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -27,8 +26,8 @@ import com.example.login.R
 import com.example.login.ml.ActiveLivenessVerifier
 import com.example.login.ml.YuNetFace
 import com.example.login.ml.YuNetSFaceEngine
+import com.example.login.utility.VoiceGuidance
 import java.io.ByteArrayOutputStream
-import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -38,7 +37,7 @@ import kotlin.math.abs
  * collects three mutually consistent high-quality frontal SFace observations, averages
  * them, and returns one normalized template to the existing registration workflow.
  */
-class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+class CameraCaptureActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var faceGuide: View
     private lateinit var landmarkOverlay: FaceLandmarkOverlay
@@ -48,9 +47,8 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var imageAnalysis: ImageAnalysis? = null
     private lateinit var engine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
-    private lateinit var tts: TextToSpeech
+    private lateinit var voiceGuidance: VoiceGuidance
 
-    private var isTtsReady = false
     private var stableSince = 0L
     private var lastFace: YuNetFace? = null
     private val enrollmentSamples = ArrayList<FloatArray>(REQUIRED_SAMPLE_COUNT)
@@ -71,7 +69,8 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         cameraExecutor = Executors.newSingleThreadExecutor()
         engine = YuNetSFaceEngine(applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
-        tts = TextToSpeech(this, this)
+        voiceGuidance = VoiceGuidance(applicationContext)
+        voiceGuidance.guide("Look at camera", "registration_start")
 
         val name = intent.getStringExtra("user_name").orEmpty()
         val id = intent.getStringExtra("user_id").orEmpty()
@@ -125,6 +124,7 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 runOnUiThread {
                     landmarkOverlay.clear()
                     setGuide(Color.YELLOW, "Place your face inside the oval", "Searching for face…")
+                    voiceGuidance.guide("Face in oval", "registration_no_face")
                 }
                 frame.recycle()
                 return
@@ -160,6 +160,14 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         "YuNet: 5 landmarks • Sharpness ${quality.sharpness.toInt()}"
                     }
                     setGuide(color, instruction, detail)
+                    voiceGuidance.guide(
+                        instruction,
+                        if (liveness.passed) {
+                            "registration_quality:$instruction"
+                        } else {
+                            "registration_liveness:${liveness.guidance}"
+                        }
+                    )
                 }
             }
 
@@ -212,7 +220,7 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     "Samples did not agree — keep the same face still",
                     "Capture restarted • 1 of $REQUIRED_SAMPLE_COUNT"
                 )
-                speak("Face samples did not match. Hold still and try again")
+                voiceGuidance.announce("Samples differ. Try again.", "registration_samples_differ")
             }
             return
         }
@@ -242,12 +250,15 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 "Face captured automatically",
                 "$REQUIRED_SAMPLE_COUNT consistent SFace samples combined"
             )
-            speak("Face captured successfully")
-            faceGuide.postDelayed({
+            voiceGuidance.announceThen(
+                message = "Face saved.",
+                key = "registration_success",
+                timeoutMs = 1_200L
+            ) {
                 val reply = intent.putExtra(EXTRA_FACE_EMBEDDING, averagedEmbedding)
                 setResult(RESULT_OK, reply)
                 finish()
-            }, 450)
+            }
         }
     }
 
@@ -325,19 +336,6 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return output
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.US)
-            isTtsReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
-            speak("Look straight at the camera")
-        }
-    }
-
-    private fun speak(message: String) {
-        if (isTtsReady) tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "face_capture")
-    }
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -364,8 +362,7 @@ class CameraCaptureActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         cameraExecutor.shutdown()
         engine.close()
         livenessVerifier.close()
-        tts.stop()
-        tts.shutdown()
+        voiceGuidance.close()
         super.onDestroy()
     }
 

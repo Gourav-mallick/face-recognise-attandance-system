@@ -66,8 +66,7 @@ operator is updating the record, use the available update option.
 7. Keep still until your face is verified.
 8. Check that your name is shown correctly.
 9. Confirm that student attendance should start.
-10. Wait for the spoken message: **“Attendance session started. Students may now scan their
-    faces.”**
+10. Wait for the spoken message: **“Session started.”**
 
 The student attendance screen will then open.
 
@@ -94,7 +93,7 @@ The student attendance screen will then open.
 
 Successful attendance says:
 
-> “Thank you, [student name]. Your attendance is marked.”
+> “[Student name], attendance marked.”
 
 Also check that your name appears as the latest student and that the present count updates.
 
@@ -172,7 +171,7 @@ Some actions may open a face-verification screen for a specific student.
 
 The app allows up to three attempts. After a successful match, it speaks:
 
-> “Thank you, [student name]. Your face is verified.”
+> “Thank you, [student name]. Verified.”
 
 If all attempts fail, contact the administrator instead of repeatedly retrying.
 
@@ -205,4 +204,3 @@ Before accepting a scan result, confirm:
 - The person used a live face and completed the blink.
 - A student received the attendance-marked confirmation.
 - The teacher completed or saved the session before leaving.
-
