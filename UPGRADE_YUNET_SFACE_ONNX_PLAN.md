@@ -1,5 +1,5 @@
 # YuNet + SFace ONNX Runtime Architecture Upgrade Plan
-**Target Application:** Android Face Recognition Attendance System (`com.example.login`)  
+**Target Application:** Android Face Recognition Attendance System (`com.digitaledu.selfieattendance`)
 **Author:** Senior Android Developer & Computer Vision Architect  
 **Date:** July 2026  
 **Document Status:** Production Architectural Blueprint  
@@ -135,10 +135,10 @@ When registering a user (e.g. Student ID: `STU-102`, Name: *"Ram"*):
 ### 3.3. Anti-Duplicate Pre-Registration Logic (`RegistrationManager.kt`)
 
 ```kotlin
-package com.example.login.ml
+package com.digitaledu.selfieattendance.ml
 
-import com.example.login.db.entity.Student
-import com.example.login.db.entity.Teacher
+import com.digitaledu.selfieattendance.db.entity.Student
+import com.digitaledu.selfieattendance.db.entity.Teacher
 
 sealed class AntiDuplicateResult {
     object AllowedNewRegistration : AntiDuplicateResult()
@@ -258,74 +258,77 @@ In `TeacherScanFragment.kt` and `FaceRecogniseActivity.kt`:
 ## 6. Optimized 5,000 Student Matching Engine
 
 ```kotlin
-package com.example.login.ml
+package com.digitaledu.selfieattendance.ml
 
 data class DetailedMatchResult(
-    val studentId: String,
-    val confidence: Float
+  val studentId: String,
+  val confidence: Float
 )
 
 class OptimizedVectorMatcher {
 
-    private var galleryMatrix = FloatArray(0)
-    private var studentIds = ArrayList<String>()
+  private var galleryMatrix = FloatArray(0)
+  private var studentIds = ArrayList<String>()
 
-    @Synchronized
-    fun loadGallery(students: List<com.example.login.db.entity.Student>) {
-        studentIds.clear()
-        val validStudents = students.filter { !it.embedding.isNullOrEmpty() }
-        
-        studentIds.ensureCapacity(validStudents.size)
-        galleryMatrix = FloatArray(validStudents.size * 128)
+  @Synchronized
+  fun loadGallery(students: List<com.digitaledu.selfieattendance.db.entity.Student>) {
+    studentIds.clear()
+    val validStudents = students.filter { !it.embedding.isNullOrEmpty() }
 
-        var offset = 0
-        for (student in validStudents) {
-            val vec = parseEmbeddingJson(student.embedding!!)
-            if (vec.size == 128) {
-                studentIds.add(student.studentId)
-                System.arraycopy(vec, 0, galleryMatrix, offset, 128)
-                offset += 128
-            }
-        }
+    studentIds.ensureCapacity(validStudents.size)
+    galleryMatrix = FloatArray(validStudents.size * 128)
+
+    var offset = 0
+    for (student in validStudents) {
+      val vec = parseEmbeddingJson(student.embedding!!)
+      if (vec.size == 128) {
+        studentIds.add(student.studentId)
+        System.arraycopy(vec, 0, galleryMatrix, offset, 128)
+        offset += 128
+      }
+    }
+  }
+
+  fun findBestMatchWithDetails(
+    queryVector: FloatArray,
+    threshold: Float = 0.42f
+  ): DetailedMatchResult? {
+    val numCandidates = studentIds.size
+    if (numCandidates == 0) return null
+
+    var maxScore = -1.0f
+    var bestIndex = -1
+
+    for (i in 0 until numCandidates) {
+      val offset = i * 128
+      var dotProduct = 0.0f
+
+      // Loop unrolled dot product for JVM SIMD auto-vectorization
+      var j = 0
+      while (j < 128) {
+        dotProduct += queryVector[j] * galleryMatrix[offset + j] +
+                queryVector[j + 1] * galleryMatrix[offset + j + 1] +
+                queryVector[j + 2] * galleryMatrix[offset + j + 2] +
+                queryVector[j + 3] * galleryMatrix[offset + j + 3]
+        j += 4
+      }
+
+      if (dotProduct > maxScore) {
+        maxScore = dotProduct
+        bestIndex = i
+      }
     }
 
-    fun findBestMatchWithDetails(queryVector: FloatArray, threshold: Float = 0.42f): DetailedMatchResult? {
-        val numCandidates = studentIds.size
-        if (numCandidates == 0) return null
-
-        var maxScore = -1.0f
-        var bestIndex = -1
-
-        for (i in 0 until numCandidates) {
-            val offset = i * 128
-            var dotProduct = 0.0f
-            
-            // Loop unrolled dot product for JVM SIMD auto-vectorization
-            var j = 0
-            while (j < 128) {
-                dotProduct += queryVector[j] * galleryMatrix[offset + j] +
-                              queryVector[j + 1] * galleryMatrix[offset + j + 1] +
-                              queryVector[j + 2] * galleryMatrix[offset + j + 2] +
-                              queryVector[j + 3] * galleryMatrix[offset + j + 3]
-                j += 4
-            }
-
-            if (dotProduct > maxScore) {
-                maxScore = dotProduct
-                bestIndex = i
-            }
-        }
-
-        return if (maxScore >= threshold && bestIndex != -1) {
-            DetailedMatchResult(studentId = studentIds[bestIndex], confidence = maxScore)
-        } else {
-            null
-        }
+    return if (maxScore >= threshold && bestIndex != -1) {
+      DetailedMatchResult(studentId = studentIds[bestIndex], confidence = maxScore)
+    } else {
+      null
     }
+  }
 
-    private fun parseEmbeddingJson(json: String): FloatArray {
-        return com.google.gson.Gson().fromJson(json, FloatArray::class.java)
-    }
+  private fun parseEmbeddingJson(json: String): FloatArray {
+    return com.google.gson.Gson().fromJson(json, FloatArray::class.java)
+  }
 }
 ```
 

@@ -1,5 +1,5 @@
 # YuNet + SFace Model Accuracy Tuning & Calibration Guide
-**Target System:** Android Face Recognition Attendance Application (`com.example.login`)  
+**Target System:** Android Face Recognition Attendance Application (`com.digitaledu.selfieattendance`)
 **Companion Documents:**  
 - [UPGRADE_YUNET_SFACE_ONNX_PLAN.md](file:///home/gourav/AndroidStudioProjects/-face-recognize-main/UPGRADE_YUNET_SFACE_ONNX_PLAN.md)  
 - [FACE_RECOGNITION_TERMINOLOGY_GUIDE.md](file:///home/gourav/AndroidStudioProjects/-face-recognize-main/FACE_RECOGNITION_TERMINOLOGY_GUIDE.md)  

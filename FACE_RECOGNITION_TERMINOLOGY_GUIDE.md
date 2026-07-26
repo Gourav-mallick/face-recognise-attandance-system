@@ -1,5 +1,5 @@
 # Face Recognition Terminology & Core Concepts Guide
-**Target System:** Android Face Recognition Attendance App (`com.example.login`)  
+**Target System:** Android Face Recognition Attendance App (`com.digitaledu.selfieattendance`)
 **Companion Document:** [UPGRADE_YUNET_SFACE_ONNX_PLAN.md](file:///home/gourav/AndroidStudioProjects/-face-recognize-main/UPGRADE_YUNET_SFACE_ONNX_PLAN.md)  
 **Author:** Senior Android Developer & Computer Vision Architect  
 

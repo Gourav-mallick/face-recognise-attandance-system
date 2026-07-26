@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.login">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,7 +23,7 @@
     <uses-feature android:name="android.hardware.nfc" android:required="true" />
 
     <application
-        android:name=".MyApp"
+        android:name="com.digitaledu.selfieattendance.MyApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -34,7 +33,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Login">
 
-        <receiver android:name=".utility.NetworkReceiver"
+        <receiver android:name="com.digitaledu.selfieattendance.utility.NetworkReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE"/>
@@ -45,7 +44,7 @@
 
 
         <activity
-            android:name=".view.SplashActivity"
+            android:name="com.digitaledu.selfieattendance.view.SplashActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -55,33 +54,33 @@
         </activity>
 
         <activity
-            android:name=".view.CheckConfigActivity"
+            android:name="com.digitaledu.selfieattendance.view.CheckConfigActivity"
             android:exported="true" />
 
-        <activity android:name=".view.LoginActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.LoginActivity" />
 
         <!-- Other activities -->
-        <activity android:name=".view.SelectInstituteActivity" />
-        <activity android:name=".view.AttendanceActivity" />
-        <activity android:name=".view.ClassSelectActivity"/>
-        <activity android:name=".view.PeriodSelectActivity"/>
-        <activity android:name=".view.SubjectSelectActivity"/>
-        <activity android:name=".view.AttendanceOverviewActivity"/>
-        <activity android:name=".view.EditAttendanceActivity"/>
-        <activity android:name=".view.SyncAttendanceToServer"/>
-        <activity android:name=".view.FaceVerificationActivity"
+        <activity android:name="com.digitaledu.selfieattendance.view.SelectInstituteActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.AttendanceActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.ClassSelectActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.PeriodSelectActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.SubjectSelectActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.AttendanceOverviewActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.EditAttendanceActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.SyncAttendanceToServer"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.FaceVerificationActivity"
             android:screenOrientation="portrait" />
 
         <activity 
-            android:name=".view.FaceRegistrationActivity"
+            android:name="com.digitaledu.selfieattendance.view.FaceRegistrationActivity"
             android:windowSoftInputMode="adjustResize" />
         <activity 
-            android:name=".view.UnregisteredUsersActivity"
+            android:name="com.digitaledu.selfieattendance.view.UnregisteredUsersActivity"
             android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".view.CameraCaptureActivity"
+        <activity android:name="com.digitaledu.selfieattendance.view.CameraCaptureActivity"
             android:exported="false" />
-        <activity android:name=".view.FaceRecogniseActivity" />
-        <activity android:name=".view.SettingsActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.FaceRecogniseActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.SettingsActivity" />
 
     </application>
 

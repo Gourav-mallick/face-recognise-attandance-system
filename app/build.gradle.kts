@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.login"
+    namespace = "com.digitaledu.selfieattendance"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.login"
+        applicationId = "com.digitaledu.selfieattendance"
         minSdk = 21
         targetSdk = 36
         versionCode = 3
