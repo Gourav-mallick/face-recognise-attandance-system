@@ -20,6 +20,7 @@ import com.digitaledu.selfieattendance.db.entity.Institute
 import com.digitaledu.selfieattendance.db.entity.PendingTeacherAllocationEntity
 import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
+import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 
 
 
@@ -41,9 +42,10 @@ import com.digitaledu.selfieattendance.db.entity.AttendanceCode
     Institute::class,
     PendingTeacherAllocationEntity::class,
     SchoolPeriod::class,
-    AttendanceCode::class
+    AttendanceCode::class,
+    ProgramConfig::class
     ],
-    version = 1, exportSchema = false)
+    version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -67,6 +69,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun schoolPeriodDao(): SchoolPeriodDao
     abstract fun attendanceCodeDao(): AttendanceCodeDao
+    abstract fun programConfigDao(): ProgramConfigDao
 
 
 
@@ -75,6 +78,24 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `program_config` (
+                        `title` TEXT NOT NULL,
+                        `program` TEXT NOT NULL,
+                        `value` TEXT NOT NULL,
+                        `schoolId` TEXT NOT NULL,
+                        `syear` TEXT NOT NULL,
+                        `programConfId` TEXT NOT NULL,
+                        PRIMARY KEY(`title`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -82,12 +103,13 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
-                    // 👇 Add this line
+                .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration()
-                 .build()
+                .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
 }
+

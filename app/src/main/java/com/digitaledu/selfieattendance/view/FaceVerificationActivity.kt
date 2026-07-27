@@ -236,7 +236,7 @@ class FaceVerificationActivity : ComponentActivity() {
         val similarity = YuNetSFaceEngine.cosineSimilarity(target, faceEmbedding)
         Log.d(TAG, "SFace cosine similarity=$similarity")
 
-        if (similarity >= YuNetSFaceEngine.COSINE_THRESHOLD) {
+        if (similarity >= com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
             Toast.makeText(this, "Face verified successfully", Toast.LENGTH_SHORT).show()
             val spokenName = VoiceGuidance.speakableName(studentName)
             setResult(

@@ -64,6 +64,8 @@ class AutoSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 // schedules also per-institute
                 //   val sc = repository.fetchAndSaveStudentSchedulingData(apiService, db, instId)
                 //   if (!sc) allOk = false
+
+                repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
             }
 
             if (allOk) {

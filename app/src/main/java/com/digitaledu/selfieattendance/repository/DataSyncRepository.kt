@@ -583,7 +583,79 @@ class DataSyncRepository(context: Context) {
 
 
 
+    /**
+     * Fetches face detection/recognition thresholds from the
+     * `ManageProgramConfig` API and saves them to Room. On success,
+     * immediately updates the in-memory [FaceDetectionConfig] singleton.
+     *
+     * Failure is **non-blocking**: the sync continues and the existing
+     * hardcoded defaults remain in effect.
+     */
+    suspend fun fetchAndSaveFaceDetectionConfig(
+        apiService: ApiService,
+        db: AppDatabase,
+        schoolId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val syear = db.instituteDao().getInstituteYearById(schoolId) ?: ""
+            val dataParam = """{"programName":"SelfieAttendance","title":"FaceDetectionThreshold","syear":"$syear","school_id":"$schoolId"}"""
 
+            Log.d(TAG, "CONFIG_API_REQUEST: $dataParam")
 
+            val response = apiService.getProgramConfig(data = dataParam)
+
+            if (!response.isSuccessful || response.body() == null) {
+                Log.w(TAG, "CONFIG_API_FAILED: Server returned ${response.code()} — keeping defaults")
+                return@withContext false
+            }
+
+            val jsonString = response.body()!!.string()
+            Log.d(TAG, "CONFIG_API_RESPONSE: $jsonString")
+
+            val json = JSONObject(jsonString)
+            val retConfigData = json
+                .optJSONObject("collection")
+                ?.optJSONObject("response")
+                ?.optJSONArray("retConfigData")
+
+            if (retConfigData == null || retConfigData.length() == 0) {
+                Log.w(TAG, "CONFIG_API: No retConfigData found — keeping defaults")
+                return@withContext false
+            }
+
+            val configObj = retConfigData.getJSONObject(0)
+            val value = configObj.optString("value", "")
+Log.d(TAG, "CONFIG_API_VALUE: $value")
+            val programConfId = configObj.optString("programConfId", "")
+
+Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
+            if (value.isBlank()) {
+                Log.w(TAG, "CONFIG_API: Empty value field — keeping defaults")
+                return@withContext false
+            }
+
+            // Save to Room for offline access on next app launch
+            db.programConfigDao().insertOrUpdate(
+                com.digitaledu.selfieattendance.db.entity.ProgramConfig(
+                    title = "FaceDetectionThreshold",
+                    program = "SelfieAttendance",
+                    value = value,
+                    schoolId = schoolId,
+                    syear = syear,
+                    programConfId = programConfId
+                )
+            )
+
+            // Update in-memory singleton immediately
+            com.digitaledu.selfieattendance.ml.FaceDetectionConfig.loadFromJson(value)
+
+            Log.i(TAG, "✔ Face detection config synced and applied (confId=$programConfId)")
+            true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "CONFIG_EXCEPTION: ${e.message} — keeping defaults", e)
+            false
+        }
+    }
 
 }

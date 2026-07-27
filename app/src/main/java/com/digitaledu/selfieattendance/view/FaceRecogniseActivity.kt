@@ -230,7 +230,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 .map { it to YuNetSFaceEngine.cosineSimilarity(it.embedding, faceEmbedding) }
                 .maxByOrNull { it.second }
             withContext(Dispatchers.Main) {
-                if (match == null || match.second < YuNetSFaceEngine.COSINE_THRESHOLD) {
+                if (match == null || match.second < com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
                     showUnrecognized(match?.second)
                     return@withContext
                 }

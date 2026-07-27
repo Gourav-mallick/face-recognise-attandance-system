@@ -65,7 +65,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         ?: DEFAULT_DETECTOR_SIZE
 
     @Synchronized
-    fun detect(bitmap: Bitmap, scoreThreshold: Float = DETECTION_THRESHOLD): List<YuNetFace> {
+    fun detect(bitmap: Bitmap, scoreThreshold: Float = FaceDetectionConfig.detectionThreshold): List<YuNetFace> {
         check(!closed) { "YuNet/SFace engine is closed" }
         val resized = Bitmap.createScaledBitmap(bitmap, detectorWidth, detectorHeight, true)
         try {
@@ -137,12 +137,12 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         val leftMouth = face.landmarks[3]
         val rightMouth = face.landmarks[4]
         val eyeDistance = distance(leftEye, rightEye)
-        val minimumEyeDistance = if (strict) 45f else 32f
+        val minimumEyeDistance = if (strict) FaceDetectionConfig.minEyeDistanceStrict else FaceDetectionConfig.minEyeDistanceNormal
         if (eyeDistance < minimumEyeDistance) return FaceQuality(false, "Move closer to the camera", 0f)
 
         val eyeMidX = (leftEye.x + rightEye.x) / 2f
         val mouthMidX = (leftMouth.x + rightMouth.x) / 2f
-        val symmetryLimit = eyeDistance * if (strict) 0.16f else 0.23f
+        val symmetryLimit = eyeDistance * if (strict) FaceDetectionConfig.symmetryLimitStrict else FaceDetectionConfig.symmetryLimitNormal
         if (abs(nose.x - eyeMidX) > symmetryLimit || abs(nose.x - mouthMidX) > symmetryLimit) {
             return FaceQuality(false, "Look straight at the screen", 0f)
         }
@@ -153,7 +153,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         val aligned = align(bitmap, face.landmarks)
         val sharpness = laplacianVariance(aligned)
         aligned.recycle()
-        val minimumSharpness = if (strict) 90f else 55f
+        val minimumSharpness = if (strict) FaceDetectionConfig.minSharpnessStrict else FaceDetectionConfig.minSharpnessNormal
         if (sharpness < minimumSharpness) {
             return FaceQuality(false, "Hold still — image is blurry", sharpness)
         }
@@ -162,7 +162,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
 
     fun align(bitmap: Bitmap, landmarks: List<PointF>): Bitmap {
         require(landmarks.size == 5) { "Five landmarks are required for SFace alignment" }
-        val transform = solveSimilarity(landmarks, SFACE_TEMPLATE)
+        val transform = solveSimilarity(landmarks, FaceDetectionConfig.alignmentTemplatePoints)
         val output = Bitmap.createBitmap(SFACE_SIZE, SFACE_SIZE, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         canvas.drawColor(Color.BLACK)
@@ -264,7 +264,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         while (sorted.isNotEmpty()) {
             val best = sorted.removeAt(0)
             kept += best
-            sorted.removeAll { intersectionOverUnion(best.bounds, it.bounds) > NMS_THRESHOLD }
+            sorted.removeAll { intersectionOverUnion(best.bounds, it.bounds) > FaceDetectionConfig.nmsThreshold }
         }
         return kept
     }
@@ -368,9 +368,11 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
     }
 
     companion object {
+        // ── Compile-time fallback defaults (kept for reference / const usage) ──
         const val DETECTOR_ASSET = "models/face_detection_yunet_2023mar.onnx"
         const val RECOGNIZER_ASSET = "models/face_recognition_sface_2021dec_int8.onnx"
         const val SFACE_DIMENSIONS = 128
+        /** Hardcoded default; runtime value is [FaceDetectionConfig.cosineThreshold]. */
         const val COSINE_THRESHOLD = 0.42f
         private const val DEFAULT_DETECTOR_SIZE = 640
         private const val SFACE_SIZE = 112

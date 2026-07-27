@@ -53,7 +53,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private lateinit var btnEnrollFace: Button
     private var selectedStudent: Student? = null
     private var selectedTeacher: Teacher? = null
-    private val MATCH_THRESHOLD = YuNetSFaceEngine.COSINE_THRESHOLD
+    private val MATCH_THRESHOLD get() = com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold
 
     private lateinit var listUsers: ListView
     private lateinit var adapter: ArrayAdapter<String>

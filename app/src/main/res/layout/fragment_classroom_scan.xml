@@ -57,7 +57,18 @@
                     android:layout_marginTop="4dp"
                     android:text="Last Sync: 17 July 2026, 09:06pm"
                     android:textColor="#64748B"
-                    android:textSize="13sp" />
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvAppVersionBelowSync"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="App Version: v1.0"
+                    android:textColor="#64748B"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
 
                 <!-- Resume Active Class Card -->
                 <LinearLayout

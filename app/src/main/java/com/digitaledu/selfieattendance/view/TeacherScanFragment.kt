@@ -280,7 +280,7 @@ class TeacherScanFragment : Fragment() {
                 isVerifying = false
                 livenessVerifier.reset()
 
-                if (bestId != null && bestSimilarity >= YuNetSFaceEngine.COSINE_THRESHOLD) {
+                if (bestId != null && bestSimilarity >= com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
                     isVerifying = true
 
                     prevFace = null

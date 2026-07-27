@@ -4,9 +4,17 @@ import android.app.Application
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.util.Log
+import com.digitaledu.selfieattendance.db.dao.AppDatabase
+import com.digitaledu.selfieattendance.ml.FaceDetectionConfig
 import com.digitaledu.selfieattendance.utility.NetworkReceiver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class MyApp : Application() {
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -17,5 +25,24 @@ class MyApp : Application() {
         registerReceiver(NetworkReceiver(), filter)
 
         Log.e("AUTO_SYNC", "NetworkReceiver registered in MyApp")
+
+        // Load face detection config from Room DB (if previously synced).
+        // If the DB has no config yet, FaceDetectionConfig keeps its
+        // hardcoded defaults until the next sync.
+        appScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(this@MyApp)
+                val json = db.programConfigDao()
+                    .getValueByTitle("FaceDetectionThreshold")
+                if (!json.isNullOrBlank()) {
+                    FaceDetectionConfig.loadFromJson(json)
+                    Log.i("MyApp", "✔ FaceDetectionConfig loaded from local DB")
+                } else {
+                    Log.i("MyApp", "No saved config found — using hardcoded defaults")
+                }
+            } catch (e: Exception) {
+                Log.e("MyApp", "Failed to load config from DB — using defaults", e)
+            }
+        }
     }
 }

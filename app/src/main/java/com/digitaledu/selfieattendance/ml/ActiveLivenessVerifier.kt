@@ -41,7 +41,7 @@ class ActiveLivenessVerifier : AutoCloseable {
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-            .setMinFaceSize(0.15f)
+            .setMinFaceSize(FaceDetectionConfig.minFaceSize)
             .build()
     )
     private var stage = Stage.WAITING_FOR_OPEN_EYES
@@ -54,20 +54,20 @@ class ActiveLivenessVerifier : AutoCloseable {
         check(!closed) { "Liveness verifier is closed" }
         val now = SystemClock.elapsedRealtime()
         if (stage == Stage.PASSED) {
-            if (now - passedAt <= PASS_VALIDITY_MS) {
+            if (now - passedAt <= FaceDetectionConfig.passValidityMs) {
                 return LivenessResult(true, "Live face confirmed")
             }
             reset()
         }
         if (challengeStartedAt == 0L) challengeStartedAt = now
-        if (now - challengeStartedAt > CHALLENGE_TIMEOUT_MS) reset()
+        if (now - challengeStartedAt > FaceDetectionConfig.challengeTimeoutMs) reset()
 
         return try {
             val faces = Tasks.await(detector.process(InputImage.fromBitmap(bitmap, 0)))
             val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
             if (face == null) {
                 if (faceMissingSince == 0L) faceMissingSince = now
-                if (now - faceMissingSince >= FACE_MISSING_RESET_MS) reset()
+                if (now - faceMissingSince >= FaceDetectionConfig.faceMissingResetMs) reset()
                 LivenessResult(false, "Place your live face inside the oval")
             } else {
                 faceMissingSince = 0L
@@ -92,10 +92,10 @@ class ActiveLivenessVerifier : AutoCloseable {
         val leftEye = face.leftEyeOpenProbability
         val rightEye = face.rightEyeOpenProbability
         val eyesAvailable = leftEye != null && rightEye != null
-        val eyesOpen = eyesAvailable && leftEye!! >= EYE_OPEN_THRESHOLD &&
-            rightEye!! >= EYE_OPEN_THRESHOLD
-        val eyesClosed = eyesAvailable && leftEye!! <= EYE_CLOSED_THRESHOLD &&
-            rightEye!! <= EYE_CLOSED_THRESHOLD
+        val eyesOpen = eyesAvailable && leftEye!! >= FaceDetectionConfig.eyeOpenThreshold &&
+            rightEye!! >= FaceDetectionConfig.eyeOpenThreshold
+        val eyesClosed = eyesAvailable && leftEye!! <= FaceDetectionConfig.eyeClosedThreshold &&
+            rightEye!! <= FaceDetectionConfig.eyeClosedThreshold
 
         when (stage) {
             Stage.WAITING_FOR_OPEN_EYES -> {
@@ -141,7 +141,10 @@ class ActiveLivenessVerifier : AutoCloseable {
 
     companion object {
         private const val TAG = "ActiveLiveness"
+        // ── Compile-time fallback defaults (kept for reference) ──
+        /** Hardcoded default; runtime value is [FaceDetectionConfig.eyeOpenThreshold]. */
         private const val EYE_OPEN_THRESHOLD = 0.65f
+        /** Hardcoded default; runtime value is [FaceDetectionConfig.eyeClosedThreshold]. */
         private const val EYE_CLOSED_THRESHOLD = 0.35f
         private const val CHALLENGE_TIMEOUT_MS = 12_000L
         private const val FACE_MISSING_RESET_MS = 800L

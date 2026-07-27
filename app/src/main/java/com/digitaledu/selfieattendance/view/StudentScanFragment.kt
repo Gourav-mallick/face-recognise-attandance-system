@@ -357,7 +357,7 @@ class StudentScanFragment : Fragment() {
 
                 if (!bestIsTeacher && (
                         bestMatchId == null ||
-                            bestSimilarity < YuNetSFaceEngine.COSINE_THRESHOLD
+                            bestSimilarity < com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold
                         )
                 ) {
 

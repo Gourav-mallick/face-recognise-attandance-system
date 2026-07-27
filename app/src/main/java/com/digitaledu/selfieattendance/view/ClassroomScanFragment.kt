@@ -82,11 +82,14 @@ class ClassroomScanFragment : Fragment() {
 
  */
         val versionName = BuildConfig.VERSION_NAME
-        val tvVersion =view.findViewById<TextView>(R.id.tvVersion)
-        tvVersion.text = "Version $versionName"
+        val tvVersion = view.findViewById<TextView>(R.id.tvVersion)
+        tvVersion?.text = "Version $versionName"
 
         val tvVersionSettings = view.findViewById<TextView>(R.id.tvVersionSettings)
         tvVersionSettings?.text = "Version $versionName"
+
+        val tvAppVersionBelowSync = view.findViewById<TextView>(R.id.tvAppVersionBelowSync)
+        tvAppVersionBelowSync?.text = "App Version: v$versionName"
 
 
         val inputFormat = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm:ss a", java.util.Locale.getDefault())

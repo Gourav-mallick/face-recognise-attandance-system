@@ -22,6 +22,7 @@ import com.digitaledu.selfieattendance.db.entity.Session
 import com.digitaledu.selfieattendance.db.entity.StudentSchedule
 import com.digitaledu.selfieattendance.db.entity.TeacherClassMap
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
+import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 
 
 @Dao
@@ -565,6 +566,18 @@ interface AttendanceCodeDao {
     suspend fun getByCode(code: String): AttendanceCode?
 
     @Query("DELETE FROM attendance_codes")
+    suspend fun clear()
+}
+
+@Dao
+interface ProgramConfigDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(config: ProgramConfig)
+
+    @Query("SELECT value FROM program_config WHERE title = :title LIMIT 1")
+    suspend fun getValueByTitle(title: String): String?
+
+    @Query("DELETE FROM program_config")
     suspend fun clear()
 }
 

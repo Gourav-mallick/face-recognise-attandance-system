@@ -334,3 +334,12 @@ data class AttendanceCode(
 )
 
 
+@Entity(tableName = "program_config")
+data class ProgramConfig(
+    @PrimaryKey val title: String,       // e.g. "FaceDetectionThreshold"
+    val program: String,                  // "SelfieAttendance"
+    val value: String,                    // JSON string with all threshold key-value pairs
+    val schoolId: String,
+    val syear: String,
+    val programConfId: String = ""
+)
