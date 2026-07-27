@@ -110,11 +110,9 @@ class CameraCaptureActivity : AppCompatActivity() {
             val frame = mirrorBitmap(upright)
             frameToRecycle = frame
             if (upright !== frame) upright.recycle()
-            val liveness = livenessVerifier.update(frame)
             val faces = engine.detect(frame)
-            val face = faces.maxByOrNull { it.bounds.width() * it.bounds.height() }
 
-            if (face == null) {
+            if (faces.isEmpty()) {
                 stableSince = 0L
                 lastFace = null
                 val now = System.currentTimeMillis()
@@ -122,6 +120,7 @@ class CameraCaptureActivity : AppCompatActivity() {
                 if (now - faceMissingSince >= MAX_FACE_MISSING_MS) {
                     enrollmentSamples.clear()
                     lastSampleAt = 0L
+                    livenessVerifier.reset()
                 }
                 runOnUiThread {
                     landmarkOverlay.clear()
@@ -130,7 +129,27 @@ class CameraCaptureActivity : AppCompatActivity() {
                 }
                 return
             }
+
+            if (faces.size > 1) {
+                resetCaptureProgress()
+                runOnUiThread {
+                    landmarkOverlay.clear()
+                    setGuide(
+                        Color.RED,
+                        "Only one person can be in the camera",
+                        "${faces.size} faces detected — ask others to move away"
+                    )
+                    voiceGuidance.guide(
+                        "Only one face",
+                        "registration_multiple_faces"
+                    )
+                }
+                return
+            }
+
+            val face = faces.single()
             faceMissingSince = 0L
+            val liveness = livenessVerifier.update(frame)
 
             val quality = engine.assessQuality(frame, face, strict = true)
             val stable = isStable(face)
@@ -191,6 +210,16 @@ class CameraCaptureActivity : AppCompatActivity() {
             frameToRecycle?.recycle()
             imageProxy.close()
         }
+    }
+
+    private fun resetCaptureProgress() {
+        stableSince = 0L
+        lastFace = null
+        faceMissingSince = 0L
+        enrollmentSamples.clear()
+        lastSampleAt = 0L
+        feedbackUntil = 0L
+        livenessVerifier.reset()
     }
 
     private fun isStable(face: YuNetFace): Boolean {
