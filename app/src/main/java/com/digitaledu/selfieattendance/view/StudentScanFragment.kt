@@ -75,7 +75,7 @@ class StudentScanFragment : Fragment() {
     private val MIRROR_FRONT = true
 
     private var studentFailCount = 0
-    private val MAX_STUDENT_FAILS = 3   // or 4 if you want
+    private val MAX_STUDENT_FAILS = 5   // or 4 if you want
 
 
     //Add a preloaded cache
