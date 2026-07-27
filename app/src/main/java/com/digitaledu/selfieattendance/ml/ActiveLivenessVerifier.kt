@@ -145,6 +145,6 @@ class ActiveLivenessVerifier : AutoCloseable {
         private const val EYE_CLOSED_THRESHOLD = 0.35f
         private const val CHALLENGE_TIMEOUT_MS = 12_000L
         private const val FACE_MISSING_RESET_MS = 800L
-        private const val PASS_VALIDITY_MS = 7_000L
+        private const val PASS_VALIDITY_MS = 5_000L
     }
 }

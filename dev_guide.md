@@ -384,38 +384,38 @@ Additional behavior:
 
 ## 11. Complete threshold reference
 
-| Category | Setting | Current value |
-|---|---|---:|
-| YuNet | Detection confidence | `0.85` |
-| YuNet | NMS IoU | `0.30` |
-| YuNet | Detector strides | `8, 16, 32` |
-| YuNet | Fallback input size | `640 × 640` |
-| SFace | Aligned input size | `112 × 112` |
-| SFace | Embedding dimensions | `128` |
-| Matching | Recognition/duplicate cosine threshold | `0.42` |
-| Registration quality | Minimum eye distance | `45 px` |
-| Recognition quality | Minimum eye distance | `32 px` |
-| Registration quality | Nose symmetry limit | `16%` of eye distance |
-| Recognition quality | Nose symmetry limit | `23%` of eye distance |
-| Registration quality | Minimum sharpness | `90` |
-| Recognition quality | Minimum sharpness | `55` |
-| Registration | Required detected faces | Exactly `1` |
-| Registration | Stability movement | `< 3.5%` of face width per axis |
-| Registration | Stable lock | `700 ms` |
-| Registration | Samples | `3` |
-| Registration | Sample interval | `350 ms` |
-| Registration | Sample consistency | `0.55` |
-| Registration | Missing face reset | `600 ms` |
-| Recognition | Stability movement | `< 4.5%` of face width per axis |
-| General recognition | Stable lock | `550 ms` |
-| Other verification flows | Stable lock | `700 ms` |
-| Liveness | ML Kit minimum relative face size | `0.15` |
-| Liveness | Eye-open probability | Each eye `>= 0.65` |
-| Liveness | Eye-closed probability | Each eye `<= 0.35` |
-| Liveness | Challenge timeout | `12 s` |
-| Liveness | Missing face reset | `800 ms` |
-| Liveness | Passed-state validity | `7 s` |
-| Verification | Maximum failed attempts | `3` |
+| Category | Setting | Current value used | Recommended range |
+|---|---|---|---|
+| YuNet | Detection confidence | `0.85` | `0.80 - 0.85` |
+| YuNet | NMS IoU | `0.30` | `0.30 - 0.40` |
+| YuNet | Detector strides | `8, 16, 32` | `8, 16, 32` (Fixed model spec) |
+| YuNet | Fallback input size | `640 × 640` | `640 × 640` |
+| SFace | Aligned input size | `112 × 112` | `112 × 112` (Fixed model spec) |
+| SFace | Embedding dimensions | `128` | `128` (Fixed vector spec) |
+| Matching | Recognition/duplicate cosine threshold | `0.42` | `0.40 - 0.44` (`0.40` for 1 photo; `0.42 - 0.44` for 3-5 photos) |
+| Registration quality | Minimum eye distance | `45 px` | `50 - 60 px` |
+| Recognition quality | Minimum eye distance | `32 px` | `36 - 40 px` |
+| Registration quality | Nose symmetry limit | `16%` of eye distance | `12% - 15%` of eye distance ($\approx 8^\circ - 10^\circ$ yaw) |
+| Recognition quality | Nose symmetry limit | `23%` of eye distance | `16% - 18%` of eye distance ($\approx 12^\circ - 15^\circ$ yaw) |
+| Registration quality | Minimum sharpness | `90` | `100 - 120` (Laplacian variance) |
+| Recognition quality | Minimum sharpness | `55` | `80 - 100` (Laplacian variance) |
+| Registration | Required detected faces | Exactly `1` | Exactly `1` |
+| Registration | Stability movement | `< 3.5%` of face width per axis | `< 3.0% - 3.5%` |
+| Registration | Stable lock | `700 ms` | `500 - 700 ms` |
+| Registration | Samples | `3` | `3 - 5` samples |
+| Registration | Sample interval | `350 ms` | `300 - 400 ms` |
+| Registration | Sample consistency | `0.55` | `0.60 - 0.65` ($S_{cos}$ pairwise) |
+| Registration | Missing face reset | `600 ms` | `500 - 800 ms` |
+| Recognition | Stability movement | `< 4.5%` of face width per axis | `< 4.0% - 4.5%` |
+| General recognition | Stable lock | `550 ms` | `400 - 550 ms` |
+| Other verification flows | Stable lock | `700 ms` | `500 - 700 ms` |
+| Liveness | ML Kit minimum relative face size | `0.15` | `0.15 - 0.20` |
+| Liveness | Eye-open probability | Each eye `>= 0.65` | `>= 0.60 - 0.70` |
+| Liveness | Eye-closed probability | Each eye `<= 0.35` | `<= 0.30 - 0.35` |
+| Liveness | Challenge timeout | `12 s` | `10 - 15 s` |
+| Liveness | Missing face reset | `800 ms` | `600 - 800 ms` |
+| Liveness | Passed-state validity | `7 s` | `5 - 10 s` |
+| Verification | Maximum failed attempts | `3` | `3 - 5` |
 
 ## 12. Manager-level summary
 
