@@ -176,7 +176,7 @@ class TeacherScanFragment : Fragment() {
                 return
             }
 
-            val quality = faceEngine.assessQuality(prepared, face, strict = false)
+            val quality = faceEngine.assessQuality(prepared, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
             else if (faceStableStart == 0L) faceStableStart = now
@@ -263,7 +263,7 @@ class TeacherScanFragment : Fragment() {
             var bestName: String? = null
             var bestSimilarity = -1f
 
-            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${teachers.size} teacher(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}) ===")
+            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${teachers.size} teacher(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold}) ===")
 
             for (t in teachers) {
                 val embStr = t.embedding ?: continue
@@ -283,7 +283,7 @@ class TeacherScanFragment : Fragment() {
                 isVerifying = false
                 livenessVerifier.reset()
 
-                if (bestId != null && bestSimilarity >= com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
+                if (bestId != null && bestSimilarity >= com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold) {
                     isVerifying = true
 
                     prevFace = null

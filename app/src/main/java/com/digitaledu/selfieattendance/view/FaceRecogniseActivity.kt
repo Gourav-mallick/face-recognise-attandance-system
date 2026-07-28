@@ -297,7 +297,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private fun verifyFace(faceEmbedding: FloatArray) {
         val gallery = cachedUsersToMatch
         lifecycleScope.launch(Dispatchers.Default) {
-            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${gallery.size} candidate(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}) ===")
+            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${gallery.size} candidate(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold}) ===")
             val match = gallery.asSequence()
                 .map { user ->
                     val sim = YuNetSFaceEngine.cosineSimilarity(user.embedding, faceEmbedding)
@@ -306,13 +306,13 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 }
                 .maxByOrNull { it.second }
             withContext(Dispatchers.Main) {
-                if (match == null || match.second < com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
-                    Log.w("FaceRecognise", "❌ REJECTED / NO MATCH: Closest candidate: ${match?.first?.name ?: "None"} (${match?.first?.role ?: ""}), similarity=${match?.second ?: -1f}, threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}")
+                if (match == null || match.second < com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold) {
+                    Log.w("FaceRecognise", "❌ REJECTED / NO MATCH: Closest candidate: ${match?.first?.name ?: "None"} (${match?.first?.role ?: ""}), similarity=${match?.second ?: -1f}, threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold}")
                     showUnrecognized(match?.second)
                     return@withContext
                 }
                 val user = match.first
-                Log.i("FaceRecognise", "✔ MATCH SUCCESS: ${user.name} (${user.role} ID: ${user.id}) — similarity=${match.second} >= threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}")
+                Log.i("FaceRecognise", "✔ MATCH SUCCESS: ${user.name} (${user.role} ID: ${user.id}) — similarity=${match.second} >= threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold}")
                 val classInfo = if (user.role == "Student") {
                     val name = classList.firstOrNull { it.classId == user.classId }?.classShortName
                     "Class: ${name ?: user.classId ?: "--"}"
@@ -702,7 +702,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
             var verifiedCount = 0
             var unknownCount = 0
             var failedCount = 0
-            val threshold = FaceDetectionConfig.cosineThreshold
+            val threshold = FaceDetectionConfig.recognitionCosineThreshold
 
  Log.d("FaceRecogniseActivity", "SFace Matching Config: inputSize=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognizerInputSize}, embeddingDimensions=${YuNetSFaceEngine.SFACE_DIMENSIONS}, cosineThreshold=$threshold")
 
@@ -747,7 +747,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
                 val faces = diag.faces
                 val primaryFace = faces.maxByOrNull { it.bounds.width() * it.bounds.height() }!!
-                val quality = engine.assessQualityDetailed(bitmap, primaryFace, strict = false)
+                val quality = engine.assessQualityDetailed(bitmap, primaryFace, strict = true)
 
                 if (!quality.accepted) {
                     Log.w("MassVerify", "⚠️ Image #${idx + 1} ($fileName) QUALITY FAILED: ${quality.guidance}")

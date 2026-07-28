@@ -59,7 +59,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private lateinit var btnEnrollFace: Button
     private var selectedStudent: Student? = null
     private var selectedTeacher: Teacher? = null
-    private val MATCH_THRESHOLD get() = com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold
+    private val MATCH_THRESHOLD get() = com.digitaledu.selfieattendance.ml.FaceDetectionConfig.registrationCosineThreshold
 
     private lateinit var listUsers: ListView
     private lateinit var adapter: ArrayAdapter<String>
@@ -990,7 +990,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
             var duplicateCount = 0
             var failedCount = 0
 
-            val threshold = com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold
+            val threshold = com.digitaledu.selfieattendance.ml.FaceDetectionConfig.registrationCosineThreshold
             val engine = YuNetSFaceEngine(applicationContext)
 
             try {

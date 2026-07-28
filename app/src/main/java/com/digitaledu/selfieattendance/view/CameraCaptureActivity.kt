@@ -408,6 +408,6 @@ class CameraCaptureActivity : AppCompatActivity() {
         private const val SAMPLE_INTERVAL_MS = 350L
         private const val MAX_FACE_MISSING_MS = 600L
         private const val CONSISTENCY_WARNING_MS = 1_000L
-        private const val SAMPLE_CONSISTENCY_THRESHOLD = 0.55f
+        private const val SAMPLE_CONSISTENCY_THRESHOLD = 0.65f
     }
 }

@@ -57,8 +57,19 @@ object FaceDetectionConfig {
     /** Dimensionality of the output embedding vector. */
     @Volatile var embeddingDimensions: Int = 128
 
-    /** Cosine-similarity threshold for identity verification. */
-    @Volatile var cosineThreshold: Float = 0.48f
+    /** Registration Cosine-similarity threshold for pre-registration duplicate checking. Default 0.50f. */
+    @Volatile var registrationCosineThreshold: Float = 0.50f
+
+    /** Recognition Cosine-similarity threshold for identity verification / attendance scanning. Default 0.50f. */
+    @Volatile var recognitionCosineThreshold: Float = 0.50f
+
+    /** Legacy / Global fallback threshold for identity verification. */
+    var cosineThreshold: Float
+        get() = recognitionCosineThreshold
+        set(value) {
+            recognitionCosineThreshold = value
+            registrationCosineThreshold = value
+        }
 
     // ─────────────────── Quality gates (strict — registration) ──────
 
@@ -180,7 +191,25 @@ object FaceDetectionConfig {
                 rec.optStringNonEmpty("model")?.let { recognizerModel = it }
                 rec.optPositiveInt("inputSize")?.let { recognizerInputSize = it }
                 rec.optPositiveInt("embeddingDimensions")?.let { embeddingDimensions = it }
-                rec.optPositiveFloat("cosineThreshold")?.let { cosineThreshold = it }
+
+                val regThresh = rec.optPositiveFloat("registrationCosineThreshold")
+                    ?: rec.optPositiveFloat("registration_cosine_threshold")
+                val recThresh = rec.optPositiveFloat("recognitionCosineThreshold")
+                    ?: rec.optPositiveFloat("recognition_cosine_threshold")
+                val globalThresh = rec.optPositiveFloat("cosineThreshold")
+                    ?: rec.optPositiveFloat("cosine_threshold")
+
+                if (regThresh != null) {
+                    registrationCosineThreshold = regThresh
+                } else if (globalThresh != null) {
+                    registrationCosineThreshold = globalThresh
+                }
+
+                if (recThresh != null) {
+                    recognitionCosineThreshold = recThresh
+                } else if (globalThresh != null) {
+                    recognitionCosineThreshold = globalThresh
+                }
             }
 
             // quality
