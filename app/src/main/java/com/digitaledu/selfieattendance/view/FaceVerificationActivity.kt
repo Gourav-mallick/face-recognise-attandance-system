@@ -174,6 +174,9 @@ class FaceVerificationActivity : ComponentActivity() {
                 return
             }
 
+            // Verification is recognition, so use the normal quality gate. The strict
+            // gate is intended for enrollment and can prevent valid registered users
+            // from ever reaching the matching step on ordinary phone cameras.
             val quality = faceEngine.assessQuality(frame, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L

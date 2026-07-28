@@ -50,6 +50,7 @@ class EditAttendanceActivity : ComponentActivity() {
     private val faceVerificationLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        isLaunchingVerification = false
         if (result.resultCode == Activity.RESULT_OK) {
             val verifiedStudentId = result.data?.getStringExtra("VERIFIED_STUDENT_ID")
             val item = pendingVerifyItem
@@ -62,11 +63,6 @@ class EditAttendanceActivity : ComponentActivity() {
             Toast.makeText(this, "Face verification failed or cancelled", Toast.LENGTH_SHORT).show()
         }
         pendingVerifyItem = null
-    }
-
-    override fun onResume() {
-        super.onResume()
-        isLaunchingVerification = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -360,11 +356,7 @@ class EditAttendanceActivity : ComponentActivity() {
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@EditAttendanceActivity, "Attendance saved successfully", Toast.LENGTH_SHORT).show()
-                val intent = Intent(this@EditAttendanceActivity, AttendanceOverviewActivity::class.java)
-                intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                intent.putExtra("SESSION_ID", sessionId)
-                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                startActivity(intent)
+                setResult(Activity.RESULT_OK)
                 finish()
             }
         }

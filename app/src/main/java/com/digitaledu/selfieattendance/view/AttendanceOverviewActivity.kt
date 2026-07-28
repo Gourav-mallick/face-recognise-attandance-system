@@ -1,11 +1,13 @@
 package com.digitaledu.selfieattendance.view
 
 import android.app.AlertDialog
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.digitaledu.selfieattendance.databinding.ActivityAttendanceOverviewBinding
@@ -31,6 +33,13 @@ class AttendanceOverviewActivity : ComponentActivity() {
     private lateinit var db: AppDatabase
     private lateinit var selectedClasses: List<String>
     private lateinit var sessionId: String
+    private val editAttendanceLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            loadOverviewData()
+        }
+    }
 
     // 🔹 Track whether back press is disabled
     private var backDisabled = true
@@ -89,7 +98,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 val attendance = db.attendanceDao().getAttendancesForClass(sessionId, classId)
 
                 val totalStudents = students.size
-                val presentCount = attendance.count { it.status == "P" }
+                // Late students are still attending; only absent/exempted students
+                // belong in the absent side of this summary.
+                val presentCount = attendance.count { it.status == "P" || it.status == "L" }
                 val absentCount = totalStudents - presentCount
           /*
                 val presentStudents = students.filter { s ->
@@ -119,7 +130,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 intent.putExtra("CLASS_ID", selectedClassId)
                 intent.putExtra("SESSION_ID", sessionId)
                 intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                startActivity(intent)
+                editAttendanceLauncher.launch(intent)
             }
 
             binding.recyclerViewOverview.layoutManager = LinearLayoutManager(this@AttendanceOverviewActivity)
