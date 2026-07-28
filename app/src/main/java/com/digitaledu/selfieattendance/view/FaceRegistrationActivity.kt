@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.digitaledu.selfieattendance.BuildConfig
 import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.api.ApiClient
 import com.digitaledu.selfieattendance.api.ApiService
@@ -141,52 +142,55 @@ class FaceRegistrationActivity : AppCompatActivity() {
         }
 
         val btnSimulateRegistration = findViewById<Button>(R.id.btnSimulateRegistration)
-        btnSimulateRegistration?.setOnClickListener {
-            val appFilesDir = getExternalFilesDir(null)
-            val testImagesSubDir = File(appFilesDir, "TestImages")
-            val localFiles = mutableListOf<File>()
+        if (BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            btnSimulateRegistration?.visibility = View.VISIBLE
+            btnSimulateRegistration?.setOnClickListener {
+                val appFilesDir = getExternalFilesDir(null)
+                val testImagesSubDir = File(appFilesDir, "TestImages")
+                val localFiles = mutableListOf<File>()
 
-            if (testImagesSubDir.exists() && testImagesSubDir.isDirectory) {
-                testImagesSubDir.listFiles { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                }?.let { localFiles.addAll(it) }
-            }
-
-            if (localFiles.isEmpty() && appFilesDir != null && appFilesDir.exists()) {
-                appFilesDir.listFiles { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                }?.let { localFiles.addAll(it) }
-            }
-
-            // Natural ascending sort (e.g. 1.png, 2.png, 3.png, 10.png)
-            localFiles.sortWith(Comparator { f1, f2 ->
-                val n1 = extractNumber(f1.nameWithoutExtension)
-                val n2 = extractNumber(f2.nameWithoutExtension)
-                if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
-                    n1.compareTo(n2)
-                } else {
-                    f1.name.compareTo(f2.name, ignoreCase = true)
+                if (testImagesSubDir.exists() && testImagesSubDir.isDirectory) {
+                    testImagesSubDir.listFiles { _, name ->
+                        val lower = name.lowercase()
+                        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    }?.let { localFiles.addAll(it) }
                 }
-            })
 
-            if (localFiles.isNotEmpty()) {
-                val uris = localFiles.map { Uri.fromFile(it) }
-                AlertDialog.Builder(this)
-                    .setTitle("Batch Simulation Source")
-                    .setMessage("Found ${localFiles.size} image(s) in TestImages folder:\nAndroid/data/com.digitaledu.selfieattendance/files/TestImages/\n\nDo you want to process these images in ascending order or select manually from gallery?")
-                    .setPositiveButton("Process TestImages (${localFiles.size})") { _, _ ->
-                        processBatchRegistrationSimulation(uris)
+                if (localFiles.isEmpty() && appFilesDir != null && appFilesDir.exists()) {
+                    appFilesDir.listFiles { _, name ->
+                        val lower = name.lowercase()
+                        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    }?.let { localFiles.addAll(it) }
+                }
+
+                // Natural ascending sort (e.g. 1.png, 2.png, 3.png, 10.png)
+                localFiles.sortWith(Comparator { f1, f2 ->
+                    val n1 = extractNumber(f1.nameWithoutExtension)
+                    val n2 = extractNumber(f2.nameWithoutExtension)
+                    if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
+                        n1.compareTo(n2)
+                    } else {
+                        f1.name.compareTo(f2.name, ignoreCase = true)
                     }
-                    .setNegativeButton("Select from Gallery") { _, _ ->
-                        batchImagesLauncher.launch("image/*")
-                    }
-                    .setNeutralButton("Cancel", null)
-                    .show()
-            } else {
-                Toast.makeText(this, "No image found in TestImages folder!\nPath: Android/data/com.digitaledu.selfieattendance/files/TestImages/", Toast.LENGTH_LONG).show()
-                batchImagesLauncher.launch("image/*")
+                })
+
+                if (localFiles.isNotEmpty()) {
+                    val uris = localFiles.map { Uri.fromFile(it) }
+                    AlertDialog.Builder(this)
+                        .setTitle("Batch Simulation Source")
+                        .setMessage("Found ${localFiles.size} image(s) in TestImages folder:\nAndroid/data/com.digitaledu.selfieattendance/files/TestImages/\n\nDo you want to process these images in ascending order or select manually from gallery?")
+                        .setPositiveButton("Process TestImages (${localFiles.size})") { _, _ ->
+                            processBatchRegistrationSimulation(uris)
+                        }
+                        .setNegativeButton("Select from Gallery") { _, _ ->
+                            batchImagesLauncher.launch("image/*")
+                        }
+                        .setNeutralButton("Cancel", null)
+                        .show()
+                } else {
+                    Toast.makeText(this, "No image found in TestImages folder!\nPath: Android/data/com.digitaledu.selfieattendance/files/TestImages/", Toast.LENGTH_LONG).show()
+                    batchImagesLauncher.launch("image/*")
+                }
             }
         }
     }
@@ -737,15 +741,17 @@ class FaceRegistrationActivity : AppCompatActivity() {
                     WorkManager.getInstance(this@FaceRegistrationActivity).enqueue(workRequest)
                 }
 
-                // Create local registration text file and upload to UploadStudentPhotos API
-                try {
-                    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
-                    val logFile = File(getExternalFilesDir(null), "registration_${id}_${System.currentTimeMillis()}.txt")
-                    logFile.writeText("Face Registration Log\nUser ID: $id\nUser Type: $userType\nYear: $currentYear\nTimestamp: ${java.util.Date()}\nStatus: SUCCESS\n")
-                    val uploadResult = uploadReportFileToServer(logFile)
-                    Log.i("EnrollActivity", "Single registration report upload result: $uploadResult")
-                } catch (e: Exception) {
-                    Log.e("EnrollActivity", "Error uploading single registration log file", e)
+                if (BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+                    // Test-only diagnostic report. Release builds never create or upload this file.
+                    try {
+                        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+                        val logFile = File(getExternalFilesDir(null), "registration_${id}_${System.currentTimeMillis()}.txt")
+                        logFile.writeText("Face Registration Log\nUser ID: $id\nUser Type: $userType\nYear: $currentYear\nTimestamp: ${java.util.Date()}\nStatus: SUCCESS\n")
+                        val uploadResult = uploadReportFileToServer(logFile)
+                        Log.i("EnrollActivity", "Single registration report upload result: $uploadResult")
+                    } catch (e: Exception) {
+                        Log.e("EnrollActivity", "Error uploading single registration log file", e)
+                    }
                 }
             } else {
                 withContext(Dispatchers.Main) {
@@ -908,6 +914,10 @@ class FaceRegistrationActivity : AppCompatActivity() {
     private val batchImagesLauncher = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris ->
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("BatchSimulation", "Ignored batch registration request in production mode")
+            return@registerForActivityResult
+        }
         if (uris.isNullOrEmpty()) {
             Toast.makeText(this, "No images selected for simulation", Toast.LENGTH_SHORT).show()
             return@registerForActivityResult
@@ -941,6 +951,11 @@ class FaceRegistrationActivity : AppCompatActivity() {
     )
 
     private fun processBatchRegistrationSimulation(uris: List<Uri>) {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("BatchSimulation", "Batch registration is disabled in production mode")
+            return
+        }
+
         @Suppress("DEPRECATION")
         val progressDialog = android.app.ProgressDialog(this).apply {
             setTitle("Batch Registration Simulation")
@@ -1311,6 +1326,11 @@ class FaceRegistrationActivity : AppCompatActivity() {
         serverStatus: String,
         results: List<BatchSimulationResult>
     ): String {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("BatchSimulation", "Skipped registration report creation in production mode")
+            return ""
+        }
+
         val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         val sb = StringBuilder()
         sb.append("======================================================================\n")
@@ -1411,6 +1431,11 @@ class FaceRegistrationActivity : AppCompatActivity() {
     }
 
     private suspend fun uploadReportFileToServer(file: File): String = withContext(Dispatchers.IO) {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("FileUpload", "Skipped diagnostic report upload in production mode")
+            return@withContext "SKIPPED (Production mode)"
+        }
+
         try {
             val baseUrl = getSharedPreferences("LoginPrefs", MODE_PRIVATE).getString("baseUrl", "")
             if (baseUrl.isNullOrBlank()) return@withContext "FAILED (Missing Base URL)"

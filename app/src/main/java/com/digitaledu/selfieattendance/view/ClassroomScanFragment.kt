@@ -538,6 +538,10 @@ class ClassroomScanFragment : Fragment() {
 
                     val sc = repository.fetchAndSaveStudentSchedulingData(apiService, db, instId)
                     if (!sc) allOk = false
+
+                    // Refresh the latest server thresholds during a manual Device Sync.
+                    // This also applies them to FaceDetectionConfig immediately.
+                    repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
                 }
 
                 // Subjects do not depend on institute, sync once

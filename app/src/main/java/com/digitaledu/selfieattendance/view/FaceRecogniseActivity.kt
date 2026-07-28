@@ -27,6 +27,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.digitaledu.selfieattendance.BuildConfig
 import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Class
@@ -124,59 +125,62 @@ class FaceRecogniseActivity : AppCompatActivity() {
         else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_REQUEST)
 
         val btnMassVerify = findViewById<Button>(R.id.btnMassVerify)
-        btnMassVerify?.setOnClickListener {
-            val appFilesDir = getExternalFilesDir(null)
-            val testVerificationSubDir = File(appFilesDir, "TestVerificationImages")
-            val testImagesSubDir = File(appFilesDir, "TestImages")
-            val localFiles = mutableListOf<File>()
+        if (BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            btnMassVerify?.visibility = View.VISIBLE
+            btnMassVerify?.setOnClickListener {
+                val appFilesDir = getExternalFilesDir(null)
+                val testVerificationSubDir = File(appFilesDir, "TestVerificationImages")
+                val testImagesSubDir = File(appFilesDir, "TestImages")
+                val localFiles = mutableListOf<File>()
 
-            if (testVerificationSubDir.exists() && testVerificationSubDir.isDirectory) {
-                testVerificationSubDir.listFiles { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                }?.let { localFiles.addAll(it) }
-            }
-
-            if (localFiles.isEmpty() && testImagesSubDir.exists() && testImagesSubDir.isDirectory) {
-                testImagesSubDir.listFiles { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                }?.let { localFiles.addAll(it) }
-            }
-
-            if (localFiles.isEmpty() && appFilesDir != null && appFilesDir.exists()) {
-                appFilesDir.listFiles { _, name ->
-                    val lower = name.lowercase()
-                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
-                }?.let { localFiles.addAll(it) }
-            }
-
-            localFiles.sortWith(Comparator { f1, f2 ->
-                val n1 = extractNumber(f1.nameWithoutExtension)
-                val n2 = extractNumber(f2.nameWithoutExtension)
-                if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
-                    n1.compareTo(n2)
-                } else {
-                    f1.name.compareTo(f2.name, ignoreCase = true)
+                if (testVerificationSubDir.exists() && testVerificationSubDir.isDirectory) {
+                    testVerificationSubDir.listFiles { _, name ->
+                        val lower = name.lowercase()
+                        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    }?.let { localFiles.addAll(it) }
                 }
-            })
 
-            if (localFiles.isNotEmpty()) {
-                val uris = localFiles.map { Uri.fromFile(it) }
-                AlertDialog.Builder(this)
-                    .setTitle("Mass Verification Source")
-                    .setMessage("Found ${localFiles.size} image(s) in TestVerificationImages folder:\nAndroid/data/com.digitaledu.selfieattendance/files/TestVerificationImages/\n\nDo you want to run mass verification on these images in ascending order or select manually from gallery?")
-                    .setPositiveButton("Process Test Images (${localFiles.size})") { _, _ ->
-                        processMassVerificationSimulation(uris)
+                if (localFiles.isEmpty() && testImagesSubDir.exists() && testImagesSubDir.isDirectory) {
+                    testImagesSubDir.listFiles { _, name ->
+                        val lower = name.lowercase()
+                        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    }?.let { localFiles.addAll(it) }
+                }
+
+                if (localFiles.isEmpty() && appFilesDir != null && appFilesDir.exists()) {
+                    appFilesDir.listFiles { _, name ->
+                        val lower = name.lowercase()
+                        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    }?.let { localFiles.addAll(it) }
+                }
+
+                localFiles.sortWith(Comparator { f1, f2 ->
+                    val n1 = extractNumber(f1.nameWithoutExtension)
+                    val n2 = extractNumber(f2.nameWithoutExtension)
+                    if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
+                        n1.compareTo(n2)
+                    } else {
+                        f1.name.compareTo(f2.name, ignoreCase = true)
                     }
-                    .setNegativeButton("Select from Gallery") { _, _ ->
-                        massVerifyLauncher.launch("image/*")
-                    }
-                    .setNeutralButton("Cancel", null)
-                    .show()
-            } else {
-                Toast.makeText(this, "No image found in TestVerificationImages folder!\nPath: Android/data/com.digitaledu.selfieattendance/files/TestVerificationImages/", Toast.LENGTH_LONG).show()
-                massVerifyLauncher.launch("image/*")
+                })
+
+                if (localFiles.isNotEmpty()) {
+                    val uris = localFiles.map { Uri.fromFile(it) }
+                    AlertDialog.Builder(this)
+                        .setTitle("Mass Verification Source")
+                        .setMessage("Found ${localFiles.size} image(s) in TestVerificationImages folder:\nAndroid/data/com.digitaledu.selfieattendance/files/TestVerificationImages/\n\nDo you want to run mass verification on these images in ascending order or select manually from gallery?")
+                        .setPositiveButton("Process Test Images (${localFiles.size})") { _, _ ->
+                            processMassVerificationSimulation(uris)
+                        }
+                        .setNegativeButton("Select from Gallery") { _, _ ->
+                            massVerifyLauncher.launch("image/*")
+                        }
+                        .setNeutralButton("Cancel", null)
+                        .show()
+                } else {
+                    Toast.makeText(this, "No image found in TestVerificationImages folder!\nPath: Android/data/com.digitaledu.selfieattendance/files/TestVerificationImages/", Toast.LENGTH_LONG).show()
+                    massVerifyLauncher.launch("image/*")
+                }
             }
         }
     }
@@ -642,6 +646,10 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private val massVerifyLauncher = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris ->
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("MassVerify", "Ignored mass verification request in production mode")
+            return@registerForActivityResult
+        }
         if (uris.isNullOrEmpty()) {
             Toast.makeText(this, "No images selected for mass verification", Toast.LENGTH_SHORT).show()
             return@registerForActivityResult
@@ -673,6 +681,11 @@ class FaceRecogniseActivity : AppCompatActivity() {
     )
 
     private fun processMassVerificationSimulation(uris: List<Uri>) {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("MassVerify", "Mass verification is disabled in production mode")
+            return
+        }
+
         @Suppress("DEPRECATION")
         val progressDialog = android.app.ProgressDialog(this).apply {
             setTitle("Mass Face Verification Simulation")
@@ -897,6 +910,11 @@ class FaceRecogniseActivity : AppCompatActivity() {
         threshold: Float,
         results: List<MassVerifyResult>
     ): String {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("MassVerify", "Skipped verification report creation in production mode")
+            return ""
+        }
+
         val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         val sb = StringBuilder()
         sb.append("======================================================================\n")
@@ -972,6 +990,11 @@ class FaceRecogniseActivity : AppCompatActivity() {
     }
 
     private suspend fun uploadReportFileToServer(file: File): String = withContext(Dispatchers.IO) {
+        if (!BuildConfig.ENABLE_TEST_ENVIRONMENT) {
+            Log.w("FileUpload", "Skipped verification report upload in production mode")
+            return@withContext "SKIPPED (Production mode)"
+        }
+
         try {
             val baseUrl = getSharedPreferences("LoginPrefs", MODE_PRIVATE).getString("baseUrl", "")
             if (baseUrl.isNullOrBlank()) return@withContext "FAILED (Missing Base URL)"

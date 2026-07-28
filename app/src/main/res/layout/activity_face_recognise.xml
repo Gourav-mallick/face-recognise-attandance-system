@@ -283,6 +283,7 @@
             android:id="@+id/btnMassVerify"
             android:layout_width="match_parent"
             android:layout_height="44dp"
+            android:visibility="gone"
             android:layout_marginTop="8dp"
             android:text="⚡ Mass Verify (Batch Test)"
             android:textAllCaps="false"
