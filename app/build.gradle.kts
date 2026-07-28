@@ -1,3 +1,5 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -30,6 +32,7 @@ android {
     buildTypes {
         debug {
             buildConfigField("boolean", "ENABLE_TEST_ENVIRONMENT", "true")
+            versionNameSuffix = "-test"
         }
         release {
             buildConfigField("boolean", "ENABLE_TEST_ENVIRONMENT", "false")
@@ -49,6 +52,18 @@ android {
     }
     buildFeatures {
         viewBinding= true
+    }
+
+    applicationVariants.all {
+        val apkName = when (buildType.name) {
+            "debug" -> "test-selfie-attendance.apk"
+            "release" -> "selfie-attendance.apk"
+            else -> "selfie-attendance-${buildType.name}.apk"
+        }
+
+        outputs.all {
+            (this as BaseVariantOutputImpl).outputFileName = apkName
+        }
     }
 }
 
