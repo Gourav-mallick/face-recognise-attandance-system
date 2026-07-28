@@ -41,6 +41,20 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.net.Uri
+import android.os.Environment
+import android.provider.OpenableColumns
+import android.widget.Button
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import com.digitaledu.selfieattendance.api.ApiClient
+import com.digitaledu.selfieattendance.api.ApiService
+import com.digitaledu.selfieattendance.ml.FaceDetectionConfig
+import okhttp3.MediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import org.json.JSONObject
+import java.io.File
 import kotlin.math.abs
 
 class FaceRecogniseActivity : AppCompatActivity() {
@@ -108,6 +122,63 @@ class FaceRecogniseActivity : AppCompatActivity() {
         loadClasses()
         if (cameraPermissionGranted()) startCamera()
         else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_REQUEST)
+
+        val btnMassVerify = findViewById<Button>(R.id.btnMassVerify)
+        btnMassVerify?.setOnClickListener {
+            val appFilesDir = getExternalFilesDir(null)
+            val testVerificationSubDir = File(appFilesDir, "TestVerificationImages")
+            val testImagesSubDir = File(appFilesDir, "TestImages")
+            val localFiles = mutableListOf<File>()
+
+            if (testVerificationSubDir.exists() && testVerificationSubDir.isDirectory) {
+                testVerificationSubDir.listFiles { _, name ->
+                    val lower = name.lowercase()
+                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                }?.let { localFiles.addAll(it) }
+            }
+
+            if (localFiles.isEmpty() && testImagesSubDir.exists() && testImagesSubDir.isDirectory) {
+                testImagesSubDir.listFiles { _, name ->
+                    val lower = name.lowercase()
+                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                }?.let { localFiles.addAll(it) }
+            }
+
+            if (localFiles.isEmpty() && appFilesDir != null && appFilesDir.exists()) {
+                appFilesDir.listFiles { _, name ->
+                    val lower = name.lowercase()
+                    lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                }?.let { localFiles.addAll(it) }
+            }
+
+            localFiles.sortWith(Comparator { f1, f2 ->
+                val n1 = extractNumber(f1.nameWithoutExtension)
+                val n2 = extractNumber(f2.nameWithoutExtension)
+                if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
+                    n1.compareTo(n2)
+                } else {
+                    f1.name.compareTo(f2.name, ignoreCase = true)
+                }
+            })
+
+            if (localFiles.isNotEmpty()) {
+                val uris = localFiles.map { Uri.fromFile(it) }
+                AlertDialog.Builder(this)
+                    .setTitle("Mass Verification Source")
+                    .setMessage("Found ${localFiles.size} image(s) in TestVerificationImages folder:\nAndroid/data/com.digitaledu.selfieattendance/files/TestVerificationImages/\n\nDo you want to run mass verification on these images in ascending order or select manually from gallery?")
+                    .setPositiveButton("Process Test Images (${localFiles.size})") { _, _ ->
+                        processMassVerificationSimulation(uris)
+                    }
+                    .setNegativeButton("Select from Gallery") { _, _ ->
+                        massVerifyLauncher.launch("image/*")
+                    }
+                    .setNeutralButton("Cancel", null)
+                    .show()
+            } else {
+                Toast.makeText(this, "No image found in TestVerificationImages folder!\nPath: Android/data/com.digitaledu.selfieattendance/files/TestVerificationImages/", Toast.LENGTH_LONG).show()
+                massVerifyLauncher.launch("image/*")
+            }
+        }
     }
 
     private fun startCamera() {
@@ -226,15 +297,22 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private fun verifyFace(faceEmbedding: FloatArray) {
         val gallery = cachedUsersToMatch
         lifecycleScope.launch(Dispatchers.Default) {
+            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${gallery.size} candidate(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}) ===")
             val match = gallery.asSequence()
-                .map { it to YuNetSFaceEngine.cosineSimilarity(it.embedding, faceEmbedding) }
+                .map { user ->
+                    val sim = YuNetSFaceEngine.cosineSimilarity(user.embedding, faceEmbedding)
+                    Log.d("SFACE_MATCH", "  Candidate ${user.name} (${user.role} ID: ${user.id}): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", sim)}")
+                    user to sim
+                }
                 .maxByOrNull { it.second }
             withContext(Dispatchers.Main) {
                 if (match == null || match.second < com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold) {
+                    Log.w("FaceRecognise", "❌ REJECTED / NO MATCH: Closest candidate: ${match?.first?.name ?: "None"} (${match?.first?.role ?: ""}), similarity=${match?.second ?: -1f}, threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}")
                     showUnrecognized(match?.second)
                     return@withContext
                 }
                 val user = match.first
+                Log.i("FaceRecognise", "✔ MATCH SUCCESS: ${user.name} (${user.role} ID: ${user.id}) — similarity=${match.second} >= threshold=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}")
                 val classInfo = if (user.role == "Student") {
                     val name = classList.firstOrNull { it.classId == user.classId }?.classShortName
                     "Class: ${name ?: user.classId ?: "--"}"
@@ -555,6 +633,394 @@ class FaceRecogniseActivity : AppCompatActivity() {
         livenessVerifier.close()
         voiceGuidance.close()
         super.onDestroy()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ⚡ MASS BATCH FACE VERIFICATION SIMULATION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private val massVerifyLauncher = registerForActivityResult(
+        ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNullOrEmpty()) {
+            Toast.makeText(this, "No images selected for mass verification", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        processMassVerificationSimulation(uris)
+    }
+
+    private data class MassVerifyResult(
+        val index: Int,
+        val fileName: String,
+        val targetUserLabel: String = "",
+        val status: String, // "VERIFIED MATCH SUCCESS", "UNKNOWN / NO MATCH", "REJECTED: QUALITY FAILED", "NO FACE DETECTED"
+        val rejectionReason: String = "",
+        val eyeDistance: Float = 0f,
+        val sharpness: Float = 0f,
+        val maxConfidenceScore: Float = 0f,
+        val matchedUserId: String = "",
+        val matchedUserName: String = "",
+        val matchedUserRole: String = "",
+        val similarityScore: Float = 0f
+    )
+
+    private fun processMassVerificationSimulation(uris: List<Uri>) {
+        @Suppress("DEPRECATION")
+        val progressDialog = android.app.ProgressDialog(this).apply {
+            setTitle("Mass Face Verification Simulation")
+            setMessage("Initializing face detection engine...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(this@FaceRecogniseActivity)
+            val registeredStudents = db.studentsDao().getAllStudents().filter { !it.embedding.isNullOrEmpty() }
+            val registeredTeachers = db.teachersDao().getAllTeachers().filter { !it.embedding.isNullOrEmpty() }
+
+            val sortedUris = uris.sortedWith(Comparator { u1, u2 ->
+                val name1 = getUriFileName(u1) ?: ""
+                val name2 = getUriFileName(u2) ?: ""
+                val n1 = extractNumber(name1.substringBeforeLast('.'))
+                val n2 = extractNumber(name2.substringBeforeLast('.'))
+                if (n1 != Long.MAX_VALUE || n2 != Long.MAX_VALUE) {
+                    n1.compareTo(n2)
+                } else {
+                    name1.compareTo(name2, ignoreCase = true)
+                }
+            })
+
+            val results = mutableListOf<MassVerifyResult>()
+            var verifiedCount = 0
+            var unknownCount = 0
+            var failedCount = 0
+            val threshold = FaceDetectionConfig.cosineThreshold
+
+ Log.d("FaceRecogniseActivity", "SFace Matching Config: inputSize=${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognizerInputSize}, embeddingDimensions=${YuNetSFaceEngine.SFACE_DIMENSIONS}, cosineThreshold=$threshold")
+
+            for ((idx, uri) in sortedUris.withIndex()) {
+                val fileName = getUriFileName(uri) ?: "Image_${idx + 1}.jpg"
+                val targetUserLabel = fileName.substringBeforeLast('.')
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.setMessage("Verifying image ${idx + 1} of ${sortedUris.size}:\n$fileName")
+                }
+
+                val bitmap = decodeUriToBitmap(uri)
+                if (bitmap == null) {
+                    results.add(
+                        MassVerifyResult(
+                            index = idx + 1,
+                            fileName = fileName,
+                            targetUserLabel = targetUserLabel,
+                            status = "NO FACE DETECTED (Invalid File)"
+                        )
+                    )
+                    failedCount++
+                    continue
+                }
+
+                val diag = engine.detectWithDiagnostics(bitmap)
+                if (diag.faces.isEmpty()) {
+                    results.add(
+                        MassVerifyResult(
+                            index = idx + 1,
+                            fileName = fileName,
+                            targetUserLabel = targetUserLabel,
+                            status = "NO FACE DETECTED",
+                            rejectionReason = diag.diagnosticReason,
+                            maxConfidenceScore = diag.maxRawScore
+                        )
+                    )
+                    failedCount++
+                    bitmap.recycle()
+                    continue
+                }
+
+                val faces = diag.faces
+                val primaryFace = faces.maxByOrNull { it.bounds.width() * it.bounds.height() }!!
+                val quality = engine.assessQualityDetailed(bitmap, primaryFace, strict = false)
+
+                if (!quality.accepted) {
+                    Log.w("MassVerify", "⚠️ Image #${idx + 1} ($fileName) QUALITY FAILED: ${quality.guidance}")
+                    results.add(
+                        MassVerifyResult(
+                            index = idx + 1,
+                            fileName = fileName,
+                            targetUserLabel = targetUserLabel,
+                            status = "REJECTED: QUALITY FAILED",
+                            rejectionReason = quality.guidance,
+                            eyeDistance = quality.eyeDistance,
+                            sharpness = quality.sharpness,
+                            maxConfidenceScore = diag.maxRawScore
+                        )
+                    )
+                    failedCount++
+                    bitmap.recycle()
+                    continue
+                }
+
+                val embedding = engine.embedding(bitmap, primaryFace)
+                bitmap.recycle()
+
+                // Compare against ALL registered students & teachers in DB
+                var highestSim = -1f
+                var matchedId = ""
+                var matchedName = ""
+                var matchedRole = ""
+
+                for (s in registeredStudents) {
+                    val vec = s.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
+                    if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
+                    val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                    if (sim > highestSim) {
+                        highestSim = sim
+                        matchedId = s.studentId
+                        matchedName = s.studentName
+                        matchedRole = "Student"
+                    }
+                }
+
+                for (t in registeredTeachers) {
+                    val vec = t.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
+                    if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
+                    val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                    if (sim > highestSim) {
+                        highestSim = sim
+                        matchedId = t.staffId
+                        matchedName = t.staffName
+                        matchedRole = "Teacher"
+                    }
+                }
+
+                if (highestSim >= threshold) {
+                    verifiedCount++
+                    Log.i("MassVerify", "✔ Image #${idx + 1} ($fileName) VERIFIED MATCH: $matchedName ($matchedRole ID: $matchedId) — Cosine Sim: $highestSim >= Threshold: $threshold")
+                    results.add(
+                        MassVerifyResult(
+                            index = idx + 1,
+                            fileName = fileName,
+                            targetUserLabel = targetUserLabel,
+                            status = "VERIFIED MATCH SUCCESS",
+                            eyeDistance = quality.eyeDistance,
+                            sharpness = quality.sharpness,
+                            maxConfidenceScore = diag.maxRawScore,
+                            matchedUserId = matchedId,
+                            matchedUserName = matchedName,
+                            matchedUserRole = matchedRole,
+                            similarityScore = highestSim
+                        )
+                    )
+                } else {
+                    unknownCount++
+                    Log.w("MassVerify", "❓ Image #${idx + 1} ($fileName) UNKNOWN / NO MATCH. Closest: $matchedName (Sim: $highestSim < Threshold: $threshold)")
+                    results.add(
+                        MassVerifyResult(
+                            index = idx + 1,
+                            fileName = fileName,
+                            targetUserLabel = targetUserLabel,
+                            status = "UNKNOWN / NO MATCH",
+                            rejectionReason = if (matchedName.isNotEmpty()) "Closest candidate $matchedName (Score: ${String.format(java.util.Locale.US, "%.4f", highestSim)}) below threshold ${String.format(java.util.Locale.US, "%.4f", threshold)}" else "No registered face candidate matched",
+                            eyeDistance = quality.eyeDistance,
+                            sharpness = quality.sharpness,
+                            maxConfidenceScore = diag.maxRawScore,
+                            matchedUserId = matchedId,
+                            matchedUserName = matchedName,
+                            matchedUserRole = matchedRole,
+                            similarityScore = highestSim
+                        )
+                    )
+                }
+            }
+
+            // Write detailed report & upload to server
+            val reportPath = writeMassVerifyReportToFile(sortedUris.size, verifiedCount, unknownCount, failedCount, threshold, results)
+            val reportFile = File(reportPath)
+            val uploadStatus = uploadReportFileToServer(reportFile)
+
+            withContext(Dispatchers.Main) {
+                progressDialog.dismiss()
+                showMassVerifyReportDialog(sortedUris.size, verifiedCount, unknownCount, failedCount, uploadStatus, reportPath)
+            }
+        }
+    }
+
+    private fun getUriFileName(uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) name = cursor.getString(idx)
+                }
+            }
+        }
+        if (name == null) {
+            name = uri.path
+            val cut = name?.lastIndexOf('/') ?: -1
+            if (cut != -1) name = name?.substring(cut + 1)
+        }
+        return name
+    }
+
+    private fun decodeUriToBitmap(uri: Uri): Bitmap? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.e("MassVerify", "Error decoding uri $uri", e)
+            null
+        }
+    }
+
+    private fun writeMassVerifyReportToFile(
+        total: Int,
+        verified: Int,
+        unknown: Int,
+        failures: Int,
+        threshold: Float,
+        results: List<MassVerifyResult>
+    ): String {
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val sb = StringBuilder()
+        sb.append("======================================================================\n")
+        sb.append("                MASS FACE VERIFICATION TEST REPORT                   \n")
+        sb.append("======================================================================\n")
+        sb.append("Timestamp:                $timestamp\n")
+        sb.append("Threshold Used (Cosine):  $threshold\n")
+        sb.append("Total Images Processed:   $total\n")
+        sb.append("Verified Matches:         $verified\n")
+        sb.append("Unknown / Unmatched:      $unknown\n")
+        sb.append("Failed (No Face / Quality): $failures\n")
+        sb.append("======================================================================\n")
+        sb.append("ACTIVE DETECTION & RECOGNITION CONFIGURATION:\n")
+        sb.append("  • Canvas Input Size:    ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.detectorInputSize} x ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.detectorInputSize}\n")
+        sb.append("  • Score Threshold:      ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.detectionThreshold}\n")
+        sb.append("  • NMS IoU Threshold:    ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.nmsThreshold}\n")
+        sb.append("  • TopK Candidates:      ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.topK}\n")
+        sb.append("  • Min Face Size:        ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.minFaceSize} px\n")
+        sb.append("  • Max Face Size:        ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.maxFaceSize} px\n")
+        sb.append("  • Cosine Threshold:     ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}\n")
+        sb.append("  • Recognizer Input:     ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognizerInputSize} x ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognizerInputSize}\n")
+        sb.append("  • Embedding Dimensions: ${YuNetSFaceEngine.SFACE_DIMENSIONS}\n")
+        sb.append("======================================================================\n\n")
+
+        for (item in results) {
+            sb.append("[Item #${item.index}]\n")
+            sb.append("  Image File:       ${item.fileName}\n")
+            if (item.targetUserLabel.isNotEmpty()) {
+                sb.append("  Target User:      ${item.targetUserLabel}\n")
+            }
+            sb.append("  Verification Status: ${item.status}\n")
+            if (item.rejectionReason.isNotEmpty()) {
+                sb.append("  Note / Cause:     ${item.rejectionReason}\n")
+            }
+            if (item.maxConfidenceScore > 0f) {
+                sb.append("  Max Confidence:   ${String.format(java.util.Locale.US, "%.4f", item.maxConfidenceScore)} (Cutoff Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.detectionThreshold})\n")
+            }
+            if (item.eyeDistance > 0f || item.sharpness > 0f) {
+                sb.append("  Quality Metrics:  Eye Distance: ${String.format(java.util.Locale.US, "%.1f", item.eyeDistance)}px | Sharpness Score: ${String.format(java.util.Locale.US, "%.1f", item.sharpness)}\n")
+            }
+            if (item.matchedUserId.isNotEmpty()) {
+                sb.append("  Matched User:     ${item.matchedUserName} (${item.matchedUserRole} ID: ${item.matchedUserId})\n")
+                sb.append("  Cosine Score:     ${String.format(java.util.Locale.US, "%.4f", item.similarityScore)} (Threshold: ${String.format(java.util.Locale.US, "%.4f", threshold)})\n")
+            }
+            sb.append("----------------------------------------------------------------------\n")
+        }
+
+        return try {
+            val fileName = "batch_verification_report_${System.currentTimeMillis()}.txt"
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+
+            val file = File(downloadsDir, fileName)
+            file.writeText(sb.toString())
+
+            val appFile = File(getExternalFilesDir(null), fileName)
+            appFile.writeText(sb.toString())
+
+            file.absolutePath
+        } catch (e: Exception) {
+            Log.e("MassVerify", "Failed to write report to Downloads", e)
+            val fallbackFile = File(getExternalFilesDir(null), "batch_verification_report.txt")
+            fallbackFile.writeText(sb.toString())
+            fallbackFile.absolutePath
+        }
+    }
+
+    private suspend fun uploadReportFileToServer(file: File): String = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = getSharedPreferences("LoginPrefs", MODE_PRIVATE).getString("baseUrl", "")
+            if (baseUrl.isNullOrBlank()) return@withContext "FAILED (Missing Base URL)"
+            val hash = getSharedPreferences("LoginPrefs", MODE_PRIVATE).getString("hash", null)
+            val api = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
+
+            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+            val folderYearBody = RequestBody.create(MediaType.parse("text/plain"), currentYear)
+
+            val mediaType = MediaType.parse("text/plain")
+            val fileReqBody = RequestBody.create(mediaType, file)
+            val filePart = MultipartBody.Part.createFormData("userDocumentFileName", file.name, fileReqBody)
+
+            Log.d("FileUpload", "Uploading verification report file '${file.name}' to UploadStudentPhotos API (Year: $currentYear)...")
+            val response = api.uploadStudentPhotos(folderYear = folderYearBody, file = filePart)
+
+            if (response.isSuccessful && response.body() != null) {
+                val bodyStr = response.body()!!.string()
+                Log.d("FileUpload", "Upload response: $bodyStr")
+                val jsonObj = JSONObject(bodyStr)
+                val retStoredDocFileName = jsonObj.optJSONObject("collection")
+                    ?.optJSONObject("response")
+                    ?.optString("retStoredDocFileName", "") ?: ""
+
+                if (retStoredDocFileName.isNotEmpty()) {
+                    Log.i("FileUpload", "✔ Report uploaded successfully: $retStoredDocFileName")
+                    "SUCCESS ($retStoredDocFileName)"
+                } else {
+                    "SUCCESS"
+                }
+            } else {
+                Log.w("FileUpload", "Report upload failed with HTTP ${response.code()}")
+                "FAILED (HTTP ${response.code()})"
+            }
+        } catch (e: Exception) {
+            Log.e("FileUpload", "Exception during report upload: ${e.message}", e)
+            "FAILED (${e.message})"
+        }
+    }
+
+    private fun showMassVerifyReportDialog(
+        total: Int,
+        verified: Int,
+        unknown: Int,
+        failures: Int,
+        uploadStatus: String,
+        reportPath: String
+    ) {
+        val msg = """
+            Mass Face Verification Complete!
+
+            Total Images Tested: $total
+            Verified Matches: $verified
+            Unknown / Unmatched: $unknown
+            Failed (Quality / No Face): $failures
+            Server Report Upload: $uploadStatus
+
+            Report File Saved To:
+            $reportPath
+        """.trimIndent()
+
+        AlertDialog.Builder(this)
+            .setTitle("Mass Verification Completed")
+            .setMessage(msg)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun extractNumber(name: String): Long {
+        val digits = name.replace(Regex("[^0-9]"), "")
+        return digits.toLongOrNull() ?: Long.MAX_VALUE
     }
 
     companion object {

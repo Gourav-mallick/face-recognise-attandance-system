@@ -326,9 +326,12 @@ class StudentScanFragment : Fragment() {
             var bestIsTeacher = false
             var bestSimilarity = -1f
 
+            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${cachedTeacherEmbeddings.size} teacher(s) and ${cachedStudentEmbeddings.size} student(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}) ===")
+
             // Compare faceEmbedding with teachers
             for ((id, name, emb) in cachedTeacherEmbeddings) {
                 val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
+                Log.d("SFACE_MATCH", "  Candidate Teacher $name (ID: $id): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", similarity)}")
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity
                     bestMatchName = name
@@ -341,6 +344,7 @@ class StudentScanFragment : Fragment() {
             // Compare faceEmbedding with students
             for ((id, name, emb) in cachedStudentEmbeddings) {
                 val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
+                Log.d("SFACE_MATCH", "  Candidate Student $name (ID: $id): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", similarity)}")
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity
                     bestMatchName = name

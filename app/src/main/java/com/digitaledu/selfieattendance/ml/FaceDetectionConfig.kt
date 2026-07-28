@@ -34,11 +34,17 @@ object FaceDetectionConfig {
     /** IoU threshold for Non-Maximum Suppression. */
     @Volatile var nmsThreshold: Float = 0.30f
 
+    /** Max candidates before NMS. */
+    @Volatile var topK: Int = 1000
+
+    /** Minimum face bounding box size in pixels (px). Default 200 px. */
+    @Volatile var minFaceSize: Float = 200f
+
+    /** Maximum face bounding box size in pixels (px). Default 500 px. */
+    @Volatile var maxFaceSize: Float = 500f
+
     /** Feature-pyramid stride levels (model architecture; rarely changed). */
     @Volatile var strides: IntArray = intArrayOf(8, 16, 32)
-
-    /** Minimum relative face size passed to ML Kit FaceDetector. */
-    @Volatile var minFaceSize: Float = 0.15f
 
     // ─────────────────── SFace recognizer thresholds ─────────────────
 
@@ -52,7 +58,7 @@ object FaceDetectionConfig {
     @Volatile var embeddingDimensions: Int = 128
 
     /** Cosine-similarity threshold for identity verification. */
-    @Volatile var cosineThreshold: Float = 0.42f
+    @Volatile var cosineThreshold: Float = 0.48f
 
     // ─────────────────── Quality gates (strict — registration) ──────
 
@@ -115,7 +121,14 @@ object FaceDetectionConfig {
      * ```json
      * {
      *   "faceRecognition": {
-     *     "detector": { "detectionThreshold": ..., "nmsThreshold": ..., ... },
+     *     "detector": {
+     *       "inputSize": 640,
+     *       "scoreThreshold": 0.85,
+     *       "nmsThreshold": 0.30,
+     *       "topK": 1000,
+     *       "minFaceSize": 200,
+     *       "maxFaceSize": 500
+     *     },
      *     "recognizer": { "cosineThreshold": ..., ... },
      *     "quality": {
      *       "strict": { "minEyeDistance": ..., ... },
@@ -142,14 +155,20 @@ object FaceDetectionConfig {
             // ── faceRecognition ──
             val fr = root.optJSONObject("faceRecognition") ?: return
 
-            // detector
-            fr.optJSONObject("detector")?.let { det ->
-                det.optStringNonEmpty("model")?.let { detectorModel = it }
-                det.optPositiveInt("inputSize")?.let { detectorInputSize = it }
-                det.optPositiveFloat("detectionThreshold")?.let { detectionThreshold = it }
-                det.optPositiveFloat("nmsThreshold")?.let { nmsThreshold = it }
-                det.optPositiveFloat("minFaceSize")?.let { minFaceSize = it }
-                det.optJSONArray("strides")?.let { arr ->
+            // detector (supports yuNetDetector, YuNetDetector, or legacy detector)
+            val det = fr.optJSONObject("YuNetDetector")
+                ?: fr.optJSONObject("yuNetDetector")
+                ?: fr.optJSONObject("detector")
+
+            det?.let { d ->
+                d.optStringNonEmpty("model")?.let { detectorModel = it }
+                (d.optPositiveInt("inputSize") ?: d.optPositiveInt("input_size"))?.let { detectorInputSize = it }
+                (d.optPositiveFloat("scoreThreshold") ?: d.optPositiveFloat("score_threshold") ?: d.optPositiveFloat("detectionThreshold"))?.let { detectionThreshold = it }
+                (d.optPositiveFloat("nmsThreshold") ?: d.optPositiveFloat("nms_threshold"))?.let { nmsThreshold = it }
+                (d.optPositiveInt("topK") ?: d.optPositiveInt("top_k"))?.let { topK = it }
+                (d.optPositiveFloat("minFaceSize") ?: d.optPositiveFloat("min_face_size"))?.let { minFaceSize = it }
+                (d.optPositiveFloat("maxFaceSize") ?: d.optPositiveFloat("max_face_size"))?.let { maxFaceSize = it }
+                d.optJSONArray("strides")?.let { arr ->
                     if (arr.length() > 0) {
                         strides = IntArray(arr.length()) { i -> arr.getInt(i) }
                     }
@@ -210,6 +229,10 @@ object FaceDetectionConfig {
                 "  • cosineThreshold = $cosineThreshold\n" +
                 "  • detectionThreshold = $detectionThreshold\n" +
                 "  • nmsThreshold = $nmsThreshold\n" +
+                "  • topK = $topK\n" +
+                "  • detectorInputSize = $detectorInputSize\n" +
+                "  • minFaceSize = $minFaceSize px\n" +
+                "  • maxFaceSize = $maxFaceSize px\n" +
                 "  • minEyeDistance (strict/normal) = $minEyeDistanceStrict / $minEyeDistanceNormal\n" +
                 "  • symmetryLimit (strict/normal) = $symmetryLimitStrict / $symmetryLimitNormal\n" +
                 "  • minSharpness (strict/normal) = $minSharpnessStrict / $minSharpnessNormal\n" +

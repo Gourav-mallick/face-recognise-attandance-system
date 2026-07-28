@@ -263,11 +263,14 @@ class TeacherScanFragment : Fragment() {
             var bestName: String? = null
             var bestSimilarity = -1f
 
+            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${teachers.size} teacher(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.cosineThreshold}) ===")
+
             for (t in teachers) {
                 val embStr = t.embedding ?: continue
                 val emb = embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
                 if (emb.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
                 val similarity = YuNetSFaceEngine.cosineSimilarity(emb, embedding)
+                Log.d("SFACE_MATCH", "  Candidate Teacher ${t.staffName} (ID: ${t.staffId}): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", similarity)}")
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity
                     bestId = t.staffId

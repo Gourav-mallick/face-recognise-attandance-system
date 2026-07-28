@@ -12,6 +12,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.RectF
+import android.util.Log
 import java.nio.FloatBuffer
 import kotlin.math.abs
 import kotlin.math.exp
@@ -29,6 +30,23 @@ data class FaceQuality(
     val accepted: Boolean,
     val guidance: String,
     val sharpness: Float
+)
+
+data class DetailedFaceQuality(
+    val accepted: Boolean,
+    val guidance: String,
+    val eyeDistance: Float,
+    val sharpness: Float,
+    val isSymmetric: Boolean
+)
+
+data class DetectionDiagnostics(
+    val faces: List<YuNetFace>,
+    val maxRawScore: Float,
+    val totalRawCandidatesCount: Int,
+    val rejectedSizeCandidatesCount: Int,
+    val lastRejectedFaceSizePx: Float,
+    val diagnosticReason: String
 )
 
 /**
@@ -66,8 +84,36 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
 
     @Synchronized
     fun detect(bitmap: Bitmap, scoreThreshold: Float = FaceDetectionConfig.detectionThreshold): List<YuNetFace> {
+        return detectWithDiagnostics(bitmap, scoreThreshold).faces
+    }
+
+    @Synchronized
+    fun detectWithDiagnostics(
+        bitmap: Bitmap,
+        scoreThreshold: Float = FaceDetectionConfig.detectionThreshold
+    ): DetectionDiagnostics {
         check(!closed) { "YuNet/SFace engine is closed" }
-        val resized = Bitmap.createScaledBitmap(bitmap, detectorWidth, detectorHeight, true)
+
+        val modelReqWidth = detectorShape.getOrNull(3)?.takeIf { it > 0 }?.toInt()
+        val modelReqHeight = detectorShape.getOrNull(2)?.takeIf { it > 0 }?.toInt()
+
+        val targetWidth = if (modelReqWidth != null && modelReqWidth > 0) modelReqWidth else (FaceDetectionConfig.detectorInputSize.takeIf { it > 0 } ?: detectorWidth)
+        val targetHeight = if (modelReqHeight != null && modelReqHeight > 0) modelReqHeight else (FaceDetectionConfig.detectorInputSize.takeIf { it > 0 } ?: detectorHeight)
+
+        Log.d(
+            "YuNetSFaceEngine",
+            "detect() start: targetSize=${targetWidth}x${targetHeight}, frameSize=${bitmap.width}x${bitmap.height}, " +
+            "minFaceSize=${FaceDetectionConfig.minFaceSize}px, maxFaceSize=${FaceDetectionConfig.maxFaceSize}px, " +
+            "topK=${FaceDetectionConfig.topK}, scoreThreshold=$scoreThreshold, nmsThreshold=${FaceDetectionConfig.nmsThreshold}"
+        )
+
+        val resized = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+
+        var maxRawScore = 0f
+        var rawCount = 0
+        var sizeRejectedCount = 0
+        var lastRejectedSizePx = 0f
+
         try {
             val input = bitmapToNchw(resized, rgbOrder = false)
             val candidates = mutableListOf<YuNetFace>()
@@ -75,7 +121,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
             OnnxTensor.createTensor(
                 environment,
                 FloatBuffer.wrap(input),
-                longArrayOf(1, 3, detectorHeight.toLong(), detectorWidth.toLong())
+                longArrayOf(1, 3, targetHeight.toLong(), targetWidth.toLong())
             ).use { tensor ->
                 detector.run(mapOf(detectorInput to tensor)).use { output ->
                     for (stride in STRIDES) {
@@ -84,12 +130,15 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
                         val obj = outputFloats(output, "obj_$suffix")
                         val boxes = outputFloats(output, "bbox_$suffix")
                         val keypoints = outputFloats(output, "kps_$suffix")
-                        val columns = detectorWidth / stride
+                        val columns = targetWidth / stride
                         val count = min(cls.size, obj.size)
 
                         for (index in 0 until count) {
                             val score = sqrt(max(0f, cls[index] * obj[index]))
+                            if (score > maxRawScore) maxRawScore = score
                             if (score < scoreThreshold) continue
+
+                            rawCount++
 
                             val row = index / columns
                             val col = index % columns
@@ -101,8 +150,26 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
                             val centerY = (boxes[boxOffset + 1] + row) * stride
                             val width = exp(boxes[boxOffset + 2].coerceIn(-10f, 10f)) * stride
                             val height = exp(boxes[boxOffset + 3].coerceIn(-10f, 10f)) * stride
-                            val scaleX = bitmap.width.toFloat() / detectorWidth
-                            val scaleY = bitmap.height.toFloat() / detectorHeight
+
+                            val scaleX = bitmap.width.toFloat() / targetWidth
+                            val scaleY = bitmap.height.toFloat() / targetHeight
+
+                            val rect = RectF(
+                                (centerX - width / 2f) * scaleX,
+                                (centerY - height / 2f) * scaleY,
+                                (centerX + width / 2f) * scaleX,
+                                (centerY + height / 2f) * scaleY
+                            )
+
+                            val canvasFaceSizePx = max(width, height)
+                            val passesSizeGate = canvasFaceSizePx >= FaceDetectionConfig.minFaceSize && canvasFaceSizePx <= FaceDetectionConfig.maxFaceSize
+
+                            if (!passesSizeGate) {
+                                sizeRejectedCount++
+                                lastRejectedSizePx = canvasFaceSizePx
+                                continue
+                            }
+
                             val landmarks = List(5) { point ->
                                 PointF(
                                     (keypoints[keypointOffset + point * 2] + col) * stride * scaleX,
@@ -110,12 +177,7 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
                                 )
                             }
                             candidates += YuNetFace(
-                                RectF(
-                                    (centerX - width / 2f) * scaleX,
-                                    (centerY - height / 2f) * scaleY,
-                                    (centerX + width / 2f) * scaleX,
-                                    (centerY + height / 2f) * scaleY
-                                ),
+                                rect,
                                 landmarks,
                                 score
                             )
@@ -123,7 +185,28 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
                     }
                 }
             }
-            return nonMaximumSuppression(candidates)
+
+            val topKCandidates = candidates
+                .sortedByDescending { it.confidence }
+                .take(FaceDetectionConfig.topK)
+
+            val finalResult = nonMaximumSuppression(topKCandidates)
+
+            val reason = when {
+                finalResult.isNotEmpty() -> "Face detected successfully"
+                sizeRejectedCount > 0 -> "Candidate face size (${String.format(java.util.Locale.US, "%.1f", lastRejectedSizePx)}px) outside bounds [min=${FaceDetectionConfig.minFaceSize.toInt()}px, max=${FaceDetectionConfig.maxFaceSize.toInt()}px]"
+                rawCount == 0 -> "Low confidence score (Max candidate score ${String.format(java.util.Locale.US, "%.2f", maxRawScore)} < threshold ${String.format(java.util.Locale.US, "%.2f", scoreThreshold)})"
+                else -> "No valid face candidates after NMS"
+            }
+
+            return DetectionDiagnostics(
+                faces = finalResult,
+                maxRawScore = maxRawScore,
+                totalRawCandidatesCount = rawCount,
+                rejectedSizeCandidatesCount = sizeRejectedCount,
+                lastRejectedFaceSizePx = lastRejectedSizePx,
+                diagnosticReason = reason
+            )
         } finally {
             if (resized !== bitmap) resized.recycle()
         }
@@ -160,6 +243,68 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         return FaceQuality(true, "Landmarks locked — processing", sharpness)
     }
 
+    fun assessQualityDetailed(bitmap: Bitmap, face: YuNetFace, strict: Boolean): DetailedFaceQuality {
+        if (face.landmarks.size != 5) return DetailedFaceQuality(false, "Face landmarks incomplete (< 5 points)", 0f, 0f, false)
+        val leftEye = face.landmarks[0]
+        val rightEye = face.landmarks[1]
+        val nose = face.landmarks[2]
+        val leftMouth = face.landmarks[3]
+        val rightMouth = face.landmarks[4]
+        val eyeDistance = distance(leftEye, rightEye)
+        val minimumEyeDistance = if (strict) FaceDetectionConfig.minEyeDistanceStrict else FaceDetectionConfig.minEyeDistanceNormal
+
+        val eyeMidX = (leftEye.x + rightEye.x) / 2f
+        val mouthMidX = (leftMouth.x + rightMouth.x) / 2f
+        val symmetryLimit = eyeDistance * if (strict) FaceDetectionConfig.symmetryLimitStrict else FaceDetectionConfig.symmetryLimitNormal
+        val isSymmetric = abs(nose.x - eyeMidX) <= symmetryLimit && abs(nose.x - mouthMidX) <= symmetryLimit
+
+        if (eyeDistance < minimumEyeDistance) {
+            return DetailedFaceQuality(
+                false,
+                "Face too far / Eye distance small (${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px < Min ${minimumEyeDistance.toInt()}px)",
+                eyeDistance,
+                0f,
+                isSymmetric
+            )
+        }
+        if (!isSymmetric) {
+            return DetailedFaceQuality(
+                false,
+                "Head turned sideways / Asymmetric pose",
+                eyeDistance,
+                0f,
+                false
+            )
+        }
+        if (face.bounds.left < 0 || face.bounds.top < 0 ||
+            face.bounds.right > bitmap.width || face.bounds.bottom > bitmap.height
+        ) {
+            return DetailedFaceQuality(
+                false,
+                "Partial face outside image frame",
+                eyeDistance,
+                0f,
+                isSymmetric
+            )
+        }
+
+        val aligned = align(bitmap, face.landmarks)
+        val sharpness = laplacianVariance(aligned)
+        aligned.recycle()
+        val minimumSharpness = if (strict) FaceDetectionConfig.minSharpnessStrict else FaceDetectionConfig.minSharpnessNormal
+
+        if (sharpness < minimumSharpness) {
+            return DetailedFaceQuality(
+                false,
+                "Image is blurry (Sharpness ${String.format(java.util.Locale.US, "%.1f", sharpness)} < Min ${minimumSharpness.toInt()})",
+                eyeDistance,
+                sharpness,
+                isSymmetric
+            )
+        }
+        return DetailedFaceQuality(true, "Passed Quality Gate", eyeDistance, sharpness, true)
+    }
+
     fun align(bitmap: Bitmap, landmarks: List<PointF>): Bitmap {
         require(landmarks.size == 5) { "Five landmarks are required for SFace alignment" }
         val transform = solveSimilarity(landmarks, FaceDetectionConfig.alignmentTemplatePoints)
@@ -173,6 +318,9 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
     @Synchronized
     fun embeddingFromAligned(alignedFace: Bitmap): FloatArray {
         check(!closed) { "YuNet/SFace engine is closed" }
+
+        Log.d("YuNetSFaceEngine", "SFace Config: inputSize=$SFACE_SIZE, embeddingDimensions=$SFACE_DIMENSIONS, cosineThreshold=${FaceDetectionConfig.cosineThreshold}")
+
         val resized = if (alignedFace.width == SFACE_SIZE && alignedFace.height == SFACE_SIZE) {
             alignedFace
         } else {

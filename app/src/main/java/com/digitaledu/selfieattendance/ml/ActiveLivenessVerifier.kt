@@ -41,7 +41,13 @@ class ActiveLivenessVerifier : AutoCloseable {
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-            .setMinFaceSize(FaceDetectionConfig.minFaceSize)
+            .setMinFaceSize(
+                if (FaceDetectionConfig.minFaceSize > 1.0f) {
+                    (FaceDetectionConfig.minFaceSize / 640f).coerceIn(0.05f, 0.9f)
+                } else {
+                    FaceDetectionConfig.minFaceSize
+                }
+            )
             .build()
     )
     private var stage = Stage.WAITING_FOR_OPEN_EYES

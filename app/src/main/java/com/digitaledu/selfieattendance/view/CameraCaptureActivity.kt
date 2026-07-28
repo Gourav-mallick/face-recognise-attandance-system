@@ -110,6 +110,9 @@ class CameraCaptureActivity : AppCompatActivity() {
             val frame = mirrorBitmap(upright)
             frameToRecycle = frame
             if (upright !== frame) upright.recycle()
+
+            // face is getting detected
+            // expecting that setup variable will be used inside detect
             val faces = engine.detect(frame)
 
             if (faces.isEmpty()) {
@@ -159,6 +162,7 @@ class CameraCaptureActivity : AppCompatActivity() {
 
             val sampleCount = enrollmentSamples.size
             val showStandardGuidance = System.currentTimeMillis() >= feedbackUntil
+
             runOnUiThread {
                 landmarkOverlay.show(face.landmarks, frame.width, frame.height)
                 if (showStandardGuidance) {

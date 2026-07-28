@@ -116,4 +116,13 @@ interface ApiService {
         @Query("data") data: String
     ): Response<ResponseBody>
 
+
+    @retrofit2.http.Multipart
+    @POST("sims-services/digitalsims/")
+    suspend fun uploadStudentPhotos(
+        @Query("r") r: String = "api/v1/FileUpload/UploadStudentPhotos",
+        @retrofit2.http.Part("uploadfile_folderyear") folderYear: RequestBody,
+        @retrofit2.http.Part file: okhttp3.MultipartBody.Part
+    ): Response<ResponseBody>
+
 }
