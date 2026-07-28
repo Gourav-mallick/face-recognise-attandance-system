@@ -915,6 +915,13 @@ class FaceRegistrationActivity : AppCompatActivity() {
         processBatchRegistrationSimulation(uris)
     }
 
+    private data class CandidateComparison(
+        val name: String,
+        val id: String,
+        val source: String,
+        val score: Float
+    )
+
     private data class BatchSimulationResult(
         val index: Int,
         val fileName: String,
@@ -929,7 +936,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
         val matchedFileName: String = "",
         val similarityScore: Float = 0f,
         val embeddingStr: String = "",
-        val embeddingVector: FloatArray? = null
+        val embeddingVector: FloatArray? = null,
+        val comparisons: List<CandidateComparison> = emptyList()
     )
 
     private fun processBatchRegistrationSimulation(uris: List<Uri>) {
@@ -1045,8 +1053,11 @@ class FaceRegistrationActivity : AppCompatActivity() {
                     // Get largest face
                     val primaryFace = faces.maxByOrNull { it.bounds.width() * it.bounds.height() }!!
 
-                    // Detailed Quality Gate Assessment (Eye distance, pose symmetry, sharpness)
-                    val quality = engine.assessQualityDetailed(bitmap, primaryFace, strict = false)
+                    // ── REGISTRATION QUALITY GATE ENFORCEMENT (Strict Mode) ──
+                    // Enforces strict = true (Sharpness >= 90, Symmetry <= 0.16, EyeDistance >= 45px).
+                    // Preventing blurry or unaligned photos from entering the DB is mandatory to prevent
+                    // embedding collapse and false duplicate matches.
+                    val quality = engine.assessQualityDetailed(bitmap, primaryFace, strict = true)
                     if (!quality.accepted) {
                         Log.w("BatchTest", "⚠️ Image #${idx + 1} ($fileName) QUALITY FAILED: ${quality.guidance}")
                         allResults.add(
@@ -1075,12 +1086,14 @@ class FaceRegistrationActivity : AppCompatActivity() {
                     var matchedId = ""
                     var matchedName = ""
                     var matchedFile = ""
+                    val comparisonsList = mutableListOf<CandidateComparison>()
 
                     // Check DB students
                     for (s in registeredStudents) {
                         val vec = s.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
                         if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
                         val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                        comparisonsList.add(CandidateComparison(s.studentName, s.studentId, "Registered Student DB", sim))
                         if (sim > highestSim) {
                             highestSim = sim
                             matchedId = s.studentId
@@ -1094,6 +1107,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                         val vec = t.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
                         if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
                         val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                        comparisonsList.add(CandidateComparison(t.staffName, t.staffId, "Registered Teacher DB", sim))
                         if (sim > highestSim) {
                             highestSim = sim
                             matchedId = t.staffId
@@ -1106,6 +1120,7 @@ class FaceRegistrationActivity : AppCompatActivity() {
                     for (b in batchRegisteredList) {
                         val vec = b.embeddingVector ?: continue
                         val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                        comparisonsList.add(CandidateComparison(b.targetUserName, b.targetUserId, b.fileName, sim))
                         if (sim > highestSim) {
                             highestSim = sim
                             matchedId = b.targetUserId
@@ -1113,6 +1128,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
                             matchedFile = b.fileName
                         }
                     }
+
+                    val sortedComparisons = comparisonsList.sortedByDescending { it.score }
 
                     Log.d("BatchTest", "Image #${idx + 1} ($fileName): Pre-registration check against ${registeredStudents.size} registered students, ${registeredTeachers.size} registered teachers, and ${batchRegisteredList.size} batch items...")
 
@@ -1133,7 +1150,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
                                 matchedUserId = matchedId,
                                 matchedUserName = matchedName,
                                 matchedFileName = matchedFile,
-                                similarityScore = highestSim
+                                similarityScore = highestSim,
+                                comparisons = sortedComparisons
                             )
                         )
                     } else {
@@ -1149,7 +1167,8 @@ class FaceRegistrationActivity : AppCompatActivity() {
                             eyeDistance = quality.eyeDistance,
                             sharpness = quality.sharpness,
                             embeddingStr = embeddingStr,
-                            embeddingVector = embedding
+                            embeddingVector = embedding,
+                            comparisons = sortedComparisons
                         )
                         batchRegisteredList.add(res)
                         allResults.add(res)
@@ -1332,6 +1351,13 @@ class FaceRegistrationActivity : AppCompatActivity() {
                 sb.append("  Matched With:     ${item.matchedUserName} (ID: ${item.matchedUserId})\n")
                 sb.append("  Matched Source:   ${item.matchedFileName}\n")
                 sb.append("  Cosine Score:     ${String.format(java.util.Locale.US, "%.4f", item.similarityScore)} (>= Threshold: ${String.format(java.util.Locale.US, "%.4f", threshold)})\n")
+            }
+            if (item.comparisons.isNotEmpty()) {
+                sb.append("  Candidate Comparisons (Sorted by Cosine Score):\n")
+                for (comp in item.comparisons) {
+                    val matchTag = if (comp.score >= threshold) " [>= ${String.format(java.util.Locale.US, "%.4f", threshold)} MATCH]" else ""
+                    sb.append("    • ${comp.name} (ID: ${comp.id} | Source: ${comp.source}): Cosine Score = ${String.format(java.util.Locale.US, "%.4f", comp.score)}$matchTag\n")
+                }
             }
             sb.append("----------------------------------------------------------------------\n")
         }

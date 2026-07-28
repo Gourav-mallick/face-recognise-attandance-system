@@ -50,7 +50,15 @@ data class DetectionDiagnostics(
 )
 
 /**
- * YuNet detector + five-point alignment + SFace embedding pipeline.
+ * YuNet detector + five-point affine alignment + SFace 128-d embedding pipeline.
+ *
+ * ── BIOMETRIC PIPELINE EXECUTION SEQUENCE ──
+ * 1. YuNet Face & 5-Landmark Detection: Locates face bounds & facial landmarks (eyes, nose, mouth corners).
+ * 2. Quality Gate Verification: Checks Laplacian sharpness, pose symmetry, and eye distance before embedding.
+ * 3. 5-Point Affine Landmark Alignment: Warps face to standardized 112x112 SFace reference points.
+ * 4. SFace ONNX Inference: Extracts 128-dimensional floating-point feature representation.
+ * 5. L2 Vector Normalization: Scales 128-d vector to unit length (||v||_2 = 1.0).
+ * 6. Cosine Similarity Matching: Calculates dot product S_cos(u, v) = u • v for unit-length vectors.
  *
  * Input frames must already be rotated upright and mirrored when using the front camera.
  * The public methods are synchronized because one ORT session must not be run concurrently
@@ -213,34 +221,8 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
     }
 
     fun assessQuality(bitmap: Bitmap, face: YuNetFace, strict: Boolean): FaceQuality {
-        if (face.landmarks.size != 5) return FaceQuality(false, "Keep your whole face visible", 0f)
-        val leftEye = face.landmarks[0]
-        val rightEye = face.landmarks[1]
-        val nose = face.landmarks[2]
-        val leftMouth = face.landmarks[3]
-        val rightMouth = face.landmarks[4]
-        val eyeDistance = distance(leftEye, rightEye)
-        val minimumEyeDistance = if (strict) FaceDetectionConfig.minEyeDistanceStrict else FaceDetectionConfig.minEyeDistanceNormal
-        if (eyeDistance < minimumEyeDistance) return FaceQuality(false, "Move closer to the camera", 0f)
-
-        val eyeMidX = (leftEye.x + rightEye.x) / 2f
-        val mouthMidX = (leftMouth.x + rightMouth.x) / 2f
-        val symmetryLimit = eyeDistance * if (strict) FaceDetectionConfig.symmetryLimitStrict else FaceDetectionConfig.symmetryLimitNormal
-        if (abs(nose.x - eyeMidX) > symmetryLimit || abs(nose.x - mouthMidX) > symmetryLimit) {
-            return FaceQuality(false, "Look straight at the screen", 0f)
-        }
-        if (face.bounds.left < 0 || face.bounds.top < 0 ||
-            face.bounds.right > bitmap.width || face.bounds.bottom > bitmap.height
-        ) return FaceQuality(false, "Keep your whole face inside the guide", 0f)
-
-        val aligned = align(bitmap, face.landmarks)
-        val sharpness = laplacianVariance(aligned)
-        aligned.recycle()
-        val minimumSharpness = if (strict) FaceDetectionConfig.minSharpnessStrict else FaceDetectionConfig.minSharpnessNormal
-        if (sharpness < minimumSharpness) {
-            return FaceQuality(false, "Hold still — image is blurry", sharpness)
-        }
-        return FaceQuality(true, "Landmarks locked — processing", sharpness)
+        val detailed = assessQualityDetailed(bitmap, face, strict)
+        return FaceQuality(detailed.accepted, detailed.guidance, detailed.sharpness)
     }
 
     fun assessQualityDetailed(bitmap: Bitmap, face: YuNetFace, strict: Boolean): DetailedFaceQuality {
@@ -259,18 +241,22 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         val isSymmetric = abs(nose.x - eyeMidX) <= symmetryLimit && abs(nose.x - mouthMidX) <= symmetryLimit
 
         if (eyeDistance < minimumEyeDistance) {
+            val guidance = "Face too far / Eye distance small (${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px < Min ${minimumEyeDistance.toInt()}px)"
+            Log.d("QUALITY_GATE", "[${if (strict) "STRICT REGISTRATION" else "NORMAL RECOGNITION"}] REJECTED: $guidance")
             return DetailedFaceQuality(
                 false,
-                "Face too far / Eye distance small (${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px < Min ${minimumEyeDistance.toInt()}px)",
+                guidance,
                 eyeDistance,
                 0f,
                 isSymmetric
             )
         }
         if (!isSymmetric) {
+            val guidance = "Head turned sideways / Asymmetric pose"
+            Log.d("QUALITY_GATE", "[${if (strict) "STRICT REGISTRATION" else "NORMAL RECOGNITION"}] REJECTED: $guidance (EyeDistance=${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px)")
             return DetailedFaceQuality(
                 false,
-                "Head turned sideways / Asymmetric pose",
+                guidance,
                 eyeDistance,
                 0f,
                 false
@@ -279,9 +265,11 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         if (face.bounds.left < 0 || face.bounds.top < 0 ||
             face.bounds.right > bitmap.width || face.bounds.bottom > bitmap.height
         ) {
+            val guidance = "Partial face outside image frame"
+            Log.d("QUALITY_GATE", "[${if (strict) "STRICT REGISTRATION" else "NORMAL RECOGNITION"}] REJECTED: $guidance")
             return DetailedFaceQuality(
                 false,
-                "Partial face outside image frame",
+                guidance,
                 eyeDistance,
                 0f,
                 isSymmetric
@@ -294,14 +282,18 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         val minimumSharpness = if (strict) FaceDetectionConfig.minSharpnessStrict else FaceDetectionConfig.minSharpnessNormal
 
         if (sharpness < minimumSharpness) {
+            val guidance = "Image is blurry (Sharpness ${String.format(java.util.Locale.US, "%.1f", sharpness)} < Min ${minimumSharpness.toInt()})"
+            Log.d("QUALITY_GATE", "[${if (strict) "STRICT REGISTRATION" else "NORMAL RECOGNITION"}] REJECTED: $guidance (EyeDistance=${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px)")
             return DetailedFaceQuality(
                 false,
-                "Image is blurry (Sharpness ${String.format(java.util.Locale.US, "%.1f", sharpness)} < Min ${minimumSharpness.toInt()})",
+                guidance,
                 eyeDistance,
                 sharpness,
                 isSymmetric
             )
         }
+
+        Log.d("QUALITY_GATE", "✔ [${if (strict) "STRICT REGISTRATION" else "NORMAL RECOGNITION"}] PASSED QUALITY GATE: Sharpness=${String.format(java.util.Locale.US, "%.1f", sharpness)} (Min ${minimumSharpness.toInt()}), EyeDistance=${String.format(java.util.Locale.US, "%.1f", eyeDistance)}px (Min ${minimumEyeDistance.toInt()}px), Symmetry=PASS")
         return DetailedFaceQuality(true, "Passed Quality Gate", eyeDistance, sharpness, true)
     }
 
@@ -535,6 +527,11 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
             PointF(70.7299f, 92.2041f)
         )
 
+        /**
+         * Computes Cosine Similarity between two 128-dimensional SFace feature vectors.
+         * Returns a similarity score in the range [-1.0, 1.0].
+         * For unit-length vectors (||v||_2 = 1.0), Cosine Similarity equals the dot product u • v.
+         */
         fun cosineSimilarity(first: FloatArray, second: FloatArray): Float {
             if (first.size != second.size || first.isEmpty()) return -1f
             var dot = 0f
@@ -549,6 +546,10 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
             return if (denominator <= 1e-8f) -1f else dot / denominator
         }
 
+        /**
+         * Converts a 128-dimensional SFace feature vector into a unit-length vector (||v||_2 = 1.0).
+         * Must be applied to all raw SFace ONNX output vectors prior to DB storage and similarity calculations.
+         */
         fun l2Normalize(values: FloatArray): FloatArray {
             val norm = sqrt(values.sumOf { (it * it).toDouble() }).toFloat()
             if (norm <= 1e-8f) return values

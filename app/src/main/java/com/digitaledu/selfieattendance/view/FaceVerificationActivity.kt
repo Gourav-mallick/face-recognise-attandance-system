@@ -174,7 +174,7 @@ class FaceVerificationActivity : ComponentActivity() {
                 return
             }
 
-            val quality = faceEngine.assessQuality(frame, face, strict = false)
+            val quality = faceEngine.assessQuality(frame, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
             else if (faceStableStart == 0L) faceStableStart = now

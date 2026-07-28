@@ -234,7 +234,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 return
             }
 
-            val quality = engine.assessQuality(frame, face, strict = false)
+            val quality = engine.assessQuality(frame, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) stableSince = 0L
             else if (stableSince == 0L) stableSince = now
@@ -649,6 +649,13 @@ class FaceRecogniseActivity : AppCompatActivity() {
         processMassVerificationSimulation(uris)
     }
 
+    private data class MassVerifyComparison(
+        val name: String,
+        val id: String,
+        val role: String,
+        val score: Float
+    )
+
     private data class MassVerifyResult(
         val index: Int,
         val fileName: String,
@@ -661,7 +668,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
         val matchedUserId: String = "",
         val matchedUserName: String = "",
         val matchedUserRole: String = "",
-        val similarityScore: Float = 0f
+        val similarityScore: Float = 0f,
+        val comparisons: List<MassVerifyComparison> = emptyList()
     )
 
     private fun processMassVerificationSimulation(uris: List<Uri>) {
@@ -768,11 +776,13 @@ class FaceRecogniseActivity : AppCompatActivity() {
                 var matchedId = ""
                 var matchedName = ""
                 var matchedRole = ""
+                val comparisonsList = mutableListOf<MassVerifyComparison>()
 
                 for (s in registeredStudents) {
                     val vec = s.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
                     if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
                     val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                    comparisonsList.add(MassVerifyComparison(s.studentName, s.studentId, "Student", sim))
                     if (sim > highestSim) {
                         highestSim = sim
                         matchedId = s.studentId
@@ -785,6 +795,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
                     val vec = t.embedding?.split(",")?.mapNotNull { it.toFloatOrNull() }?.toFloatArray() ?: continue
                     if (vec.size != YuNetSFaceEngine.SFACE_DIMENSIONS) continue
                     val sim = YuNetSFaceEngine.cosineSimilarity(vec, embedding)
+                    comparisonsList.add(MassVerifyComparison(t.staffName, t.staffId, "Teacher", sim))
                     if (sim > highestSim) {
                         highestSim = sim
                         matchedId = t.staffId
@@ -792,6 +803,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
                         matchedRole = "Teacher"
                     }
                 }
+
+                val sortedComparisons = comparisonsList.sortedByDescending { it.score }
 
                 if (highestSim >= threshold) {
                     verifiedCount++
@@ -808,7 +821,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
                             matchedUserId = matchedId,
                             matchedUserName = matchedName,
                             matchedUserRole = matchedRole,
-                            similarityScore = highestSim
+                            similarityScore = highestSim,
+                            comparisons = sortedComparisons
                         )
                     )
                 } else {
@@ -827,7 +841,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
                             matchedUserId = matchedId,
                             matchedUserName = matchedName,
                             matchedUserRole = matchedRole,
-                            similarityScore = highestSim
+                            similarityScore = highestSim,
+                            comparisons = sortedComparisons
                         )
                     )
                 }
@@ -925,6 +940,13 @@ class FaceRecogniseActivity : AppCompatActivity() {
             if (item.matchedUserId.isNotEmpty()) {
                 sb.append("  Matched User:     ${item.matchedUserName} (${item.matchedUserRole} ID: ${item.matchedUserId})\n")
                 sb.append("  Cosine Score:     ${String.format(java.util.Locale.US, "%.4f", item.similarityScore)} (Threshold: ${String.format(java.util.Locale.US, "%.4f", threshold)})\n")
+            }
+            if (item.comparisons.isNotEmpty()) {
+                sb.append("  Candidate Comparisons (Sorted by Cosine Score):\n")
+                for (comp in item.comparisons) {
+                    val matchTag = if (comp.score >= threshold) " [>= ${String.format(java.util.Locale.US, "%.4f", threshold)} MATCH]" else ""
+                    sb.append("    • ${comp.name} (${comp.role} ID: ${comp.id}): Cosine Score = ${String.format(java.util.Locale.US, "%.4f", comp.score)}$matchTag\n")
+                }
             }
             sb.append("----------------------------------------------------------------------\n")
         }
