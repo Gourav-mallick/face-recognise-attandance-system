@@ -713,13 +713,11 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
     // ---------------- Utilities ----------------
     private fun startClassroomScanFragment() {
-        if (supportFragmentManager.findFragmentByTag(TAG_CLASSROOM) == null) {
-            val fragment = ClassroomScanFragment.newInstance()
-            val transaction = supportFragmentManager.beginTransaction()
-            transaction.replace(R.id.fragment_container, fragment, TAG_CLASSROOM)
-            updateAppState("CLASSROOM_SCAN")
-            transaction.commit()
-        }
+        val fragment = ClassroomScanFragment.newInstance()
+        val transaction = supportFragmentManager.beginTransaction()
+        transaction.replace(R.id.fragment_container, fragment, TAG_CLASSROOM)
+        updateAppState("CLASSROOM_SCAN")
+        transaction.commitAllowingStateLoss()
     }
 
     private fun checkDeviceTime() {
