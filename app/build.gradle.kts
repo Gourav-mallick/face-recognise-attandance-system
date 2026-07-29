@@ -55,10 +55,11 @@ android {
     }
 
     applicationVariants.all {
+        val ver = versionName
         val apkName = when (buildType.name) {
-            "debug" -> "test-selfie-attendance.apk"
-            "release" -> "selfie-attendance.apk"
-            else -> "selfie-attendance-${buildType.name}.apk"
+            "debug" -> "test-selfie-attendance-v${ver}.apk"
+            "release" -> "selfie-attendance-v${ver}.apk"
+            else -> "selfie-attendance-v${ver}-${buildType.name}.apk"
         }
 
         outputs.all {
