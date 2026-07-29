@@ -18,6 +18,7 @@ import com.digitaledu.selfieattendance.api.ApiClient
 import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
+import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -157,6 +158,27 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         binding.progressBar.visibility = View.GONE
                     }
                     Log.d("AttendanceOverview", "No attendance found for this session.")
+                    return@launch
+                }
+
+                val session = db.sessionDao().getSessionById(sessionId)
+                val consistencyError = AttendanceInstituteValidator.validate(
+                    session?.instId,
+                    attendanceList.map { it.instId }
+                )
+                if (consistencyError != null) {
+                    Log.e(
+                        "AttendanceOverview",
+                        "Blocked session $sessionId: $consistencyError"
+                    )
+                    withContext(Dispatchers.Main) {
+                        binding.progressBar.visibility = View.GONE
+                        android.widget.Toast.makeText(
+                            this@AttendanceOverviewActivity,
+                            "Attendance institute data is inconsistent. Sync was blocked.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
                     return@launch
                 }
 

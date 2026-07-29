@@ -21,6 +21,7 @@ import com.digitaledu.selfieattendance.db.entity.PendingTeacherAllocationEntity
 import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
+import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
 
 
 
@@ -43,9 +44,10 @@ import com.digitaledu.selfieattendance.db.entity.ProgramConfig
     PendingTeacherAllocationEntity::class,
     SchoolPeriod::class,
     AttendanceCode::class,
-    ProgramConfig::class
+    ProgramConfig::class,
+    TeacherInstituteMap::class
     ],
-    version = 2, exportSchema = false)
+    version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -58,6 +60,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attendanceDao(): AttendanceDao
     abstract fun activeClassCycleDao(): ActiveClassCycleDao
     abstract fun teacherClassMapDao(): TeacherClassMapDao
+    abstract fun teacherInstituteMapDao(): TeacherInstituteMapDao
 
     abstract fun studentScheduleDao(): StudentScheduleDao
 
@@ -96,6 +99,50 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Additive migration: all existing tables and rows remain unchanged.
+         * Existing scalar or comma-separated teachers.instId values are copied
+         * into normalized teacher/institute membership rows.
+         */
+        internal val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `teacher_institute_map` (
+                        `teacherId` TEXT NOT NULL,
+                        `instId` TEXT NOT NULL,
+                        PRIMARY KEY(`teacherId`, `instId`)
+                    )
+                    """.trimIndent()
+                )
+
+                db.query(
+                    "SELECT staffId, instId FROM teachers WHERE instId IS NOT NULL AND TRIM(instId) != ''"
+                ).use { cursor ->
+                    val teacherIdIndex = cursor.getColumnIndexOrThrow("staffId")
+                    val instIdIndex = cursor.getColumnIndexOrThrow("instId")
+                    val insert = db.compileStatement(
+                        "INSERT OR IGNORE INTO teacher_institute_map(teacherId, instId) VALUES(?, ?)"
+                    )
+
+                    while (cursor.moveToNext()) {
+                        val teacherId = cursor.getString(teacherIdIndex).trim()
+                        cursor.getString(instIdIndex)
+                            .split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .distinct()
+                            .forEach { instId ->
+                                insert.clearBindings()
+                                insert.bindString(1, teacherId)
+                                insert.bindString(2, instId)
+                                insert.executeInsert()
+                            }
+                    }
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -103,8 +150,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
-                .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance
@@ -112,4 +158,3 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
-

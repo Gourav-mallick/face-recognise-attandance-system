@@ -17,6 +17,7 @@ import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
+import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,6 +111,23 @@ class SyncAttendanceToServer : AppCompatActivity(){
                     val session = db.sessionDao().getSessionById(sessionId)
                     if (session != null && session.syncStatus == "complete") {
                         Log.d("SYNC_SESSION", "Skipping already synced session $sessionId")
+                        continue
+                    }
+
+                    val consistencyError = AttendanceInstituteValidator.validate(
+                        sessionInstituteId = session?.instId,
+                        attendanceInstituteIds = sessionAttendances.map { it.instId }
+                    )
+                    if (consistencyError != null) {
+                        Log.e(
+                            "SYNC_SESSION",
+                            "Blocked session $sessionId: $consistencyError"
+                        )
+                        withContext(Dispatchers.Main) {
+                            statusText.text =
+                                "Session $currentSession has inconsistent institute data."
+                        }
+                        currentSession++
                         continue
                     }
 

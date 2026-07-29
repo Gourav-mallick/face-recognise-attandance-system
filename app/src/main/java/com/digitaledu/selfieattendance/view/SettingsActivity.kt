@@ -19,6 +19,7 @@ import com.digitaledu.selfieattendance.api.ApiClient
 import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
+import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -168,6 +169,20 @@ class SettingsActivity : AppCompatActivity() {
                 var allSuccess = true
 
                 for ((sessionId, sessionAttendances) in groupedBySession) {
+                    val session = db.sessionDao().getSessionById(sessionId)
+                    val consistencyError = AttendanceInstituteValidator.validate(
+                        session?.instId,
+                        sessionAttendances.map { it.instId }
+                    )
+                    if (consistencyError != null) {
+                        Log.e(
+                            "LOGOUT_SYNC",
+                            "Blocked session $sessionId: $consistencyError"
+                        )
+                        allSuccess = false
+                        continue
+                    }
+
                     val attArray = JSONArray()
                     for (att in sessionAttendances) {
                         val date = att.date

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.util.Log
 import android.widget.Toast
+import androidx.room.withTransaction
 import com.digitaledu.selfieattendance.api.ApiClient
 import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
@@ -80,41 +81,81 @@ class DataSyncRepository(context: Context) {
         instIds: String
     ): Boolean = withContext(Dispatchers.IO) {
         try {
+            val instituteId = instIds.trim()
+            if (instituteId.isEmpty() || instituteId.contains(",")) {
+                Log.e(TAG, "Teacher sync requires exactly one institute ID: $instIds")
+                return@withContext false
+            }
+
             val rParam = "api/v1/User/GetUserRegisteredDetails"
-            val dataParam = "{\"userRegParamData\":{\"userType\":\"staff\",\"registrationType\":\"Biometric\",\"school_id\":\"$instIds\"}}"
+            val dataParam = "{\"userRegParamData\":{\"userType\":\"staff\",\"registrationType\":\"Biometric\",\"school_id\":\"$instituteId\"}}"
             val response = apiService.getTeachers(rParam, dataParam)
 
             if (response.isSuccessful && response.body() != null) {
                 val jsonString = response.body()!!.string()
                 val json = JSONObject(jsonString)
-                val dataArray = json.optJSONObject("collection")
+                val responseObject = json.optJSONObject("collection")
                     ?.optJSONObject("response")
-                    ?.optJSONArray("userRegisteredData") ?: JSONArray()
+                val dataArray = responseObject?.optJSONArray("userRegisteredData")
+                if (dataArray == null) {
+                    Log.e(TAG, "Teacher response is missing userRegisteredData for $instituteId")
+                    return@withContext false
+                }
 
                 val teachersList = mutableListOf<Teacher>()
                 for (i in 0 until dataArray.length()) {
                     val obj = dataArray.getJSONObject(i)
                     if (obj.optString("staffProfile", "").equals("teacher", ignoreCase = true)) {
+                        val staffId = obj.optString("staffId", "").trim()
+                        if (staffId.isEmpty()) continue
+                        val existing = db.teachersDao().getTeacherById(staffId)
+                        val apiName = obj.optString("staffName", "").trim()
+                        val apiFingerType = obj.optString("fingerType", "")
+                        val apiEmbedding = obj.optString("fingerData", "")
                         teachersList.add(
                             Teacher(
-                                obj.optString("staffId", ""),
-                                obj.optString("staffName", ""),
-                                instIds,
-                                obj.optString("fingerType", ""),
-                                obj.optString("fingerData", "")
+                                staffId = staffId,
+                                staffName = apiName.ifBlank {
+                                    existing?.staffName.orEmpty()
+                                },
+                                // Kept only for compatibility during the staged migration.
+                                // Session creation never reads this value.
+                                instId = existing?.instId?.takeIf { it.isNotBlank() }
+                                    ?: instituteId,
+                                fingerType = apiFingerType.ifBlank {
+                                    existing?.fingerType.orEmpty()
+                                },
+                                embedding = apiEmbedding.ifBlank {
+                                    existing?.embedding.orEmpty()
+                                }
                             )
                         )
                     }
                 }
 
-                if (teachersList.isEmpty()) {
-                    showToast("Teacher  not found on server for institute: $instIds")
-                    return@withContext false
+                db.withTransaction {
+                    // The successful response is authoritative for this institute.
+                    // Removing only this institute's rows preserves memberships
+                    // belonging to every other institute.
+                    db.teacherInstituteMapDao().deleteForInstitute(instituteId)
+                    db.teachersDao().insertAll(teachersList)
+                    db.teacherInstituteMapDao().insertAll(
+                        teachersList.map {
+                            TeacherInstituteMap(
+                                teacherId = it.staffId,
+                                instId = instituteId
+                            )
+                        }
+                    )
                 }
 
-                db.teachersDao().insertAll(teachersList)
-                Log.d(TAG, "Inserted ${teachersList.size} teachers.")
-                Log.d(TAG, "Inserted ${teachersList} teachers.")
+                if (teachersList.isEmpty()) {
+                    showToast("No teachers found for institute: $instituteId")
+                }
+                Log.d(
+                    TAG,
+                    "Updated ${teachersList.size} teachers and memberships for institute $instituteId."
+                )
                 true
             } else {
                 showToast("Teachers API failed: Server returned error ${response.code()}")

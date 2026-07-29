@@ -23,10 +23,26 @@ data class Student(
 data class Teacher(
     @PrimaryKey val staffId: String,
     val staffName: String,
-    val instId: String, // store the institute ID
+    /**
+     * Legacy compatibility value. New code must use teacher_institute_map.
+     *
+     * Keeping this column for one migration cycle avoids rebuilding the
+     * teachers table and protects locally registered face embeddings.
+     */
+    val instId: String,
     val fingerType: String? = null,
     val embedding: String? = null
 ) : Parcelable
+
+
+@Entity(
+    tableName = "teacher_institute_map",
+    primaryKeys = ["teacherId", "instId"]
+)
+data class TeacherInstituteMap(
+    val teacherId: String,
+    val instId: String
+)
 
 
 @Entity(tableName = "course_periods")

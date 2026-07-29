@@ -39,6 +39,7 @@ import android.widget.LinearLayout
 import android.widget.ImageView
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
+import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
 
 
 class ClassroomScanFragment : Fragment() {
@@ -901,6 +902,20 @@ class ClassroomScanFragment : Fragment() {
                 var allSuccess = true
 
                 for ((sessionId, sessionAttendances) in groupedBySession) {
+                    val session = db.sessionDao().getSessionById(sessionId)
+                    val consistencyError = AttendanceInstituteValidator.validate(
+                        session?.instId,
+                        sessionAttendances.map { it.instId }
+                    )
+                    if (consistencyError != null) {
+                        Log.e(
+                            "LOGOUT_SYNC",
+                            "Blocked session $sessionId: $consistencyError"
+                        )
+                        allSuccess = false
+                        continue
+                    }
+
                     val attArray = JSONArray()
                     for (att in sessionAttendances) {
                         val date = att.date

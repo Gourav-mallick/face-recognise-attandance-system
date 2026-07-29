@@ -21,6 +21,7 @@ import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import com.digitaledu.selfieattendance.db.entity.Session
 import com.digitaledu.selfieattendance.db.entity.StudentSchedule
 import com.digitaledu.selfieattendance.db.entity.TeacherClassMap
+import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 
@@ -87,7 +88,12 @@ interface TeachersDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(teachers: List<Teacher>)
 
-    @Query("SELECT * FROM teachers WHERE instId = :instId")
+    @Query("""
+        SELECT t.* FROM teachers t
+        INNER JOIN teacher_institute_map tim ON tim.teacherId = t.staffId
+        WHERE tim.instId = :instId
+        ORDER BY t.staffName
+    """)
     suspend fun getTeachersByInstitute(instId: String): List<Teacher>
 
     @Query("SELECT * FROM teachers WHERE staffId = :teacherId")
@@ -95,10 +101,6 @@ interface TeachersDao {
 
     @Query("SELECT * FROM teachers")
     suspend fun getAllTeachers(): List<Teacher>
-
-    @Query("SELECT instId FROM teachers WHERE staffId = :teacherId")
-    suspend fun getInstituteIdByTeacherId(teacherId: String): String?
-
 
     @Query("SELECT staffName FROM teachers WHERE staffId = :teacherId")
     suspend fun getTeacherNameById(teacherId: String): String?
@@ -134,6 +136,30 @@ interface TeachersDao {
 
     @Query("SELECT * FROM teachers WHERE embedding IS NULL OR embedding = ''")
     suspend fun getUnregisteredTeachers(): List<Teacher>
+}
+
+@Dao
+interface TeacherInstituteMapDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(mappings: List<TeacherInstituteMap>)
+
+    @Query("""
+        SELECT instId FROM teacher_institute_map
+        WHERE teacherId = :teacherId
+        ORDER BY instId
+    """)
+    suspend fun getInstituteIdsForTeacher(teacherId: String): List<String>
+
+    @Query("""
+        SELECT i.* FROM institutes i
+        INNER JOIN teacher_institute_map tim ON tim.instId = i.Id
+        WHERE tim.teacherId = :teacherId
+        ORDER BY i.shortName, i.Id
+    """)
+    suspend fun getInstitutesForTeacher(teacherId: String): List<Institute>
+
+    @Query("DELETE FROM teacher_institute_map WHERE instId = :instId")
+    suspend fun deleteForInstitute(instId: String)
 }
 
 
@@ -580,4 +606,3 @@ interface ProgramConfigDao {
     @Query("DELETE FROM program_config")
     suspend fun clear()
 }
-

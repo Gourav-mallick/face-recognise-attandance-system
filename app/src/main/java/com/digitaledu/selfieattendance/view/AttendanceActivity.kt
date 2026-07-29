@@ -267,7 +267,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 .setCancelable(false)
                 .setPositiveButton("Yes") { dialog, _ ->
                     dialog.dismiss()
-                    startNewTeacherSession(teacherId, teacherName, classroomId)
+                    chooseInstituteAndStartSession(teacherId, teacherName, classroomId)
                 }
                 .setNegativeButton("No") { dialog, _ ->
                     //  Just close dialog and stay on current activity
@@ -276,20 +276,130 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 .show()
         } else {
             // First teacher — start directly without popup
-            startNewTeacherSession(teacherId, teacherName, classroomId)
+            chooseInstituteAndStartSession(teacherId, teacherName, classroomId)
         }
 
     }
 }
 
-    private fun startNewTeacherSession(teacherId: String, teacherName: String, classId: String) {
+    private fun chooseInstituteAndStartSession(
+        teacherId: String,
+        teacherName: String,
+        classId: String
+    ) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
-            val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId) ?: ""
+            val selectedOnDevice = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+                .getString("selectedInstituteIds", "")
+                .orEmpty()
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+
+            val availableInstitutes = withContext(Dispatchers.IO) {
+                db.teacherInstituteMapDao()
+                    .getInstitutesForTeacher(teacherId)
+                    .filter { it.id in selectedOnDevice }
+                    .distinctBy { it.id }
+            }
+
+            when (availableInstitutes.size) {
+                0 -> {
+                    AlertDialog.Builder(this@AttendanceActivity)
+                        .setTitle("Institute not available")
+                        .setMessage(
+                            "No institute assigned to $teacherName is available on this device. " +
+                                "Please sync the latest institute data and try again."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
+                1 -> {
+                    val institute = availableInstitutes.first()
+                    Toast.makeText(
+                        this@AttendanceActivity,
+                        "Institute: ${institute.shortName}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    startNewTeacherSession(
+                        teacherId,
+                        teacherName,
+                        classId,
+                        institute.id
+                    )
+                }
+
+                else -> {
+                    var selectedIndex = -1
+                    val labels = availableInstitutes.map { institute ->
+                        val name = institute.title
+                            ?.takeIf { it.isNotBlank() }
+                            ?: institute.shortName
+                        "$name (${institute.id})"
+                    }.toTypedArray()
+
+                    val dialog = AlertDialog.Builder(this@AttendanceActivity)
+                        .setTitle("Choose institute")
+                        .setSingleChoiceItems(labels, -1) { _, which ->
+                            selectedIndex = which
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Continue", null)
+                        .create()
+
+                    dialog.setOnShowListener {
+                        val continueButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        continueButton.isEnabled = false
+                        dialog.listView.setOnItemClickListener { _, _, position, _ ->
+                            selectedIndex = position
+                            dialog.listView.setItemChecked(position, true)
+                            continueButton.isEnabled = true
+                        }
+                        continueButton.setOnClickListener {
+                            if (selectedIndex !in availableInstitutes.indices) {
+                                return@setOnClickListener
+                            }
+                            val institute = availableInstitutes[selectedIndex]
+                            dialog.dismiss()
+                            startNewTeacherSession(
+                                teacherId,
+                                teacherName,
+                                classId,
+                                institute.id
+                            )
+                        }
+                    }
+                    dialog.show()
+                }
+            }
+        }
+    }
+
+    private fun startNewTeacherSession(
+        teacherId: String,
+        teacherName: String,
+        classId: String,
+        selectedInstId: String
+    ) {
+        lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(this@AttendanceActivity)
+            val assignedInstituteIds = withContext(Dispatchers.IO) {
+                db.teacherInstituteMapDao().getInstituteIdsForTeacher(teacherId)
+            }
+            if (selectedInstId.isBlank() || selectedInstId !in assignedInstituteIds) {
+                Toast.makeText(
+                    this@AttendanceActivity,
+                    "Teacher is not assigned to the selected institute. Please sync and try again.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
 
             // Check if periods are empty for this institute
             val periods = withContext(Dispatchers.IO) {
-                db.schoolPeriodDao().getAll().filter { it.instId == inst_id }
+                db.schoolPeriodDao().getAll().filter { it.instId == selectedInstId }
             }
 
             val spId = if (periods.isEmpty()) {
@@ -297,13 +407,25 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             } else {
                 val estimated = getEstimatedCurrentTime()
                 val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
-                getFlexibleSchoolPeriodId(inst_id, startTime)
+                getFlexibleSchoolPeriodId(selectedInstId, startTime)
             }
-            proceedWithNewTeacherSession(teacherId, teacherName, classId, spId)
+            proceedWithNewTeacherSession(
+                teacherId,
+                teacherName,
+                classId,
+                spId,
+                selectedInstId
+            )
         }
     }
 
-    private fun proceedWithNewTeacherSession(teacherId: String, teacherName: String, classId: String, spId: String) {
+    private fun proceedWithNewTeacherSession(
+        teacherId: String,
+        teacherName: String,
+        classId: String,
+        spId: String,
+        selectedInstId: String
+    ) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
             val sessionId = UUID.randomUUID().toString()
@@ -311,9 +433,11 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
             Log.d("SESSION_DEBUG", "Session start time: $startTime")
             val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(estimated)
-            val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId) ?: ""
 
-            Log.d("PERIOD_SAVE", "Session Start=$startTime → spId=$spId")
+            Log.d(
+                "PERIOD_SAVE",
+                "Institute=$selectedInstId Session Start=$startTime → spId=$spId"
+            )
 
             val session = Session(
                 sessionId = sessionId,
@@ -324,7 +448,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 startTime = startTime,
                 endTime = "",
                 isMerged = 0,
-                instId = inst_id,
+                instId = selectedInstId,
                 attSchoolPeriodId = spId,
                 syncStatus = "pending",
                 periodId = ""
@@ -454,6 +578,31 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             val sessionObj = db.sessionDao().getSessionById(cycle.sessionId!!)
             val inst_id = sessionObj?.instId ?: ""
             val attSchoolPeriodId= sessionObj?.attSchoolPeriodId ?: ""
+
+            if (inst_id.isBlank()) {
+                Toast.makeText(
+                    this@AttendanceActivity,
+                    "The active session has no institute. Attendance was not saved.",
+                    Toast.LENGTH_LONG
+                ).show()
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
+                return@launch
+            }
+
+            if (student.instId.trim() != inst_id.trim()) {
+                Toast.makeText(
+                    this@AttendanceActivity,
+                    "This student belongs to a different institute than the active session.",
+                    Toast.LENGTH_LONG
+                ).show()
+                Log.w(
+                    TAG,
+                    "Blocked cross-institute attendance: session=${cycle.sessionId}, " +
+                        "sessionInst=$inst_id, studentInst=${student.instId}"
+                )
+                onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
+                return@launch
+            }
 
 
             Log.d("SYNC_DEBUG_attandance", "Institute Id get: $inst_id")
