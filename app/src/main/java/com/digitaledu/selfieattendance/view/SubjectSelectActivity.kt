@@ -92,9 +92,48 @@ class SubjectSelectActivity : ComponentActivity() {
         binding.btnContinue.setOnClickListener {
             handleContinue()
         }
+        binding.btnMoreOptions.setOnClickListener { view ->
+            val popup = androidx.appcompat.widget.PopupMenu(this, view)
+            popup.menu.add("Save as incomplete session")
+            popup.setOnMenuItemClickListener { menuItem ->
+                if (menuItem.title == "Save as incomplete session") {
+                    saveAsIncomplete()
+                    true
+                } else {
+                    false
+                }
+            }
+            popup.show()
+        }
 
 
 
+    }
+
+    private fun saveAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.save(
+                    this@SubjectSelectActivity,
+                    sessionId,
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.STAGE_SUBJECT_SELECT
+                )
+                withContext(Dispatchers.IO) {
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                        this@SubjectSelectActivity
+                    )
+                }
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.navigateHome(
+                    this@SubjectSelectActivity
+                )
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this@SubjectSelectActivity,
+                    "Could not save session: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
 /*

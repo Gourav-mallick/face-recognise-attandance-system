@@ -48,6 +48,20 @@ class PeriodSelectActivity : ComponentActivity() {
 
         loadPeriods()
 
+        binding.btnMoreOptions.setOnClickListener { view ->
+            val popup = androidx.appcompat.widget.PopupMenu(this, view)
+            popup.menu.add("Save as incomplete session")
+            popup.setOnMenuItemClickListener { menuItem ->
+                if (menuItem.title == "Save as incomplete session") {
+                    saveAsIncomplete()
+                    true
+                } else {
+                    false
+                }
+            }
+            popup.show()
+        }
+
         // Skip button → keep auto-assigned, go to ClassSelect
         binding.btnSkipPeriod.setOnClickListener {
             Log.d(TAG, "Teacher skipped period selection. Keeping auto-assigned spId=$autoAssignedSpId")
@@ -99,6 +113,32 @@ class PeriodSelectActivity : ComponentActivity() {
                 ).show()
 
                 navigateToClassSelect()
+            }
+        }
+    }
+
+    private fun saveAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.save(
+                    this@PeriodSelectActivity,
+                    sessionId,
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.STAGE_PERIOD_SELECT
+                )
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                        this@PeriodSelectActivity
+                    )
+                }
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.navigateHome(
+                    this@PeriodSelectActivity
+                )
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this@PeriodSelectActivity,
+                    "Could not save session: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

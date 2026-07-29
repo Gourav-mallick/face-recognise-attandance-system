@@ -81,6 +81,18 @@ interface ApiService {
         @Body requestBody: RequestBody
     ): Response<ResponseBody>
 
+    @POST("sims-services/digitalsims/")
+    suspend fun postIncompleteSession(
+        @Query("r") r: String = "api/v1/Att/SaveIncompleteSession",
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    @GET("sims-services/digitalsims/")
+    suspend fun getIncompleteSessions(
+        @Query("r") r: String = "api/v1/Att/GetIncompleteSessions",
+        @Query("data") data: String
+    ): Response<ResponseBody>
+
 
     @POST("sims-services/digitalsims/")
     suspend fun postUserRegistration(

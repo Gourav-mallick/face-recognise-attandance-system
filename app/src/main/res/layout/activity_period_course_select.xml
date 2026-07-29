@@ -22,23 +22,38 @@
         app:layout_constraintEnd_toEndOf="parent">
 
 
-    <TextView
-        android:id="@+id/tvTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        android:text="Select Subject"
-        android:textAlignment="center"
-        android:textColor="@color/text_dark"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        <RelativeLayout
+            android:id="@+id/headerLayout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
 
-        android:padding="8dp"
-        android:gravity="center"
-       />
+            <TextView
+                android:id="@+id/tvTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select Subject"
+                android:textColor="@color/text_dark"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:layout_centerInParent="true" />
+
+            <ImageButton
+                android:id="@+id/btnMoreOptions"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="More Options"
+                android:src="@drawable/ic_more_vert"
+                app:tint="@color/text_dark" />
+        </RelativeLayout>
+
         <TextView
             android:id="@+id/tvSelectCourses"
             android:layout_width="wrap_content"
@@ -48,31 +63,20 @@
             android:textStyle="bold"
             android:textColor="@color/text_dark"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/tvTitle" />
+            app:layout_constraintTop_toBottomOf="@+id/headerLayout" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerViewCourses"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
             app:layout_constraintBottom_toTopOf="@+id/btnContinue"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.52"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/tvSelectCourses" />
 
-        <!--
-        <Button
-            android:id="@+id/btnSubjectAllocation"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:text="Subject Teacher Allocation"
-            android:textColor="@color/black"
-            android:layout_marginBottom="12dp"
-            app:layout_constraintBottom_toTopOf="@+id/btnContinue"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
--->
         <Button
         android:id="@+id/btnContinue"
         android:layout_width="0dp"

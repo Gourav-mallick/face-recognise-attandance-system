@@ -47,6 +47,9 @@ class AutoSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
             val apiService = retrofit.create(ApiService::class.java)
             val db = AppDatabase.getDatabase(applicationContext)
             val repository = DataSyncRepository(applicationContext)
+            com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                applicationContext
+            )
 
 
             val instIdList = instIds.split(",")

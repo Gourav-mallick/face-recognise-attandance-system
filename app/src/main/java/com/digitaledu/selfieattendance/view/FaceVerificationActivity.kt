@@ -57,6 +57,7 @@ class FaceVerificationActivity : ComponentActivity() {
 
     private var studentId = ""
     private var studentName = ""
+    private var verificationUserType = "student"
     private var targetEmbedding: FloatArray? = null
     @Volatile private var isVerifying = false
     private var faceStableStart = 0L
@@ -78,6 +79,7 @@ class FaceVerificationActivity : ComponentActivity() {
 
         studentId = intent.getStringExtra("STUDENT_ID").orEmpty()
         studentName = intent.getStringExtra("STUDENT_NAME").orEmpty()
+        verificationUserType = intent.getStringExtra("VERIFY_USER_TYPE") ?: "student"
         tvStudentName.text = studentName
         updateAttemptUi()
 
@@ -95,7 +97,14 @@ class FaceVerificationActivity : ComponentActivity() {
 
     private fun loadTargetEmbedding() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val value = db.studentsDao().getStudentById(studentId)?.embedding
+            // This screen is shared by student attendance editing and incomplete
+            // session ownership checks. Prefer a student match, then a teacher.
+            val ownerType = verificationUserType
+            val value = if (ownerType == "teacher") {
+                db.teachersDao().getTeacherById(studentId)?.embedding?.ifBlank { null }
+            } else {
+                db.studentsDao().getStudentById(studentId).embedding?.ifBlank { null }
+            }
             val parsed = value
                 ?.split(",")
                 ?.mapNotNull { it.trim().toFloatOrNull() }
@@ -105,7 +114,7 @@ class FaceVerificationActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@FaceVerificationActivity,
-                        "No compatible registered face found for this student",
+                        "No compatible registered face found for this $ownerType",
                         Toast.LENGTH_LONG
                     ).show()
                     setResult(Activity.RESULT_CANCELED)

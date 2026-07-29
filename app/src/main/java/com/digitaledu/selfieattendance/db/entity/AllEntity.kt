@@ -315,6 +315,36 @@ data class ActiveClassCycle(
     // Add presentCount or other fields if needed
 )
 
+/**
+ * Durable checkpoint for an attendance workflow that has not been submitted yet.
+ *
+ * sessionJson and attendancesJson are deliberately full snapshots. They allow a
+ * checkpoint downloaded on a second device to recreate the normal Room rows and
+ * continue through the same screens used by a locally-created session.
+ */
+@Entity(tableName = "incomplete_sessions")
+@Parcelize
+data class IncompleteSession(
+    @PrimaryKey val sessionId: String,
+    val instId: String,
+    val teacherId: String,
+    val teacherName: String? = null,
+    val classIds: String = "",
+    val classNames: String = "",
+    val schoolPeriodId: String = "999",
+    val currentStage: String,
+    val sessionDate: String,
+    val startTime: String,
+    val markedStudentCount: Int = 0,
+    val sourceDeviceGuid: String,
+    val sessionJson: String,
+    val attendancesJson: String,
+    val syncStatus: String = "LOCAL",
+    val recordStatus: String = "PENDING",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) : Parcelable
+
 
 object AttendanceIdGenerator {
     private var counter = 0

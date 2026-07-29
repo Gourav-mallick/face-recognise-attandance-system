@@ -81,6 +81,7 @@
             android:exported="false" />
         <activity android:name="com.digitaledu.selfieattendance.view.FaceRecogniseActivity" />
         <activity android:name="com.digitaledu.selfieattendance.view.SettingsActivity" />
+        <activity android:name="com.digitaledu.selfieattendance.view.IncompleteSessionsActivity" />
 
     </application>
 

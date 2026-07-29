@@ -25,7 +25,19 @@
         android:paddingBottom="10dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toStartOf="@id/btnSaveIncomplete" />
+
+    <ImageButton
+        android:id="@+id/btnSaveIncomplete"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="More Options"
+        android:src="@drawable/ic_more_vert"
+        app:tint="@color/text_dark"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/tvTitle" />
 
     <!-- Camera Card -->
     <androidx.cardview.widget.CardView

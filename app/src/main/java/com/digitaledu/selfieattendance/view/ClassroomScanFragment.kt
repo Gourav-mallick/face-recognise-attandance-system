@@ -171,6 +171,10 @@ class ClassroomScanFragment : Fragment() {
             startActivity(intent)
         }
 
+        view.findViewById<View>(R.id.btnIncompleteSessions).setOnClickListener {
+            startActivity(Intent(requireContext(), IncompleteSessionsActivity::class.java))
+        }
+
 
 
     // Listen for broadcast updates
@@ -365,6 +369,35 @@ class ClassroomScanFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         updateUserCounters()
+        refreshIncompleteSessionCount()
+    }
+
+    private fun refreshIncompleteSessionCount() {
+        val root = view ?: return
+        val tvTitle = root.findViewById<TextView>(R.id.tvIncompleteTitle)
+        val tvBadge = root.findViewById<TextView>(R.id.tvIncompleteBadge)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                    requireContext()
+                )
+            }
+            val count = AppDatabase.getDatabase(requireContext())
+                .incompleteSessionDao().getAllPending().size
+
+            if (tvTitle != null) {
+                tvTitle.text = if (count == 0) "Incomplete Cycles" else "Incomplete Cycles ($count)"
+            }
+            if (tvBadge != null) {
+                if (count > 0) {
+                    tvBadge.text = count.toString()
+                    tvBadge.visibility = View.VISIBLE
+                } else {
+                    tvBadge.visibility = View.GONE
+                }
+            }
+        }
     }
 
     private fun updateUserCounters() {

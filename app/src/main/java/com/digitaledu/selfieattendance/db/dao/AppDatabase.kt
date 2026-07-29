@@ -21,6 +21,7 @@ import com.digitaledu.selfieattendance.db.entity.PendingTeacherAllocationEntity
 import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
+import com.digitaledu.selfieattendance.db.entity.IncompleteSession
 
 
 
@@ -43,9 +44,10 @@ import com.digitaledu.selfieattendance.db.entity.ProgramConfig
     PendingTeacherAllocationEntity::class,
     SchoolPeriod::class,
     AttendanceCode::class,
-    ProgramConfig::class
+    ProgramConfig::class,
+    IncompleteSession::class
     ],
-    version = 2, exportSchema = false)
+    version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -70,6 +72,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun schoolPeriodDao(): SchoolPeriodDao
     abstract fun attendanceCodeDao(): AttendanceCodeDao
     abstract fun programConfigDao(): ProgramConfigDao
+    abstract fun incompleteSessionDao(): IncompleteSessionDao
 
 
 
@@ -96,6 +99,40 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Additive migration only: existing sessions, attendance, registrations,
+         * configuration and embeddings are left untouched.
+         */
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `incomplete_sessions` (
+                        `sessionId` TEXT NOT NULL,
+                        `instId` TEXT NOT NULL,
+                        `teacherId` TEXT NOT NULL,
+                        `teacherName` TEXT,
+                        `classIds` TEXT NOT NULL,
+                        `classNames` TEXT NOT NULL,
+                        `schoolPeriodId` TEXT NOT NULL,
+                        `currentStage` TEXT NOT NULL,
+                        `sessionDate` TEXT NOT NULL,
+                        `startTime` TEXT NOT NULL,
+                        `markedStudentCount` INTEGER NOT NULL,
+                        `sourceDeviceGuid` TEXT NOT NULL,
+                        `sessionJson` TEXT NOT NULL,
+                        `attendancesJson` TEXT NOT NULL,
+                        `syncStatus` TEXT NOT NULL,
+                        `recordStatus` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -103,8 +140,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
-                .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance
@@ -112,4 +148,3 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
-

@@ -41,6 +41,19 @@ class ClassSelectActivity : ComponentActivity() {
 
 
         val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
+        binding.btnMoreOptions.setOnClickListener { view ->
+            val popup = androidx.appcompat.widget.PopupMenu(this, view)
+            popup.menu.add("Save as incomplete session")
+            popup.setOnMenuItemClickListener { menuItem ->
+                if (menuItem.title == "Save as incomplete session") {
+                    saveAsIncomplete()
+                    true
+                } else {
+                    false
+                }
+            }
+            popup.show()
+        }
 
         lifecycleScope.launch {
             val preSelected = if (isMassBunk) emptyList() else db.attendanceDao().getDistinctClassIdsForCurrentSession(sessionId)
@@ -96,6 +109,32 @@ class ClassSelectActivity : ComponentActivity() {
                 }
                 startActivity(intent)
                 finish()
+            }
+        }
+    }
+
+    private fun saveAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.save(
+                    this@ClassSelectActivity,
+                    sessionId,
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.STAGE_CLASS_SELECT
+                )
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                        this@ClassSelectActivity
+                    )
+                }
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.navigateHome(
+                    this@ClassSelectActivity
+                )
+            } catch (error: Exception) {
+                Toast.makeText(
+                    this@ClassSelectActivity,
+                    "Could not save session: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

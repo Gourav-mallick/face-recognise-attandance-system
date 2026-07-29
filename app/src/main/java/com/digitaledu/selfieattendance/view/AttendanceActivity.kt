@@ -109,36 +109,57 @@ class AttendanceActivity : AppCompatActivity() {
         }
 
 
-        // 🔹 Restore screen if app was killed mid-session (UI Thread)
-        val statePrefs = getSharedPreferences("APP_STATE", MODE_PRIVATE)
-        val currentScreen = statePrefs.getString("CURRENT_SCREEN", null)
-
-        when (currentScreen) {
-            "TEACHER_SCAN" -> {
-                val classId = statePrefs.getString("CLASSROOM_ID", "")
-                val frag = TeacherScanFragment.newInstance(classId!!)
+        val explicitlyResuming = intent.getBooleanExtra("RESUME_INCOMPLETE_SESSION", false)
+        val resetToHome = intent.getBooleanExtra("RESET_TO_HOME", false)
+        if (resetToHome) {
+            resetToClassroomScanFragment()
+        } else if (explicitlyResuming) {
+            val sessionId = intent.getStringExtra("SESSION_ID").orEmpty()
+            val teacherName = intent.getStringExtra("TEACHER_NAME").orEmpty()
+            lifecycleScope.launch {
+                activateResumedIncompleteSession(sessionId, teacherName)
                 supportFragmentManager.beginTransaction()
-                    .replace(R.id.fragment_container, frag, "TEACHER")
+                    .replace(
+                        R.id.fragment_container,
+                        StudentScanFragment.newInstance(teacherName, sessionId),
+                        TAG_STUDENT
+                    )
                     .commitAllowingStateLoss()
             }
-            "STUDENT_SCAN" -> {
-                val teacherName = statePrefs.getString("TEACHER_NAME", "")
-                val sessionId = statePrefs.getString("SESSION_ID", "")
-                val frag = StudentScanFragment.newInstance(teacherName ?: "", sessionId ?: "")
-                supportFragmentManager.beginTransaction()
-                    .replace(R.id.fragment_container, frag, "STUDENT")
-                    .commitAllowingStateLoss()
-            }
-            else -> {
-                startClassroomScanFragment()
+        } else {
+            // Restore only the currently active screen. Saved incomplete sessions
+            // are deliberately excluded and must pass teacher verification.
+            val statePrefs = getSharedPreferences("APP_STATE", MODE_PRIVATE)
+            when (statePrefs.getString("CURRENT_SCREEN", null)) {
+                "TEACHER_SCAN" -> {
+                    val classId = statePrefs.getString("CLASSROOM_ID", "").orEmpty()
+                    supportFragmentManager.beginTransaction()
+                        .replace(
+                            R.id.fragment_container,
+                            TeacherScanFragment.newInstance(classId),
+                            TAG_TEACHER
+                        )
+                        .commitAllowingStateLoss()
+                }
+                "STUDENT_SCAN" -> {
+                    val teacherName = statePrefs.getString("TEACHER_NAME", "").orEmpty()
+                    val sessionId = statePrefs.getString("SESSION_ID", "").orEmpty()
+                    supportFragmentManager.beginTransaction()
+                        .replace(
+                            R.id.fragment_container,
+                            StudentScanFragment.newInstance(teacherName, sessionId),
+                            TAG_STUDENT
+                        )
+                        .commitAllowingStateLoss()
+                }
+                else -> startClassroomScanFragment()
             }
         }
 
         // 🔹 Check device time validity in the background
         checkDeviceTime()
 
-        //if app exit then restore last cycle
-        restoreLastCycleIfExists()
+        if (!resetToHome && !explicitlyResuming) restoreLastCycleIfExists()
 
         val request = PeriodicWorkRequestBuilder<AutoSyncWorker>(1, TimeUnit.HOURS).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -147,8 +168,51 @@ class AttendanceActivity : AppCompatActivity() {
 
 
         // Restore pending sessions (endTime empty) into activeClasses
-       restorePendingSessions()
+        if (!resetToHome && !explicitlyResuming) restorePendingSessions()
 
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("RESET_TO_HOME", false)) {
+            resetToClassroomScanFragment()
+        }
+    }
+
+    fun resetToClassroomScanFragment() {
+        activeSessions.clear()
+        currentTeacherId = null
+        currentVisibleClassroomId = null
+        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+        supportFragmentManager.popBackStack(
+            null,
+            androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+        )
+        startClassroomScanFragment()
+    }
+
+    private suspend fun activateResumedIncompleteSession(
+        sessionId: String,
+        teacherName: String
+    ) {
+        val db = AppDatabase.getDatabase(this)
+        val session = db.sessionDao().getSessionById(sessionId) ?: return
+        val classroomId = session.classId.split(',').firstOrNull()?.trim().orEmpty()
+        val cycle = AttendanceCycle(
+            classroomId = classroomId,
+            classroomName = db.classDao().getClassById(classroomId)?.classShortName
+                ?: classroomId,
+            teacherId = session.teacherId,
+            teacherName = teacherName,
+            sessionId = sessionId
+        )
+        activeSessions[classroomId to session.teacherId] = cycle
+        currentVisibleClassroomId = classroomId
+        currentTeacherId = session.teacherId
+        saveActiveSession(cycle)
+        updateAppState("STUDENT_SCAN")
     }
 
     // ----------------- Scan: Classroom -----------------
@@ -286,6 +350,36 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
             val inst_id = db.teachersDao().getInstituteIdByTeacherId(teacherId) ?: ""
+
+            // Reconcile server checkpoints first. If offline, local checkpoints
+            // still enforce the guard.
+            withContext(Dispatchers.IO) {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                    this@AttendanceActivity
+                )
+            }
+            val pendingCount = db.incompleteSessionDao()
+                .countPendingForTeacherAndInstitute(teacherId, inst_id)
+            if (pendingCount > 0) {
+                AlertDialog.Builder(this@AttendanceActivity)
+                    .setTitle("Complete pending session")
+                    .setMessage(
+                        "This teacher has $pendingCount incomplete session(s). " +
+                            "All must be completed before starting a new session."
+                    )
+                    .setCancelable(false)
+                    .setPositiveButton("View sessions") { _, _ ->
+                        startActivity(
+                            Intent(
+                                this@AttendanceActivity,
+                                IncompleteSessionsActivity::class.java
+                            ).putExtra("TEACHER_ID", teacherId)
+                        )
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                return@launch
+            }
 
             // Check if periods are empty for this institute
             val periods = withContext(Dispatchers.IO) {
@@ -736,6 +830,8 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
                 // 🔹 Loop through all sessions that are still open (no endTime)
                 sessions.filter { it.endTime.isNullOrEmpty() }.forEach { s ->
+                    val checkpoint = db.incompleteSessionDao().getBySessionId(s.sessionId)
+                    if (checkpoint?.recordStatus == "PENDING") return@forEach
                     val classObj = db.classDao().getClassById(s.classId)
                     val classShort = classObj?.classShortName ?: s.classId
                     val teacherId = s.teacherId ?: return@forEach

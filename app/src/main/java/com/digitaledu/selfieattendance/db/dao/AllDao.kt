@@ -22,6 +22,7 @@ import com.digitaledu.selfieattendance.db.entity.Session
 import com.digitaledu.selfieattendance.db.entity.StudentSchedule
 import com.digitaledu.selfieattendance.db.entity.TeacherClassMap
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
+import com.digitaledu.selfieattendance.db.entity.IncompleteSession
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 
 
@@ -344,6 +345,9 @@ interface AttendanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttendance(attendance: Attendance): Long
 
+    @Query("SELECT * FROM attendance WHERE atteId = :attendanceId LIMIT 1")
+    suspend fun getAttendanceById(attendanceId: String): Attendance?
+
     // Get all attendance records
     @Query("SELECT * FROM attendance")
     suspend fun getAllAttendance(): List<Attendance>
@@ -570,6 +574,81 @@ interface AttendanceCodeDao {
 }
 
 @Dao
+interface IncompleteSessionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(session: IncompleteSession)
+
+    @Query("""
+        SELECT * FROM incomplete_sessions
+        WHERE recordStatus = 'PENDING'
+        ORDER BY updatedAt DESC
+    """)
+    suspend fun getAllPending(): List<IncompleteSession>
+
+    @Query("""
+        SELECT * FROM incomplete_sessions
+        WHERE teacherId = :teacherId AND recordStatus = 'PENDING'
+        ORDER BY updatedAt DESC
+    """)
+    suspend fun getPendingForTeacher(teacherId: String): List<IncompleteSession>
+
+    @Query("""
+        SELECT * FROM incomplete_sessions
+        WHERE teacherId = :teacherId AND instId = :instId
+          AND recordStatus = 'PENDING'
+        ORDER BY updatedAt DESC
+    """)
+    suspend fun getPendingForTeacherAndInstitute(
+        teacherId: String,
+        instId: String
+    ): List<IncompleteSession>
+
+    @Query("""
+        SELECT COUNT(*) FROM incomplete_sessions
+        WHERE teacherId = :teacherId AND recordStatus = 'PENDING'
+    """)
+    suspend fun countPendingForTeacher(teacherId: String): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM incomplete_sessions
+        WHERE teacherId = :teacherId AND instId = :instId
+          AND recordStatus = 'PENDING'
+    """)
+    suspend fun countPendingForTeacherAndInstitute(teacherId: String, instId: String): Int
+
+    @Query("SELECT * FROM incomplete_sessions WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getBySessionId(sessionId: String): IncompleteSession?
+
+    @Query("SELECT * FROM incomplete_sessions WHERE syncStatus = 'LOCAL'")
+    suspend fun getLocalForUpload(): List<IncompleteSession>
+
+    @Query("""
+        UPDATE incomplete_sessions
+        SET syncStatus = :syncStatus, updatedAt = :updatedAt
+        WHERE sessionId = :sessionId
+    """)
+    suspend fun updateSyncStatus(
+        sessionId: String,
+        syncStatus: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("""
+        UPDATE incomplete_sessions
+        SET recordStatus = 'COMPLETED', syncStatus = :syncStatus, updatedAt = :updatedAt
+        WHERE sessionId = :sessionId
+    """)
+    suspend fun markCompleted(
+        sessionId: String,
+        syncStatus: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("DELETE FROM incomplete_sessions WHERE sessionId = :sessionId")
+    suspend fun deleteBySessionId(sessionId: String)
+}
+
+@Dao
 interface ProgramConfigDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(config: ProgramConfig)
@@ -580,4 +659,3 @@ interface ProgramConfigDao {
     @Query("DELETE FROM program_config")
     suspend fun clear()
 }
-

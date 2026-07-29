@@ -116,6 +116,19 @@ class StudentScanFragment : Fragment() {
         _tvLastStudent = view.findViewById(R.id.tvLastStudent)
         _tvInstruction = view.findViewById(R.id.tvInstruction)
         _tvLatestCardTapStudentLabel = view.findViewById(R.id.tvLatestCardTapStudentLabel)
+        view.findViewById<View>(R.id.btnSaveIncomplete).setOnClickListener { v ->
+            val popup = androidx.appcompat.widget.PopupMenu(requireContext(), v)
+            popup.menu.add("Save as incomplete session")
+            popup.setOnMenuItemClickListener { menuItem ->
+                if (menuItem.title == "Save as incomplete session") {
+                    saveAsIncomplete()
+                    true
+                } else {
+                    false
+                }
+            }
+            popup.show()
+        }
 
         teacherNameArg = arguments?.getString(ARG_TEACHER, "") ?: ""
         sessionIdArg = arguments?.getString(ARG_SESSION_ID, "") ?: ""
@@ -136,6 +149,41 @@ class StudentScanFragment : Fragment() {
         else requestPermissions(REQUIRED_PERMISSIONS, 101)
 
         updatePresentCountUI()
+    }
+
+    private fun saveAsIncomplete() {
+        if (sessionIdArg.isBlank()) {
+            Toast.makeText(requireContext(), "No active session to save", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.save(
+                    requireContext(),
+                    sessionIdArg,
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.STAGE_STUDENT_SCAN
+                )
+                withContext(Dispatchers.IO) {
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                        requireContext()
+                    )
+                }
+                Toast.makeText(
+                    requireContext(),
+                    "Session saved as incomplete",
+                    Toast.LENGTH_SHORT
+                ).show()
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.navigateHome(
+                    requireActivity()
+                )
+            } catch (error: Exception) {
+                Toast.makeText(
+                    requireContext(),
+                    "Could not save session: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     override fun onDestroyView() {

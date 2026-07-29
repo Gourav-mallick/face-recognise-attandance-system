@@ -464,6 +464,70 @@
 
                 </LinearLayout>
 
+                <!-- Incomplete Cycles Card (Matching Capture Attendance layout & style) -->
+                <LinearLayout
+                    android:id="@+id/btnIncompleteSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/bg_dashed_border"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="16dp">
+
+                    <FrameLayout
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_circle_icon_accent">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_sync_tab" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvIncompleteTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Incomplete Cycles"
+                            android:textColor="#0F172A"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvIncompleteSubtitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Resume pending attendance sessions"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvIncompleteBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_badge_admin"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"
+                        android:text="0"
+                        android:textColor="#EF4444"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </LinearLayout>
+
                 <!-- Hidden/fake tvSyncStatus button layout from original code to keep logic intact -->
                 <LinearLayout
                     android:id="@+id/tvSyncStatus"

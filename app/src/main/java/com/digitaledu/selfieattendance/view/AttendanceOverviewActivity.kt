@@ -41,6 +41,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
         }
     }
 
+
     // 🔹 Track whether back press is disabled
     private var backDisabled = true
 
@@ -76,12 +77,45 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
         binding.btnSubmitAttendance.setOnClickListener {
             submitAttendanceForSession()
-   /*
-          val intent = Intent(this, AttendanceActivity::class.java)
-            startActivity(intent)
-            finish()
+        }
+        binding.btnMoreOptions.setOnClickListener { view ->
+            val popup = androidx.appcompat.widget.PopupMenu(this, view)
+            popup.menu.add("Save as incomplete session")
+            popup.setOnMenuItemClickListener { menuItem ->
+                if (menuItem.title == "Save as incomplete session") {
+                    saveAsIncomplete()
+                    true
+                } else {
+                    false
+                }
+            }
+            popup.show()
+        }
+    }
 
-    */
+    private fun saveAsIncomplete() {
+        lifecycleScope.launch {
+            try {
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.save(
+                    this@AttendanceOverviewActivity,
+                    sessionId,
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.STAGE_OVERVIEW
+                )
+                withContext(Dispatchers.IO) {
+                    com.digitaledu.selfieattendance.repository.IncompleteSessionManager.sync(
+                        this@AttendanceOverviewActivity
+                    )
+                }
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager.navigateHome(
+                    this@AttendanceOverviewActivity
+                )
+            } catch (error: Exception) {
+                android.widget.Toast.makeText(
+                    this@AttendanceOverviewActivity,
+                    "Could not save session: ${error.message}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
@@ -159,6 +193,12 @@ class AttendanceOverviewActivity : ComponentActivity() {
                     Log.d("AttendanceOverview", "No attendance found for this session.")
                     return@launch
                 }
+
+                // The attendance rows remain in the normal pending-sync pipeline if
+                // offline. A completion tombstone prevents this checkpoint from
+                // blocking or reappearing on another synchronized device.
+                com.digitaledu.selfieattendance.repository.IncompleteSessionManager
+                    .markAttendanceSubmitted(this@AttendanceOverviewActivity, sessionId)
 
                 attendanceList.forEach {
                     Log.d("PAYLOAD_CHECK", "student=${it.studentId} cpId=${it.cpId}")
