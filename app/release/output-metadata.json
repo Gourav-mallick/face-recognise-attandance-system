@@ -13,7 +13,7 @@
       "attributes": [],
       "versionCode": 6,
       "versionName": "2.0.1",
-      "outputFile": "selfie-attendance.apk"
+      "outputFile": "selfie-attendance-v2.0.1.apk"
     }
   ],
   "elementType": "File",
@@ -22,14 +22,14 @@
       "minApi": 28,
       "maxApi": 30,
       "baselineProfiles": [
-        "baselineProfiles/1/selfie-attendance.dm"
+        "baselineProfiles/1/selfie-attendance-v2.0.1.dm"
       ]
     },
     {
       "minApi": 31,
       "maxApi": 2147483647,
       "baselineProfiles": [
-        "baselineProfiles/0/selfie-attendance.dm"
+        "baselineProfiles/0/selfie-attendance-v2.0.1.dm"
       ]
     }
   ],
