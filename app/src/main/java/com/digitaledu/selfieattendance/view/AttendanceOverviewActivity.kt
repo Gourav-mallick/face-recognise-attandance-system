@@ -99,29 +99,26 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 val attendance = db.attendanceDao().getAttendancesForClass(sessionId, classId)
 
                 val totalStudents = students.size
-                // Late students are still attending; only absent/exempted students
-                // belong in the absent side of this summary.
-                val presentCount = attendance.count { it.status == "P" || it.status == "L" }
-                val absentCount = totalStudents - presentCount
-          /*
-                val presentStudents = students.filter { s ->
-                    attendance.any { it.studentId == s.studentId && it.status == "P" }
-                }.map { it.studentName }
-
-          */
+                val presentCount = attendance.count { it.status == "P" }
+                val lateCount = attendance.count { it.status == "L" }
+                val exemptedCount = attendance.count { it.status == "E" }
+                val recordedAbsent = attendance.count { it.status == "A" }
+                val unrecordedCount = (totalStudents - attendance.size).coerceAtLeast(0)
+                val absentCount = recordedAbsent + unrecordedCount
 
                 // Subject name (take from first attendance row)
-                val subjectName =
-                    attendance.firstOrNull()?.subjectTitle
+                val subjectName = attendance.firstOrNull()?.subjectTitle
 
                 classSummaries.add(
                     ClassOverviewData(
                         classId = classId,
                         className = classShortName,
+                        subjectName = subjectName,
                         totalStudents = totalStudents,
                         presentCount = presentCount,
-                        absentCount = absentCount,
-                        subjectName = subjectName
+                        lateCount = lateCount,
+                        exemptedCount = exemptedCount,
+                        absentCount = absentCount
                     )
                 )
             }
@@ -396,5 +393,7 @@ data class ClassOverviewData(
     val subjectName: String?,
     val totalStudents: Int,
     val presentCount: Int,
+    val lateCount: Int,
+    val exemptedCount: Int,
     val absentCount: Int
 )

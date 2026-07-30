@@ -833,6 +833,9 @@ class SubjectSelectActivity : ComponentActivity() {
                         val combinedCourseIds = selectedCourseIds.distinct().joinToString(",")
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, combinedCourseIds)
 
+                        // Ensure all non-scanned students in selected classes have absent ("A") records
+                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
+
                         // ✅ Navigate
                         withContext(Dispatchers.Main) {
                             val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
@@ -918,6 +921,9 @@ class SubjectSelectActivity : ComponentActivity() {
                         // Session can keep courseId for display
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, courseId)
 
+                        // Ensure all non-scanned students in selected classes have absent ("A") records
+                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
+
                         withContext(Dispatchers.Main) {
                             val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
                             intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
@@ -936,6 +942,51 @@ class SubjectSelectActivity : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e("CONTINUE_SAVE", "Error: ${e.message}", e)
                 withContext(Dispatchers.Main) { showToast("Something went wrong") }
+            }
+        }
+    }
+
+    private suspend fun ensureAbsentRecordsForSession(db: AppDatabase, sessionId: String, classIds: List<String>) {
+        val sampleAtt = db.attendanceDao().getAttendancesForSession(sessionId).firstOrNull()
+        val session = db.sessionDao().getSessionById(sessionId) ?: return
+
+        for (classId in classIds) {
+            val allStudents = db.studentsDao().getStudentsByClass(classId)
+            val existingAttendances = db.attendanceDao().getAttendancesForClass(sessionId, classId)
+            val existingStudentIds = existingAttendances.map { it.studentId }.toSet()
+
+            val missingStudents = allStudents.filter { it.studentId !in existingStudentIds }
+            for (student in missingStudents) {
+                val absentAtt = com.digitaledu.selfieattendance.db.entity.Attendance(
+                    atteId = java.util.UUID.randomUUID().toString(),
+                    sessionId = sessionId,
+                    studentId = student.studentId,
+                    studentName = student.studentName ?: "",
+                    classId = classId,
+                    status = "A",
+                    markedAt = sampleAtt?.markedAt ?: java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()),
+                    syncStatus = "pending",
+                    instId = session.instId ?: sampleAtt?.instId ?: "",
+                    instShortName = sampleAtt?.instShortName ?: "",
+                    date = session.date ?: sampleAtt?.date ?: "",
+                    startTime = session.startTime ?: sampleAtt?.startTime ?: "",
+                    endTime = session.endTime ?: sampleAtt?.endTime ?: "",
+                    academicYear = sampleAtt?.academicYear ?: "",
+                    period = sampleAtt?.period ?: session.periodId ?: "",
+                    teacherId = session.teacherId ?: sampleAtt?.teacherId ?: "",
+                    teacherName = sampleAtt?.teacherName ?: "",
+                    attSchoolPeriodId = session.attSchoolPeriodId ?: sampleAtt?.attSchoolPeriodId ?: "",
+                    cpId = sampleAtt?.cpId ?: "",
+                    courseId = sampleAtt?.courseId ?: "",
+                    courseTitle = sampleAtt?.courseTitle ?: "",
+                    courseShortName = sampleAtt?.courseShortName ?: "",
+                    subjectId = sampleAtt?.subjectId ?: session.subjectId ?: "",
+                    subjectTitle = sampleAtt?.subjectTitle ?: "",
+                    classShortName = sampleAtt?.classShortName ?: "",
+                    mpId = sampleAtt?.mpId ?: "",
+                    mpLongTitle = sampleAtt?.mpLongTitle ?: ""
+                )
+                db.attendanceDao().insertAttendance(absentAtt)
             }
         }
     }

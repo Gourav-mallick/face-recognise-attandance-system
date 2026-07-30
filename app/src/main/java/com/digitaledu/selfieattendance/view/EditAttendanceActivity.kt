@@ -91,8 +91,10 @@ class EditAttendanceActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val sampleAtt = db.attendanceDao().getAttendancesForSession(sessionId).firstOrNull()
             if (sampleAtt != null) {
-                // Fetch dynamic codes from API
-                fetchAttendanceCodes(sampleAtt)
+                // Fetch dynamic codes in background without blocking UI render
+                launch(Dispatchers.IO) {
+                    fetchAttendanceCodes(sampleAtt)
+                }
             }
 
             val allStudents = db.studentsDao().getStudentsByClass(classId)
@@ -293,63 +295,41 @@ class EditAttendanceActivity : ComponentActivity() {
                     val studentId = item.studentId
                     val status = item.status
 
-                    if (item.isOriginallyPresent) {
-                        // Was originally present/late
-                        if (status == "P" || status == "L") {
-                            // Update status in SQLite
-                            val att = db.attendanceDao().getAttendanceForStudentInSession(sessionId, studentId)
-                            if (att != null) {
-                                val updated = att.copy(status = status)
-                                db.attendanceDao().insertAttendance(updated)
-                            }
-                        } else if (status == "A") {
-                            // Mark absent by deleting attendance record
-                            db.attendanceDao().deleteAttendanceForStudent(sessionId, studentId)
-                        }
+                    val existing = db.attendanceDao().getAttendanceForStudentInSession(sessionId, studentId)
+                    if (existing != null) {
+                        val updated = existing.copy(status = status)
+                        db.attendanceDao().insertAttendance(updated)
                     } else {
-                        // Was originally absent
-                        if (status == "P" || status == "E") {
-                            // Create present/exempted record
-                            val existing = db.attendanceDao().getAttendanceForStudentInSession(sessionId, studentId)
-                            if (existing == null) {
-                                val newAtt = Attendance(
-                                    atteId = UUID.randomUUID().toString(),
-                                    instId = sampleAtt.instId,
-                                    instShortName = sampleAtt.instShortName,
-                                    academicYear = sampleAtt.academicYear,
-                                    classId = sampleAtt.classId,
-                                    markedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
-                                    sessionId = sampleAtt.sessionId,
-                                    status = status,
-                                    studentId = studentId,
-                                    studentName = item.studentName,
-                                    syncStatus = "pending",
-                                    teacherId = sampleAtt.teacherId,
-                                    teacherName = sampleAtt.teacherName,
-                                    date = sampleAtt.date,
-                                    startTime = sampleAtt.startTime,
-                                    endTime = sampleAtt.endTime,
-                                    period = sampleAtt.period,
-                                    cpId = sampleAtt.cpId,
-                                    courseId = sampleAtt.courseId,
-                                    courseTitle = sampleAtt.courseTitle,
-                                    courseShortName = sampleAtt.courseShortName,
-                                    subjectId = sampleAtt.subjectId,
-                                    subjectTitle = sampleAtt.subjectTitle,
-                                    classShortName = sampleAtt.classShortName,
-                                    mpId = sampleAtt.mpId,
-                                    mpLongTitle = sampleAtt.mpLongTitle,
-                                    attSchoolPeriodId = sampleAtt.attSchoolPeriodId
-                                )
-                                db.attendanceDao().insertAttendance(newAtt)
-                            } else {
-                                val updated = existing.copy(status = status)
-                                db.attendanceDao().insertAttendance(updated)
-                            }
-                        } else if (status == "A") {
-                            // Delete record if it was previously marked in this edit session
-                            db.attendanceDao().deleteAttendanceForStudent(sessionId, studentId)
-                        }
+                        val newAtt = Attendance(
+                            atteId = UUID.randomUUID().toString(),
+                            instId = sampleAtt.instId,
+                            instShortName = sampleAtt.instShortName,
+                            academicYear = sampleAtt.academicYear,
+                            classId = if (classId.isNotBlank()) classId else sampleAtt.classId,
+                            markedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
+                            sessionId = sampleAtt.sessionId,
+                            status = status,
+                            studentId = studentId,
+                            studentName = item.studentName,
+                            syncStatus = "pending",
+                            teacherId = sampleAtt.teacherId,
+                            teacherName = sampleAtt.teacherName,
+                            date = sampleAtt.date,
+                            startTime = sampleAtt.startTime,
+                            endTime = sampleAtt.endTime,
+                            period = sampleAtt.period,
+                            cpId = sampleAtt.cpId,
+                            courseId = sampleAtt.courseId,
+                            courseTitle = sampleAtt.courseTitle,
+                            courseShortName = sampleAtt.courseShortName,
+                            subjectId = sampleAtt.subjectId,
+                            subjectTitle = sampleAtt.subjectTitle,
+                            classShortName = sampleAtt.classShortName,
+                            mpId = sampleAtt.mpId,
+                            mpLongTitle = sampleAtt.mpLongTitle,
+                            attSchoolPeriodId = sampleAtt.attSchoolPeriodId
+                        )
+                        db.attendanceDao().insertAttendance(newAtt)
                     }
                 }
             }
