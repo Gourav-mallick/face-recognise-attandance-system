@@ -340,13 +340,13 @@ object AttendanceIdGenerator {
     }
 }
 
-@Entity(tableName = "attendance_codes")
+@Entity(tableName = "attendance_codes", primaryKeys = ["atcCode", "atcSchoolId"])
 data class AttendanceCode(
-    @PrimaryKey
     val atcCode: String,
     val atcId: String,
     val atcLongName: String,
-    val atcSchoolId: String
+    val atcSchoolId: String,
+    val atcShortName: String = ""
 )
 
 

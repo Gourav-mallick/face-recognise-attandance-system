@@ -699,4 +699,96 @@ Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
         }
     }
 
+    suspend fun fetchAndSaveAttendanceCodes(
+        apiService: ApiService,
+        db: AppDatabase,
+        schoolId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val instId = schoolId.trim()
+            if (instId.isEmpty()) return@withContext false
+
+            val dataParam = JSONObject().apply {
+                put("attParamDataObj", JSONObject().apply {
+                    put("schoolId", instId)
+                })
+            }.toString()
+
+            Log.d(TAG, "Fetching attendance codes for institute $instId with data: $dataParam")
+
+            val response = apiService.getSchoolAttendanceCodes(data = dataParam)
+
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                Log.d(TAG, "ATT_CODE_RESPONSE: $jsonString")
+
+                val json = JSONObject(jsonString)
+                val collection = json.optJSONObject("collection")
+                val responseObj = collection?.optJSONObject("response")
+                val dataArray = responseObj?.optJSONArray("data")
+
+                if (dataArray == null || dataArray.length() == 0) {
+                    Log.w(TAG, "ATT_CODES: Empty data array for institute $instId")
+                    return@withContext false
+                }
+
+                val allowedNames = setOf("present", "absent", "exempted", "late")
+                val allowedCodes = setOf("p", "a", "e", "l")
+                val codesList = mutableListOf<AttendanceCode>()
+
+                for (i in 0 until dataArray.length()) {
+                    val obj = dataArray.getJSONObject(i)
+                    val atcId = obj.optString("atcId", "")
+                    val atcSchoolId = obj.optString("atcSchoolId", instId).ifBlank { instId }
+                    val atcLongName = obj.optString("atcLongName", "")
+                    val atcShortName = obj.optString("atcShortName", "")
+                    val atcCode = obj.optString("atcCode", "")
+
+                    // Filtering: Only map Present, Absent, Exempted, Late (ignore other codes)
+                    val nameMatch = allowedNames.contains(atcShortName.trim().lowercase()) ||
+                            allowedNames.contains(atcLongName.trim().lowercase())
+                    val codeMatch = allowedCodes.contains(atcCode.trim().lowercase())
+
+                    if (nameMatch || codeMatch) {
+                        val normalizedCode = when {
+                            atcCode.equals("P", true) || atcShortName.equals("Present", true) || atcLongName.equals("Present", true) -> "P"
+                            atcCode.equals("A", true) || atcShortName.equals("Absent", true) || atcLongName.equals("Absent", true) -> "A"
+                            atcCode.equals("E", true) || atcShortName.equals("Exempted", true) || atcLongName.equals("Exempted", true) -> "E"
+                            atcCode.equals("L", true) || atcShortName.equals("Late", true) || atcLongName.equals("Late", true) -> "L"
+                            else -> atcCode.uppercase()
+                        }
+
+                        codesList.add(
+                            AttendanceCode(
+                                atcCode = normalizedCode,
+                                atcId = atcId,
+                                atcLongName = if (atcLongName.isNotBlank()) atcLongName else atcShortName,
+                                atcSchoolId = atcSchoolId,
+                                atcShortName = atcShortName
+                            )
+                        )
+                    } else {
+                        Log.d(TAG, "ATT_CODES: Ignoring code: shortName='$atcShortName', longName='$atcLongName', code='$atcCode'")
+                    }
+                }
+
+                if (codesList.isNotEmpty()) {
+                    db.attendanceCodeDao().insertAll(codesList)
+                    Log.i(TAG, "✔ Saved ${codesList.size} attendance codes for institute $instId")
+                    true
+                } else {
+                    Log.w(TAG, "ATT_CODES: No matching attendance codes found for institute $instId")
+                    false
+                }
+            } else {
+                Log.e(TAG, "ATT_CODES_API_FAILED: Code ${response.code()}")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "ATT_CODES_EXCEPTION: ${e.message}", e)
+            false
+        }
+    }
+
 }
+

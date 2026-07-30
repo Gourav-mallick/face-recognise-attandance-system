@@ -927,7 +927,9 @@ class ClassroomScanFragment : Fragment() {
                         val classShort = db.classDao().getClassById(att.classId)?.classShortName ?: ""
 
                         val attCode = att.status
-                        val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+                        val instId = att.instId ?: ""
+                        val codeEntity = db.attendanceCodeDao().getByCodeAndSchool(attCode, instId)
+                            ?: db.attendanceCodeDao().getByCode(attCode)
                         val attCodeId = codeEntity?.atcId ?: when (attCode) {
                             "L" -> "4"
                             "E" -> "3"
@@ -940,6 +942,7 @@ class ClassroomScanFragment : Fragment() {
                             "A" -> "absent"
                             else -> "present"
                         }
+
 
                         val attJson = JSONObject().apply {
                             put("studentId", att.studentId)

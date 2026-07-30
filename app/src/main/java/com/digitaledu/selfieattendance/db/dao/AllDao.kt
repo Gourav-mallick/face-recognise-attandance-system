@@ -588,12 +588,19 @@ interface AttendanceCodeDao {
     @Query("SELECT * FROM attendance_codes")
     suspend fun getAll(): List<AttendanceCode>
 
+    @Query("SELECT * FROM attendance_codes WHERE atcCode = :code AND atcSchoolId = :schoolId LIMIT 1")
+    suspend fun getByCodeAndSchool(code: String, schoolId: String): AttendanceCode?
+
     @Query("SELECT * FROM attendance_codes WHERE atcCode = :code LIMIT 1")
     suspend fun getByCode(code: String): AttendanceCode?
+
+    @Query("SELECT * FROM attendance_codes WHERE atcSchoolId = :schoolId")
+    suspend fun getBySchool(schoolId: String): List<AttendanceCode>
 
     @Query("DELETE FROM attendance_codes")
     suspend fun clear()
 }
+
 
 @Dao
 interface ProgramConfigDao {

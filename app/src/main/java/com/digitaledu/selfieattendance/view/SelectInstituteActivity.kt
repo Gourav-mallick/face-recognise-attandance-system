@@ -163,7 +163,14 @@ class SelectInstituteActivity : AppCompatActivity() {
 
                         // 🔥 Face Detection & Recognition Thresholds (ManageProgramConfig API)
                         repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
+
+                        // 🔥 Attendance Codes (schoolAttCodeToMarkAtt API)
+                        val ac = repository.fetchAndSaveAttendanceCodes(apiService, db, instId)
+                        if (!ac) {
+                            Log.w(TAG, "Attendance codes not configured on server for institute: $instId")
+                        }
                     }
+
 
                     // 🔥 Subject Instances do NOT depend on institute
                     val subj = repository.syncSubjectInstances(apiService, db)

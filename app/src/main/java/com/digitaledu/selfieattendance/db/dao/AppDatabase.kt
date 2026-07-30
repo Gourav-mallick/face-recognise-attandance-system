@@ -47,7 +47,7 @@ import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
     ProgramConfig::class,
     TeacherInstituteMap::class
     ],
-    version = 3, exportSchema = true)
+    version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -143,6 +143,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `attendance_codes`")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `attendance_codes` (
+                        `atcCode` TEXT NOT NULL,
+                        `atcId` TEXT NOT NULL,
+                        `atcLongName` TEXT NOT NULL,
+                        `atcSchoolId` TEXT NOT NULL,
+                        `atcShortName` TEXT NOT NULL DEFAULT '',
+                        PRIMARY KEY(`atcCode`, `atcSchoolId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -150,11 +168,12 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance
             }
         }
+
     }
 }

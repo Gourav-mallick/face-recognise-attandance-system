@@ -227,7 +227,9 @@ class SyncAttendanceToServer : AppCompatActivity(){
         val classShort = db.classDao().getClassById(att.classId)?.classShortName ?: ""
 
         val attCode = att.status // "P", "L", "E", "A"
-        val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+        val instId = att.instId ?: ""
+        val codeEntity = db.attendanceCodeDao().getByCodeAndSchool(attCode, instId)
+            ?: db.attendanceCodeDao().getByCode(attCode)
         val attCodeId = codeEntity?.atcId ?: when(attCode) {
             "L" -> "4"
             "E" -> "3"
@@ -240,6 +242,7 @@ class SyncAttendanceToServer : AppCompatActivity(){
             "A" -> "absent"
             else -> "present"
         }
+
 
         return JSONObject().apply {
             put("studentId", att.studentId)

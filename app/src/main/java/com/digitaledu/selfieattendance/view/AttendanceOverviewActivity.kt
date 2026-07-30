@@ -334,7 +334,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("studAttComment","")
             put("attSessionStudId","")
             val attCode = att.status // "P", "L", "E", "A"
-            val codeEntity = db.attendanceCodeDao().getByCode(attCode)
+            val instId = att.instId ?: ""
+            val codeEntity = db.attendanceCodeDao().getByCodeAndSchool(attCode, instId)
+                ?: db.attendanceCodeDao().getByCode(attCode)
             val attCodeId = codeEntity?.atcId ?: when(attCode) {
                 "L" -> "4"
                 "E" -> "3"
@@ -347,6 +349,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 "A" -> "absent"
                 else -> "present"
             }
+
 
             put("attCodeId", attCodeId)
             put("attCodeLngName", attCodeLngName)
