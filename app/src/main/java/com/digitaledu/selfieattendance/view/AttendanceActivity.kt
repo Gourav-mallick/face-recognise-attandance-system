@@ -115,19 +115,23 @@ class AttendanceActivity : AppCompatActivity() {
 
         when (currentScreen) {
             "TEACHER_SCAN" -> {
-                val classId = statePrefs.getString("CLASSROOM_ID", "")
-                val frag = TeacherScanFragment.newInstance(classId!!)
+                val classId = statePrefs.getString("CLASSROOM_ID", "1").let { if (it.isNullOrEmpty()) "1" else it }
+                currentVisibleClassroomId = classId
+                val frag = TeacherScanFragment.newInstance(classId)
                 supportFragmentManager.beginTransaction()
                     .replace(R.id.fragment_container, frag, "TEACHER")
                     .commitAllowingStateLoss()
             }
             "STUDENT_SCAN" -> {
-                val teacherName = statePrefs.getString("TEACHER_NAME", "")
-                val sessionId = statePrefs.getString("SESSION_ID", "")
-                val frag = StudentScanFragment.newInstance(teacherName ?: "", sessionId ?: "")
-                supportFragmentManager.beginTransaction()
-                    .replace(R.id.fragment_container, frag, "STUDENT")
-                    .commitAllowingStateLoss()
+                val teacherName = statePrefs.getString("TEACHER_NAME", "") ?: ""
+                val sessionId = statePrefs.getString("SESSION_ID", "") ?: ""
+                val classId = statePrefs.getString("CLASSROOM_ID", "") ?: ""
+                val teacherId = statePrefs.getString("TEACHER_ID", "") ?: ""
+
+                if (classId.isNotEmpty()) currentVisibleClassroomId = classId
+                if (teacherId.isNotEmpty()) currentTeacherId = teacherId
+
+                showResumeSessionDialog(teacherName, sessionId, classId, teacherId)
             }
             else -> {
                 startClassroomScanFragment()
@@ -712,12 +716,66 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
     }
 
     // ---------------- Utilities ----------------
-    private fun startClassroomScanFragment() {
+    fun startClassroomScanFragment() {
         val fragment = ClassroomScanFragment.newInstance()
         val transaction = supportFragmentManager.beginTransaction()
         transaction.replace(R.id.fragment_container, fragment, TAG_CLASSROOM)
         updateAppState("CLASSROOM_SCAN")
         transaction.commitAllowingStateLoss()
+    }
+
+    private fun showResumeSessionDialog(
+        teacherName: String,
+        sessionId: String,
+        classId: String,
+        teacherId: String
+    ) {
+        val displayName = if (teacherName.isNotBlank()) teacherName else "Teacher"
+        AlertDialog.Builder(this)
+            .setTitle("Active Session Detected")
+            .setMessage("An active attendance session for $displayName is currently running.\n\nDo you want to continue capturing attendance or discard and cancel this session?")
+            .setCancelable(false)
+            .setPositiveButton("Continue Session") { dialog, _ ->
+                dialog.dismiss()
+                val frag = StudentScanFragment.newInstance(displayName, sessionId)
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, frag, TAG_STUDENT)
+                    .commitAllowingStateLoss()
+            }
+            .setNegativeButton("Discard & Cancel Session") { dialog, _ ->
+                dialog.dismiss()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val db = AppDatabase.getDatabase(this@AttendanceActivity)
+                        if (sessionId.isNotEmpty()) {
+                            db.sessionDao().deleteSessionById(sessionId)
+                            db.attendanceDao().deleteAttendanceForSession(sessionId)
+                        }
+                        if (classId.isNotEmpty()) {
+                            db.activeClassCycleDao().deleteByClassroomId(classId)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error discarding session: ${e.message}", e)
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        if (classId.isNotEmpty() && teacherId.isNotEmpty()) {
+                            activeSessions.remove(Pair(classId, teacherId))
+                        }
+                        currentTeacherId = null
+                        currentVisibleClassroomId = null
+
+                        val prefs1 = getSharedPreferences("APP_STATE", MODE_PRIVATE)
+                        prefs1.edit().clear().apply()
+                        val prefs2 = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
+                        prefs2.edit().clear().apply()
+
+                        Toast.makeText(this@AttendanceActivity, "Session discarded", Toast.LENGTH_SHORT).show()
+                        startClassroomScanFragment()
+                    }
+                }
+            }
+            .show()
     }
 
     private fun checkDeviceTime() {

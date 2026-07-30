@@ -491,8 +491,12 @@ class TeacherScanFragment : Fragment() {
                     val prefs = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
                     prefs.edit().remove("CURRENT_SCREEN").apply()
 
-                    // ✅ Navigate back to classroom
-                    parentFragmentManager.popBackStack()
+                    // ✅ Navigate back to classroom safely
+                    if (parentFragmentManager.backStackEntryCount > 0) {
+                        parentFragmentManager.popBackStack()
+                    } else {
+                        (requireActivity() as? AttendanceActivity)?.startClassroomScanFragment()
+                    }
                 }
             }
         }
