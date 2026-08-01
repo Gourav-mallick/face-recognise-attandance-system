@@ -18,6 +18,9 @@ import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import com.digitaledu.selfieattendance.api.ApiClient
 
 class PeriodSelectActivity : ComponentActivity() {
 
@@ -215,6 +218,10 @@ class PeriodSelectActivity : ComponentActivity() {
                 }
             }
 
+            // Also check server AttReport for multi-device locks
+            val selectedInstId = session.instId
+            fetchServerSubmittedPeriods(selectedInstId, sessionDate, selectedClasses, allPeriods, submittedPeriodsMap)
+
             withContext(Dispatchers.Main) {
                 binding.tvAutoAssigned.text = "Default Period ID: 999 (Out of Period / Extra Class)"
 
@@ -260,6 +267,173 @@ class PeriodSelectActivity : ComponentActivity() {
         }
 
         dialog.show()
+    }
+
+    private suspend fun fetchServerSubmittedPeriods(
+        instId: String,
+        date: String,
+        selectedClasses: List<String>,
+        allPeriods: List<SchoolPeriod>,
+        submittedPeriodsMap: MutableMap<String, SubmittedPeriodInfo>
+    ) {
+        try {
+            val prefs = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
+            val loginPrefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
+
+            val rawBaseUrl = prefs.getString("baseUrl", null)
+                ?: loginPrefs.getString("baseUrl", null)
+                ?: prefs.getString("BASE_URL", null)
+                ?: ""
+
+            val hash = prefs.getString("HASH", null)
+                ?: prefs.getString("hash", null)
+                ?: loginPrefs.getString("hash", null)
+                ?: loginPrefs.getString("HASH", null)
+
+            if (rawBaseUrl.isBlank()) {
+                Log.w("PERIOD_LOCK_DEBUG", "Base URL is blank in SharedPreferences (AttendancePrefs & LoginPrefs), skipping server period report fetch.")
+                return
+            }
+
+            val baseUrl = if (rawBaseUrl.endsWith("///")) rawBaseUrl else if (rawBaseUrl.endsWith("/")) rawBaseUrl.removeSuffix("/") + "///" else "$rawBaseUrl///"
+            Log.d("PERIOD_LOCK_DEBUG", "Using baseUrl=$baseUrl for AttReport API")
+
+            val apiService = ApiClient.getClient(baseUrl, hash).create(com.digitaledu.selfieattendance.api.ApiService::class.java)
+
+            val savedInsts = db.instituteDao().getAll().map { it.id }.filter { it.isNotBlank() }
+            val selectedSchoolIds = if (savedInsts.isNotEmpty()) savedInsts.joinToString(",") else if (instId.isNotBlank()) instId else "1"
+
+            val dataParam = "{\"attParamDataObj\":{\"attReportType\":\"classLectureLandscapeReportDetails\",\"attReportTypeParamDataObj\":{\"schoolIds\":\"$selectedSchoolIds\",\"classType\":\"Academic\",\"courseSelectionMode\":\"AcademicProcessed\",\"frmDate\":\"$date\",\"toDate\":\"$date\",\"attCategory\":\"Regular\"}}}"
+
+            Log.d("PERIOD_LOCK_DEBUG", "Calling AttReport API with schoolIds=$selectedSchoolIds, date=$date, param=$dataParam")
+
+            val response = apiService.getAttendanceReport(data = dataParam)
+            Log.d("PERIOD_LOCK_DEBUG", "AttReport Response Code=${response.code()}")
+
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                Log.d("PERIOD_LOCK_DEBUG", "AttReport Response JSON=$jsonString")
+
+                val json = JSONObject(jsonString)
+                val collection = json.optJSONObject("collection")
+                val responseObj = collection?.optJSONObject("response")
+                val dataArray = responseObj?.optJSONArray("data") ?: JSONArray()
+
+                val selectedClassObjs = selectedClasses.mapNotNull { db.classDao().getClassById(it) }
+                val selectedClassNames = selectedClassObjs.map { it.classShortName.lowercase().trim() }
+                Log.d("PERIOD_LOCK_DEBUG", "Selected classes to match: $selectedClassNames")
+
+                for (i in 0 until dataArray.length()) {
+                    val item = dataArray.getJSONObject(i)
+                    val className = item.optString("Class", "").trim()
+                    Log.d("PERIOD_LOCK_DEBUG", "Processing report item for Class=$className")
+
+                    val isClassMatch = selectedClassNames.isEmpty() || selectedClassNames.any { name ->
+                        isClassMatchExact(className, name)
+                    }
+
+                    if (!isClassMatch) {
+                        Log.d("PERIOD_LOCK_DEBUG", "Class $className did not match $selectedClassNames, skipping")
+                        continue
+                    }
+
+                    val keys = item.keys()
+                    while (keys.hasNext()) {
+                        val rawKey = keys.next()
+                        if (rawKey.equals("Class", ignoreCase = true)) continue
+
+                        val slotArray = item.optJSONArray(rawKey) ?: continue
+                        var pCount = 0
+                        var aCount = 0
+                        var eCount = 0
+                        var lCount = 0
+                        var totalLectures = 0
+                        var detailsStr = ""
+
+                        for (j in 0 until slotArray.length()) {
+                            val str = slotArray.getString(j)
+                            if (str.startsWith("P:")) pCount = str.substringAfter("P:").trim().toIntOrNull() ?: 0
+                            else if (str.startsWith("A:")) aCount = str.substringAfter("A:").trim().toIntOrNull() ?: 0
+                            else if (str.startsWith("E:")) eCount = str.substringAfter("E:").trim().toIntOrNull() ?: 0
+                            else if (str.startsWith("L:")) lCount = str.substringAfter("L:").trim().toIntOrNull() ?: 0
+                            else if (str.startsWith("Total-Lectures:")) totalLectures = str.substringAfter("Total-Lectures:").trim().toIntOrNull() ?: 0
+                            else if (!str.contains("%")) detailsStr = str
+                        }
+
+                        Log.d("PERIOD_LOCK_DEBUG", "Slot Key=$rawKey → P=$pCount, A=$aCount, E=$eCount, L=$lCount, TotalLec=$totalLectures, Details=$detailsStr")
+
+                        if (totalLectures > 0 || (pCount + aCount + eCount + lCount) > 0) {
+                            val teacherName = if (detailsStr.contains("[") && detailsStr.contains("]")) {
+                                detailsStr.substringAfter("[").substringBefore("]")
+                            } else "Teacher"
+
+                            val subjectTitle = if (detailsStr.contains("[")) {
+                                detailsStr.substringBefore("[").trim()
+                            } else detailsStr.ifBlank { "Subject" }
+
+                            val cleanKey = rawKey.replace("</br>", " ").replace("<br>", " ").replace("<br/>", " ")
+
+                            var matchedPeriod = allPeriods.find { period ->
+                                cleanKey.lowercase().contains(period.spTitle.lowercase()) ||
+                                detailsStr.lowercase().contains(period.spTitle.lowercase())
+                            }
+
+                            if (matchedPeriod == null) {
+                                val isMorning = cleanKey.lowercase().contains("morning") || cleanKey.contains("7:") || cleanKey.contains("8:") || cleanKey.contains("9:") || cleanKey.contains("10:") || cleanKey.contains("11:")
+                                val isAfternoon = cleanKey.lowercase().contains("afternoon") || cleanKey.contains("12:") || cleanKey.contains("1:") || cleanKey.contains("2:") || cleanKey.contains("3:") || cleanKey.contains("4:") || cleanKey.contains("5:")
+
+                                matchedPeriod = allPeriods.find { period ->
+                                    val hour = period.spIstTime.substringBefore(":").toIntOrNull() ?: 9
+                                    if (isMorning && hour < 12) true
+                                    else if (isAfternoon && hour >= 12) true
+                                    else false
+                                } ?: allPeriods.firstOrNull()
+                            }
+
+                            if (matchedPeriod != null) {
+                                Log.d("PERIOD_LOCK_DEBUG", "✅ Locked Period spId=${matchedPeriod.spId} (${matchedPeriod.spTitle}) from server report!")
+                                submittedPeriodsMap[matchedPeriod.spId] = SubmittedPeriodInfo(
+                                    spId = matchedPeriod.spId,
+                                    spTitle = matchedPeriod.spTitle,
+                                    teacherName = teacherName,
+                                    classNames = className,
+                                    subjectTitle = subjectTitle,
+                                    presentCount = pCount,
+                                    exemptedCount = eCount,
+                                    absentCount = aCount,
+                                    lateCount = lCount
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Log.e("PERIOD_LOCK_DEBUG", "AttReport response un-successful or null body: ${response.errorBody()?.string()}")
+            }
+        } catch (e: Exception) {
+            Log.e("PERIOD_LOCK_DEBUG", "Exception in fetchServerSubmittedPeriods: ${e.message}", e)
+        }
+    }
+
+    private fun isClassMatchExact(serverName: String, localName: String): Boolean {
+        val sName = serverName.substringBefore("#").trim().lowercase()
+        val lName = localName.substringBefore("#").trim().lowercase()
+
+        if (sName == lName) return true
+
+        // If local name specifies a Part (e.g. "part 1", "part ii") but server is generic ("msc finance"), DO NOT match!
+        if (lName.contains("part") && !sName.contains("part")) {
+            return false
+        }
+
+        // If both contain part, ensure exact part matches
+        if (sName.contains("part") && lName.contains("part")) {
+            val sPart = sName.substringAfter("part").trim()
+            val lPart = lName.substringAfter("part").trim()
+            return sPart == lPart || sName == lName
+        }
+
+        return sName.contains(lName)
     }
 
     private fun navigateToSubjectSelect() {

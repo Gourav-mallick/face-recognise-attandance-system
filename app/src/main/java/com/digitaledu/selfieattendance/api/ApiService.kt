@@ -122,6 +122,12 @@ interface ApiService {
         @Query("data") data: String
     ): Response<ResponseBody>
 
+    @GET("sims-services/digitalsims/")
+    suspend fun getAttendanceReport(
+        @Query("r") r: String = "api/v1/Att/AttReport",
+        @Query("data") data: String
+    ): Response<ResponseBody>
+
 
     @retrofit2.http.Multipart
     @POST("sims-services/digitalsims/")
