@@ -314,6 +314,9 @@ interface SessionDao {
     @Query("DELETE FROM Sessions WHERE syncStatus = 'complete'")
     suspend fun deleteSyncedSessions(): Int
 
+    @Query("DELETE FROM Sessions WHERE syncStatus = 'complete' AND date < :todayDate")
+    suspend fun deleteSyncedSessionsOlderThan(todayDate: String): Int
+
     @Query("UPDATE sessions SET syncStatus = :newStatus WHERE sessionId = :sessionId")
     suspend fun updateSessionSyncStatusToComplete(sessionId: String, newStatus: String)
 
@@ -462,6 +465,9 @@ interface AttendanceDao {
     @Query("DELETE FROM Attendance WHERE syncStatus = 'complete'")
     suspend fun deleteSyncedAttendances(): Int
 
+    @Query("DELETE FROM Attendance WHERE syncStatus = 'complete' AND date < :todayDate")
+    suspend fun deleteSyncedAttendancesOlderThan(todayDate: String): Int
+
 
     @Query("""
     SELECT COUNT(*) FROM Attendance 
@@ -518,6 +524,20 @@ interface AttendanceDao {
 
     @Query("UPDATE attendance SET attSchoolPeriodId = :spId WHERE sessionId = :sessionId")
     suspend fun updateAttendanceSchoolPeriodId(sessionId: String, spId: String)
+
+    @Query("""
+        SELECT * FROM attendance 
+        WHERE attSchoolPeriodId = :spId 
+          AND date = :date 
+          AND classId IN (:classIds)
+          AND sessionId != :currentSessionId
+    """)
+    suspend fun getAttendancesForPeriodAndDate(
+        spId: String,
+        date: String,
+        classIds: List<String>,
+        currentSessionId: String
+    ): List<Attendance>
 
 }
 

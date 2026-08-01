@@ -406,13 +406,8 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 db.schoolPeriodDao().getAll().filter { it.instId == selectedInstId }
             }
 
-            val spId = if (periods.isEmpty()) {
-                "999"
-            } else {
-                val estimated = getEstimatedCurrentTime()
-                val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
-                getFlexibleSchoolPeriodId(selectedInstId, startTime)
-            }
+            // Default initial period to "999" (Default / Extra class period)
+            val spId = "999"
             proceedWithNewTeacherSession(
                 teacherId,
                 teacherName,
@@ -692,7 +687,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                         val prefs2 = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
                         prefs2.edit().clear().apply()
 
-                        val intent = Intent(this@AttendanceActivity, PeriodSelectActivity::class.java)
+                        val intent = Intent(this@AttendanceActivity, ClassSelectActivity::class.java)
                         intent.putExtra("SESSION_ID", cycle.sessionId)
                         intent.putExtra("TEACHER_ID", cycle.teacherId)
                         startActivity(intent)
@@ -1114,7 +1109,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             val prefs2 = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
             prefs2.edit().clear().apply()
 
-            val intent = Intent(this@AttendanceActivity, PeriodSelectActivity::class.java).apply {
+            val intent = Intent(this@AttendanceActivity, ClassSelectActivity::class.java).apply {
                 putExtra("SESSION_ID", cycle.sessionId)
                 putExtra("TEACHER_ID", cycle.teacherId)
                 putExtra("IS_MASS_BUNK", true)
@@ -1150,6 +1145,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
 
 
+    /*
     private suspend fun getFlexibleSchoolPeriodId(instId: String, startTime: String): String {
         val db = AppDatabase.getDatabase(this)
         val periods = db.schoolPeriodDao().getAll().filter { it.instId == instId }
@@ -1185,5 +1181,6 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         Log.w("PERIOD_ASSIGN", "No match for $startTime, fallback → spId=$defaultSpId")
         return defaultSpId
     }
+    */
 
 }

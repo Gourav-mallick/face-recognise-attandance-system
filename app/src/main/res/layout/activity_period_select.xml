@@ -31,7 +31,7 @@
             android:id="@+id/tvAutoAssigned"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Auto-assigned period: —"
+            android:text="Default Period ID: 999 (Out of Period / Extra Class)"
             android:textSize="13sp"
             android:textColor="@color/text_gray"
             android:gravity="center"
@@ -49,7 +49,7 @@
             android:id="@+id/btnSkipPeriod"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Skip (Use Auto-Assigned)"
+            android:text="No Period Setup(Use Default Id 999)"
             android:textColor="@color/text_dark"
             android:backgroundTint="@android:color/transparent"
             android:layout_marginTop="8dp" />

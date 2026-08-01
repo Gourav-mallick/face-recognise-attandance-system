@@ -5,18 +5,26 @@ import android.util.Log
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object DatabaseCleanupUtils {
 
+    private fun getTodayDate(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+
     /**
-     * Delete all attendance records where syncStatus = 'complete'
+     * Delete synced attendance records older than today
      */
     suspend fun deleteSyncedAttendances(context: Context): Int {
         return withContext(Dispatchers.IO) {
             try {
                 val db = AppDatabase.getDatabase(context)
-                val deletedCount = db.attendanceDao().deleteSyncedAttendances()
-                Log.d("DB_CLEANUP", "Deleted $deletedCount synced attendance records")
+                val todayDate = getTodayDate()
+                val deletedCount = db.attendanceDao().deleteSyncedAttendancesOlderThan(todayDate)
+                Log.d("DB_CLEANUP", "Deleted $deletedCount synced attendance records older than $todayDate")
                 deletedCount
             } catch (e: Exception) {
                 Log.e("DB_CLEANUP", "Error deleting attendance: ${e.message}", e)
@@ -26,14 +34,15 @@ object DatabaseCleanupUtils {
     }
 
     /**
-     * Delete all session records where syncStatus = 'complete'
+     * Delete synced session records older than today
      */
     suspend fun deleteSyncedSessions(context: Context): Int {
         return withContext(Dispatchers.IO) {
             try {
                 val db = AppDatabase.getDatabase(context)
-                val deletedCount = db.sessionDao().deleteSyncedSessions()
-                Log.d("DB_CLEANUP", "Deleted $deletedCount synced session records")
+                val todayDate = getTodayDate()
+                val deletedCount = db.sessionDao().deleteSyncedSessionsOlderThan(todayDate)
+                Log.d("DB_CLEANUP", "Deleted $deletedCount synced session records older than $todayDate")
                 deletedCount
             } catch (e: Exception) {
                 Log.e("DB_CLEANUP", "Error deleting sessions: ${e.message}", e)
@@ -43,7 +52,7 @@ object DatabaseCleanupUtils {
     }
 
     /**
-     * ✅ Optional combined cleanup (calls both above)
+     * ✅ Combined cleanup (calls both above)
      */
     suspend fun deleteAllSyncedData(context: Context) {
         withContext(Dispatchers.IO) {

@@ -88,9 +88,11 @@ class ClassSelectActivity : ComponentActivity() {
                 getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
 
 
-                // 🔹 Navigate next
-                val intent = Intent(this@ClassSelectActivity, SubjectSelectActivity::class.java).apply {
+                // 🔹 Navigate next to PeriodSelectActivity
+                val teacherId = intent.getStringExtra("TEACHER_ID") ?: ""
+                val intent = Intent(this@ClassSelectActivity, PeriodSelectActivity::class.java).apply {
                     putExtra("SESSION_ID", sessionId)
+                    putExtra("TEACHER_ID", teacherId)
                     putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClassIds))
                     putExtra("IS_MASS_BUNK", isMassBunk)
                 }
