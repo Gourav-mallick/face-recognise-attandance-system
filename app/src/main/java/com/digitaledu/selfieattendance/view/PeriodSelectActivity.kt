@@ -179,6 +179,19 @@ class PeriodSelectActivity : ComponentActivity() {
             val submittedPeriodsMap = mutableMapOf<String, SubmittedPeriodInfo>()
             val currentTeacherName = if (teacherId.isNotBlank()) db.teachersDao().getTeacherNameById(teacherId) ?: "" else ""
 
+            val intentCourseId = intent.getStringExtra("SELECTED_COURSE_ID")?.split(",")?.firstOrNull() ?: ""
+            val selectedCpId = intent.getStringExtra("SELECTED_CP_IDS")?.split(",")?.firstOrNull() ?: ""
+            val selectedCpEntity = if (selectedCpId.isNotBlank()) {
+                db.coursePeriodDao().getCoursePeriodByCpId(selectedCpId)
+            } else if (intentCourseId.isNotBlank()) {
+                db.coursePeriodDao().getAllCoursePeriods().find { it.courseId == intentCourseId }
+            } else null
+
+            val selectedCourseId = if (intentCourseId.isNotBlank()) intentCourseId else (selectedCpEntity?.courseId ?: "")
+            val selectedSubjectType = selectedCpEntity?.subjectType ?: "Compulsory"
+
+            Log.d("PERIOD_LOCK_DEBUG", "SELECTED -> courseId=$selectedCourseId, cpId=$selectedCpId, subjectType=$selectedSubjectType")
+
             for (period in allPeriods) {
                 val existingAtts = db.attendanceDao().getAttendancesForPeriodAndDate(
                     spId = period.spId,
@@ -188,33 +201,52 @@ class PeriodSelectActivity : ComponentActivity() {
                 )
 
                 if (existingAtts.isNotEmpty()) {
-                    val tName = existingAtts.mapNotNull { it.teacherName }.firstOrNull { it.isNotBlank() }
-                        ?: currentTeacherName.ifBlank { "Teacher" }
+                    // Check if period should be locked based on courseId (subject level) + Compulsory vs Elective rules
+                    val existingAttSample = existingAtts.firstOrNull()
+                    val existingCourseId = existingAttSample?.courseId ?: ""
+                    val existingCpId = existingAttSample?.cpId ?: ""
+                    val existingCpEntity = if (existingCpId.isNotBlank()) {
+                        db.coursePeriodDao().getCoursePeriodByCpId(existingCpId)
+                    } else if (existingCourseId.isNotBlank()) {
+                        db.coursePeriodDao().getAllCoursePeriods().find { it.courseId == existingCourseId }
+                    } else null
 
-                    val cNames = existingAtts.mapNotNull { it.classShortName }.distinct().filter { it.isNotBlank() }
-                        .joinToString(", ").ifBlank {
-                            selectedClasses.mapNotNull { db.classDao().getClassById(it)?.classShortName }.joinToString(", ")
-                        }
+                    val existingSubjectType = existingCpEntity?.subjectType ?: "Compulsory"
 
-                    val sTitle = existingAtts.mapNotNull { it.subjectTitle }.distinct().filter { it.isNotBlank() }
-                        .joinToString(", ").ifBlank { "Subject" }
+                    val isSameCourse = selectedCourseId.isNotBlank() && existingCourseId.isNotBlank() && selectedCourseId == existingCourseId
+                    val isCompulsoryLock = selectedSubjectType.equals("Compulsory", true) || existingSubjectType.equals("Compulsory", true)
 
-                    val pCount = existingAtts.count { it.status == "P" }
-                    val eCount = existingAtts.count { it.status == "E" }
-                    val aCount = existingAtts.count { it.status == "A" }
-                    val lCount = existingAtts.count { it.status == "L" }
+                    Log.d("PERIOD_LOCK_DEBUG", "CHECK spId=${period.spId}: existingCourseId=$existingCourseId, existingCpId=$existingCpId, existingSubjectType=$existingSubjectType -> isSameCourse=$isSameCourse, isCompulsoryLock=$isCompulsoryLock")
 
-                    submittedPeriodsMap[period.spId] = SubmittedPeriodInfo(
-                        spId = period.spId,
-                        spTitle = period.spTitle,
-                        teacherName = tName,
-                        classNames = cNames,
-                        subjectTitle = sTitle,
-                        presentCount = pCount,
-                        exemptedCount = eCount,
-                        absentCount = aCount,
-                        lateCount = lCount
-                    )
+                    if (isSameCourse || isCompulsoryLock) {
+                        val tName = existingAtts.mapNotNull { it.teacherName }.firstOrNull { it.isNotBlank() }
+                            ?: currentTeacherName.ifBlank { "Teacher" }
+
+                        val cNames = existingAtts.mapNotNull { it.classShortName }.distinct().filter { it.isNotBlank() }
+                            .joinToString(", ").ifBlank {
+                                selectedClasses.mapNotNull { db.classDao().getClassById(it)?.classShortName }.joinToString(", ")
+                            }
+
+                        val sTitle = existingAtts.mapNotNull { it.subjectTitle }.distinct().filter { it.isNotBlank() }
+                            .joinToString(", ").ifBlank { "Subject" }
+
+                        val pCount = existingAtts.count { it.status == "P" }
+                        val eCount = existingAtts.count { it.status == "E" }
+                        val aCount = existingAtts.count { it.status == "A" }
+                        val lCount = existingAtts.count { it.status == "L" }
+
+                        submittedPeriodsMap[period.spId] = SubmittedPeriodInfo(
+                            spId = period.spId,
+                            spTitle = period.spTitle,
+                            teacherName = tName,
+                            classNames = cNames,
+                            subjectTitle = sTitle,
+                            presentCount = pCount,
+                            exemptedCount = eCount,
+                            absentCount = aCount,
+                            lateCount = lCount
+                        )
+                    }
                 }
             }
 
@@ -391,18 +423,40 @@ class PeriodSelectActivity : ComponentActivity() {
                             }
 
                             if (matchedPeriod != null) {
-                                Log.d("PERIOD_LOCK_DEBUG", "✅ Locked Period spId=${matchedPeriod.spId} (${matchedPeriod.spTitle}) from server report!")
-                                submittedPeriodsMap[matchedPeriod.spId] = SubmittedPeriodInfo(
-                                    spId = matchedPeriod.spId,
-                                    spTitle = matchedPeriod.spTitle,
-                                    teacherName = teacherName,
-                                    classNames = className,
-                                    subjectTitle = subjectTitle,
-                                    presentCount = pCount,
-                                    exemptedCount = eCount,
-                                    absentCount = aCount,
-                                    lateCount = lCount
-                                )
+                                val selectedCpId = intent.getStringExtra("SELECTED_CP_IDS")?.split(",")?.firstOrNull() ?: ""
+                                val selectedCpEntity = if (selectedCpId.isNotBlank()) db.coursePeriodDao().getCoursePeriodByCpId(selectedCpId) else null
+                                val selectedCourseId = selectedCpEntity?.courseId ?: ""
+                                val selectedSubjectType = selectedCpEntity?.subjectType ?: "Compulsory"
+
+                                val cleanSubjectTitle = subjectTitle.lowercase().trim()
+                                val allCourses = db.courseDao().getAllCourses()
+                                val serverCourse = allCourses.find {
+                                    it.courseTitle.lowercase().trim() == cleanSubjectTitle ||
+                                    it.courseShortName.lowercase().trim() == cleanSubjectTitle
+                                }
+                                val serverCourseId = serverCourse?.courseId ?: ""
+                                val serverCpEntity = if (serverCourseId.isNotBlank()) db.coursePeriodDao().getAllCoursePeriods().find { it.courseId == serverCourseId } else null
+                                val serverSubjectType = serverCpEntity?.subjectType ?: "Compulsory"
+
+                                val isSameCourse = selectedCourseId.isNotBlank() && serverCourseId.isNotBlank() && selectedCourseId == serverCourseId
+                                val isCompulsoryLock = selectedSubjectType.equals("Compulsory", true) || serverSubjectType.equals("Compulsory", true)
+
+                                if (isSameCourse || isCompulsoryLock) {
+                                    Log.d("PERIOD_LOCK_DEBUG", "✅ Locked Period spId=${matchedPeriod.spId} (${matchedPeriod.spTitle}) from server report!")
+                                    submittedPeriodsMap[matchedPeriod.spId] = SubmittedPeriodInfo(
+                                        spId = matchedPeriod.spId,
+                                        spTitle = matchedPeriod.spTitle,
+                                        teacherName = teacherName,
+                                        classNames = className,
+                                        subjectTitle = subjectTitle,
+                                        presentCount = pCount,
+                                        exemptedCount = eCount,
+                                        absentCount = aCount,
+                                        lateCount = lCount
+                                    )
+                                } else {
+                                    Log.d("PERIOD_LOCK_DEBUG", "🟢 Period spId=${matchedPeriod.spId} remains OPEN for different elective courseId=$selectedCourseId vs serverCourseId=$serverCourseId")
+                                }
                             }
                         }
                     }
@@ -437,12 +491,9 @@ class PeriodSelectActivity : ComponentActivity() {
     }
 
     private fun navigateToSubjectSelect() {
-        val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
-        val intent = Intent(this@PeriodSelectActivity, SubjectSelectActivity::class.java).apply {
+        val intent = Intent(this@PeriodSelectActivity, AttendanceOverviewActivity::class.java).apply {
             putExtra("SESSION_ID", sessionId)
-            putExtra("TEACHER_ID", teacherId)
             putStringArrayListExtra("SELECTED_CLASSES", selectedClasses)
-            putExtra("IS_MASS_BUNK", isMassBunk)
         }
         startActivity(intent)
         finish()

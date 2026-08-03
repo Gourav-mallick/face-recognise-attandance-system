@@ -67,6 +67,7 @@
         <activity android:name="com.digitaledu.selfieattendance.view.SubjectSelectActivity"/>
         <activity android:name="com.digitaledu.selfieattendance.view.AttendanceOverviewActivity"/>
         <activity android:name="com.digitaledu.selfieattendance.view.EditAttendanceActivity"/>
+        <activity android:name="com.digitaledu.selfieattendance.view.CompletedSessionsActivity"/>
         <activity android:name="com.digitaledu.selfieattendance.view.SyncAttendanceToServer"/>
         <activity android:name="com.digitaledu.selfieattendance.view.FaceVerificationActivity"
             android:screenOrientation="portrait" />

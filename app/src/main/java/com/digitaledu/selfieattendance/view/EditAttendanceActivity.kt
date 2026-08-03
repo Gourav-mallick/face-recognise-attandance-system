@@ -410,23 +410,15 @@ class EditAttendanceAdapter(
                 holder.cbL.isChecked = (item.status == "L")
 
                 holder.cbP.setOnClickListener {
-                    if (holder.cbP.isChecked) {
-                        item.status = "P"
-                        holder.cbL.isChecked = false
-                    } else {
-                        item.status = "A"
-                        holder.cbP.isChecked = false
-                    }
+                    item.status = "P"
+                    holder.cbP.isChecked = true
+                    holder.cbL.isChecked = false
                 }
 
                 holder.cbL.setOnClickListener {
-                    if (holder.cbL.isChecked) {
-                        item.status = "L"
-                        holder.cbP.isChecked = false
-                    } else {
-                        item.status = "A"
-                        holder.cbL.isChecked = false
-                    }
+                    item.status = "L"
+                    holder.cbL.isChecked = true
+                    holder.cbP.isChecked = false
                 }
             } else {
                 // Originally absent students: show cbP (requires face verification), cbA, and cbE

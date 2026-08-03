@@ -88,9 +88,9 @@ class ClassSelectActivity : ComponentActivity() {
                 getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
 
 
-                // 🔹 Navigate next to PeriodSelectActivity
+                // 🔹 Navigate next to SubjectSelectActivity
                 val teacherId = intent.getStringExtra("TEACHER_ID") ?: ""
-                val intent = Intent(this@ClassSelectActivity, PeriodSelectActivity::class.java).apply {
+                val intent = Intent(this@ClassSelectActivity, SubjectSelectActivity::class.java).apply {
                     putExtra("SESSION_ID", sessionId)
                     putExtra("TEACHER_ID", teacherId)
                     putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClassIds))

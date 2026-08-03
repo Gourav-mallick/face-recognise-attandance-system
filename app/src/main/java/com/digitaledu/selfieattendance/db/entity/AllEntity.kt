@@ -55,9 +55,8 @@ data class CoursePeriod(
     val teacherId: String?,
     val mpId: String?, // term/period reference
     val mpLongTitle: String?,
-
-
-    ): Parcelable
+    val subjectType: String = "Compulsory"
+): Parcelable
 
 
 @Entity(tableName = "courses")

@@ -172,6 +172,12 @@ class ClassroomScanFragment : Fragment() {
             startActivity(intent)
         }
 
+        val btnSubmittedCycles = view.findViewById<View>(R.id.btnSubmittedCycles)
+        btnSubmittedCycles?.setOnClickListener {
+            val intent = Intent(requireContext(), CompletedSessionsActivity::class.java)
+            startActivity(intent)
+        }
+
 
 
     // Listen for broadcast updates

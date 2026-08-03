@@ -836,11 +836,16 @@ class SubjectSelectActivity : ComponentActivity() {
                         // Ensure all non-scanned students in selected classes have absent ("A") records
                         ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
-                        // ✅ Navigate
+                        // ✅ Navigate to PeriodSelectActivity
+                        val validCpIdsStr = validCps.map { it.cpId }.distinct().joinToString(",")
+                        val selectedCoursesStr = selectedCourseIds.distinct().joinToString(",")
                         withContext(Dispatchers.Main) {
-                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+                            val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java)
                             intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
                             intent.putExtra("SESSION_ID", sessionId)
+                            intent.putExtra("TEACHER_ID", teacherId)
+                            intent.putExtra("SELECTED_CP_IDS", validCpIdsStr)
+                            intent.putExtra("SELECTED_COURSE_ID", selectedCoursesStr)
                             startActivity(intent)
                         }
 
@@ -924,10 +929,14 @@ class SubjectSelectActivity : ComponentActivity() {
                         // Ensure all non-scanned students in selected classes have absent ("A") records
                         ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
+                        val validSingleCpIdsStr = validCps.map { it.cpId }.distinct().joinToString(",")
                         withContext(Dispatchers.Main) {
-                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
+                            val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java)
                             intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
                             intent.putExtra("SESSION_ID", sessionId)
+                            intent.putExtra("TEACHER_ID", teacherId)
+                            intent.putExtra("SELECTED_CP_IDS", validSingleCpIdsStr)
+                            intent.putExtra("SELECTED_COURSE_ID", courseId)
                             startActivity(intent)
                         }
 
@@ -950,12 +959,27 @@ class SubjectSelectActivity : ComponentActivity() {
         val sampleAtt = db.attendanceDao().getAttendancesForSession(sessionId).firstOrNull()
         val session = db.sessionDao().getSessionById(sessionId) ?: return
 
+        val sampleCpId = sampleAtt?.cpId.orEmpty()
+        val cpEntity = if (sampleCpId.isNotBlank()) db.coursePeriodDao().getCoursePeriodByCpId(sampleCpId) else null
+        val isElective = cpEntity?.subjectType.equals("Elective", true)
+        val allSchedules = if (isElective) db.studentScheduleDao().getAll() else emptyList()
+
         for (classId in classIds) {
-            val allStudents = db.studentsDao().getStudentsByClass(classId)
+            val allClassStudents = db.studentsDao().getStudentsByClass(classId)
+            val targetStudents = if (isElective && cpEntity != null) {
+                val assignedStudentIds = allSchedules
+                    .filter { it.cpId == cpEntity.cpId || it.courseId == cpEntity.courseId }
+                    .map { it.studentId }
+                    .toSet()
+                allClassStudents.filter { it.studentId in assignedStudentIds }
+            } else {
+                allClassStudents
+            }
+
             val existingAttendances = db.attendanceDao().getAttendancesForClass(sessionId, classId)
             val existingStudentIds = existingAttendances.map { it.studentId }.toSet()
 
-            val missingStudents = allStudents.filter { it.studentId !in existingStudentIds }
+            val missingStudents = targetStudents.filter { it.studentId !in existingStudentIds }
             for (student in missingStudents) {
                 val absentAtt = com.digitaledu.selfieattendance.db.entity.Attendance(
                     atteId = java.util.UUID.randomUUID().toString(),

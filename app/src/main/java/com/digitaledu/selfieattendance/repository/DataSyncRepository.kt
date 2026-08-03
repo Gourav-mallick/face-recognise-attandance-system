@@ -229,6 +229,13 @@ class DataSyncRepository(context: Context) {
                         Course(courseId, subjectId, courseTitle, courseTitle)
                     )
 
+                    val rawSubjectType = obj.optString("subjectType", "").ifBlank {
+                        if (obj.optString("isCompulsory", "").contains("Not Elective", true)) "Compulsory"
+                        else if (obj.optString("isCompulsory", "").contains("Elective", true)) "Elective"
+                        else "Compulsory"
+                    }
+                    val subjectType = if (rawSubjectType.equals("Elective", true)) "Elective" else "Compulsory"
+
                     // Save course period (only primary teacher in this table)
                     // ➤ Save course period ONCE FOR EACH TEACHER
                     teacherIdsList.forEach { tId ->
@@ -239,7 +246,8 @@ class DataSyncRepository(context: Context) {
                                 classId = classId,
                                 teacherId = tId,   // EACH TEACHER GETS OWN ROW
                                 mpId = mpId,
-                                mpLongTitle = mpLongTitle
+                                mpLongTitle = mpLongTitle,
+                                subjectType = subjectType
                             )
                         )
                     }

@@ -95,8 +95,20 @@ class FaceVerificationActivity : ComponentActivity() {
 
     private fun loadTargetEmbedding() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val value = db.studentsDao().getStudentById(studentId)?.embedding
-            val parsed = value
+            val isTeacher = intent.getBooleanExtra("IS_TEACHER_VERIFICATION", false)
+            val teacherId = intent.getStringExtra("TEACHER_ID").orEmpty()
+            val teacherName = intent.getStringExtra("TEACHER_NAME").orEmpty()
+
+            val rawEmbedding = if (isTeacher) {
+                if (teacherName.isNotBlank()) {
+                    withContext(Dispatchers.Main) { tvStudentName.text = "Teacher: $teacherName" }
+                }
+                db.teachersDao().getTeacherById(teacherId)?.embedding
+            } else {
+                db.studentsDao().getStudentById(studentId)?.embedding
+            }
+
+            val parsed = rawEmbedding
                 ?.split(",")
                 ?.mapNotNull { it.trim().toFloatOrNull() }
                 ?.toFloatArray()
@@ -105,7 +117,7 @@ class FaceVerificationActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@FaceVerificationActivity,
-                        "No compatible registered face found for this student",
+                        "No registered face template found for ${if (isTeacher) "teacher" else "student"}",
                         Toast.LENGTH_LONG
                     ).show()
                     setResult(Activity.RESULT_CANCELED)
