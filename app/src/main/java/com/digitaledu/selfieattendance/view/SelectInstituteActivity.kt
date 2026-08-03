@@ -418,10 +418,12 @@ class SelectInstituteActivity : AppCompatActivity() {
                         val mpId = obj.optString("mpId")
                         val mpLongTitle = obj.optString("mpLongTitle")
                         val teacherId = obj.optString("teacherIds").replace(",", "").trim()
+                        val subjectTypeRaw = obj.optString("subjectType", "").trim()
+                        val subjectType = if (subjectTypeRaw.isNotEmpty()) subjectTypeRaw else null
 
                         // Normalize data
-                        subjectList.add(Subject(subjectId, subjectTitle))
-                        courseList.add(Course(courseId, subjectId, courseTitle, courseTitle))
+                        subjectList.add(Subject(subjectId, subjectTitle, subjectType))
+                        courseList.add(Course(courseId, subjectId, courseTitle, courseTitle, subjectType))
                        // classList.add(Class(classId, classShortName))
                         coursePeriodList.add(CoursePeriod( id = 0,cpId, courseId, classId, teacherId, mpId,mpLongTitle))
                     }

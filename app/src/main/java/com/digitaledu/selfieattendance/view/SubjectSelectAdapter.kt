@@ -21,7 +21,8 @@ class SubjectSelectAdapter(
 
     override fun onBindViewHolder(holder: CourseViewHolder, position: Int) {
         val course = courseList[position]
-        holder.binding.checkboxCourse.text = "${course.courseTitle} (${course.courseShortName})"
+        val typeTag = if (!course.subjectType.isNullOrBlank()) " [${course.subjectType}]" else ""
+        holder.binding.checkboxCourse.text = "${course.courseTitle} (${course.courseShortName})$typeTag"
         holder.binding.checkboxCourse.setOnCheckedChangeListener(null)
         holder.binding.checkboxCourse.isChecked = selectedCourses.contains(course.courseId)
 

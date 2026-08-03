@@ -67,7 +67,7 @@ class PeriodSelectActivity : ComponentActivity() {
                 db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
                 db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, "999")
                 withContext(Dispatchers.Main) {
-                    navigateToSubjectSelect()
+                    navigateToOverview()
                 }
             }
         }
@@ -117,7 +117,7 @@ class PeriodSelectActivity : ComponentActivity() {
                         Toast.LENGTH_SHORT
                     ).show()
 
-                    navigateToSubjectSelect()
+                    navigateToOverview()
                 }
             }
         }
@@ -158,7 +158,7 @@ class PeriodSelectActivity : ComponentActivity() {
                             lifecycleScope.launch(Dispatchers.IO) {
                                 db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
                                 db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, "999")
-                                withContext(Dispatchers.Main) { navigateToSubjectSelect() }
+                                withContext(Dispatchers.Main) { navigateToOverview() }
                             }
                         }
                         .setNegativeButton("No") { dialog, _ ->
@@ -436,15 +436,17 @@ class PeriodSelectActivity : ComponentActivity() {
         return sName.contains(lName)
     }
 
-    private fun navigateToSubjectSelect() {
+    private fun navigateToOverview() {
         val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
-        val intent = Intent(this@PeriodSelectActivity, SubjectSelectActivity::class.java).apply {
+        val intent = Intent(this@PeriodSelectActivity, AttendanceOverviewActivity::class.java).apply {
             putExtra("SESSION_ID", sessionId)
             putExtra("TEACHER_ID", teacherId)
             putStringArrayListExtra("SELECTED_CLASSES", selectedClasses)
             putExtra("IS_MASS_BUNK", isMassBunk)
         }
         startActivity(intent)
+        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
         finish()
     }
 

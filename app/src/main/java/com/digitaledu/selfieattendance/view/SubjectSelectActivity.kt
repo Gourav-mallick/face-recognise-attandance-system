@@ -836,20 +836,17 @@ class SubjectSelectActivity : ComponentActivity() {
                         // Ensure all non-scanned students in selected classes have absent ("A") records
                         ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
-                        // ✅ Navigate
+                        // ✅ Navigate to PeriodSelectActivity
                         withContext(Dispatchers.Main) {
-                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
-                            intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                            intent.putExtra("SESSION_ID", sessionId)
+                            val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java).apply {
+                                putExtra("SESSION_ID", sessionId)
+                                putExtra("TEACHER_ID", teacherId)
+                                putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                                putExtra("IS_MASS_BUNK", isMassBunk)
+                            }
                             startActivity(intent)
+                            finish()
                         }
-
-                        // Cleanup prefs + finish
-                        kotlinx.coroutines.delay(500)
-                        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
-                        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
-
-                        withContext(Dispatchers.Main) { finish() }
                     }
 
                     else -> {
@@ -925,16 +922,15 @@ class SubjectSelectActivity : ComponentActivity() {
                         ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
                         withContext(Dispatchers.Main) {
-                            val intent = Intent(this@SubjectSelectActivity, AttendanceOverviewActivity::class.java)
-                            intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                            intent.putExtra("SESSION_ID", sessionId)
+                            val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java).apply {
+                                putExtra("SESSION_ID", sessionId)
+                                putExtra("TEACHER_ID", teacherId)
+                                putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                                putExtra("IS_MASS_BUNK", isMassBunk)
+                            }
                             startActivity(intent)
+                            finish()
                         }
-
-                        kotlinx.coroutines.delay(500)
-                        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
-                        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
-                        withContext(Dispatchers.Main) { finish() }
                     }
 
                 }

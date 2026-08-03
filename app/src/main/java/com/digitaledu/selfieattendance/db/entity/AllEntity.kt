@@ -66,7 +66,8 @@ data class Course(
     @PrimaryKey val courseId: String,
     val subjectId: String,
     val courseTitle: String,
-    val courseShortName: String
+    val courseShortName: String,
+    val subjectType: String? = null
 ) : Parcelable
 
 
@@ -74,7 +75,8 @@ data class Course(
 @Parcelize
 data class Subject(
     @PrimaryKey val subjectId: String,
-    val subjectTitle: String
+    val subjectTitle: String,
+    val subjectType: String? = null
 ) : Parcelable
 
 @Entity(tableName = "classes")
@@ -241,8 +243,8 @@ data class CourseFullInfo(
     val subjectTitle: String?,
     val classShortName: String?,
     val mpId: String?,
-    val mpLongTitle: String?
-
+    val mpLongTitle: String?,
+    val subjectType: String? = null
 )
 
 

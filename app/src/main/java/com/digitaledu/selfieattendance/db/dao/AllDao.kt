@@ -192,7 +192,8 @@ interface CourseDao {
             s.subjectTitle AS subjectTitle,
             cls.classShortName AS classShortName,
             cp.mpId AS mpId,
-            cp.mpLongTitle AS mpLongTitle
+            cp.mpLongTitle AS mpLongTitle,
+            s.subjectType AS subjectType
         FROM courses c
         LEFT JOIN subjects s ON s.subjectId = c.subjectId
         LEFT JOIN course_periods cp ON cp.courseId = c.courseId

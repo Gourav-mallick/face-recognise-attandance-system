@@ -209,6 +209,9 @@ class DataSyncRepository(context: Context) {
                     val classShortName = obj.optString("classShortNames")
                     val mpId = obj.optString("mpId")
                     val mpLongTitle = obj.optString("mpLongTitle")
+                    val subjectTypeRaw = obj.optString("subjectType", "").trim()
+                    val subjectType = if (subjectTypeRaw.isNotEmpty()) subjectTypeRaw else null
+
                     // Extract teacher IDs correctly
                     val teacherIdsRaw = obj.optString("teacherIds", "")
                     val teacherIdsList = teacherIdsRaw
@@ -221,12 +224,12 @@ class DataSyncRepository(context: Context) {
 
                     // Save subject
                     subjectList.add(
-                        Subject(subjectId, subjectTitle)
+                        Subject(subjectId, subjectTitle, subjectType)
                     )
 
                     // Save course
                     courseList.add(
-                        Course(courseId, subjectId, courseTitle, courseTitle)
+                        Course(courseId, subjectId, courseTitle, courseTitle, subjectType)
                     )
 
                     // Save course period (only primary teacher in this table)

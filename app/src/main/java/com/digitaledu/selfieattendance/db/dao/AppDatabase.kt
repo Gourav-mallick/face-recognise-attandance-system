@@ -47,7 +47,7 @@ import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
     ProgramConfig::class,
     TeacherInstituteMap::class
     ],
-    version = 4, exportSchema = true)
+    version = 5, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -161,6 +161,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE subjects ADD COLUMN subjectType TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE courses ADD COLUMN subjectType TEXT DEFAULT NULL")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -168,7 +175,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance
