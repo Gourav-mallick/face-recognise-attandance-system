@@ -629,7 +629,8 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 period = "",
                 teacherId =cycle.teacherId!!,
                 teacherName = cycle.teacherName!!,
-                attSchoolPeriodId = attSchoolPeriodId
+                attSchoolPeriodId = attSchoolPeriodId,
+                isFaceCaptured = true
             )
 
 

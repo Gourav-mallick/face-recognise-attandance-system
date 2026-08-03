@@ -20,6 +20,7 @@ import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
 import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
+import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -183,8 +184,19 @@ class SettingsActivity : AppCompatActivity() {
                         continue
                     }
 
+                    val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
+                        context = this@SettingsActivity,
+                        localAttendanceList = sessionAttendances
+                    )
+                    if (mergeOutcome.hasUnavailableSelection) {
+                        Log.w("LOGOUT_SYNC", "Server attendance could not be checked for $sessionId")
+                        allSuccess = false
+                        continue
+                    }
+                    val mergedAttendances = mergeOutcome.attendance
+
                     val attArray = JSONArray()
-                    for (att in sessionAttendances) {
+                    for (att in mergedAttendances) {
                         val date = att.date
                         val startTime = att.startTime
                         val endTime = att.endTime

@@ -56,6 +56,7 @@ class EditAttendanceActivity : ComponentActivity() {
             val item = pendingVerifyItem
             if (item != null && item.studentId == verifiedStudentId) {
                 item.status = "P"
+                item.isExplicitlyEdited = true
                 adapter.notifyDataSetChanged()
                 Toast.makeText(this, "${item.studentName} marked Present!", Toast.LENGTH_SHORT).show()
             }
@@ -116,7 +117,9 @@ class EditAttendanceActivity : ComponentActivity() {
                         studentId = s.studentId,
                         studentName = s.studentName ?: "",
                         isOriginallyPresent = true,
-                        status = att?.status ?: "P"
+                        status = att?.status ?: "P",
+                        originalStatus = att?.status ?: "P",
+                        isExplicitlyEdited = att?.isExplicitEdit == true
                     )
                 )
             }
@@ -130,7 +133,9 @@ class EditAttendanceActivity : ComponentActivity() {
                         studentId = s.studentId,
                         studentName = s.studentName ?: "",
                         isOriginallyPresent = false,
-                        status = att?.status ?: "A"
+                        status = att?.status ?: "A",
+                        originalStatus = att?.status ?: "A",
+                        isExplicitlyEdited = att?.isExplicitEdit == true
                     )
                 )
             }
@@ -297,7 +302,11 @@ class EditAttendanceActivity : ComponentActivity() {
 
                     val existing = db.attendanceDao().getAttendanceForStudentInSession(sessionId, studentId)
                     if (existing != null) {
-                        val updated = existing.copy(status = status)
+                        val updated = existing.copy(
+                            status = status,
+                            isExplicitEdit = existing.isExplicitEdit || item.isExplicitlyEdited,
+                            syncStatus = "pending"
+                        )
                         db.attendanceDao().insertAttendance(updated)
                     } else {
                         val newAtt = Attendance(
@@ -327,7 +336,8 @@ class EditAttendanceActivity : ComponentActivity() {
                             classShortName = sampleAtt.classShortName,
                             mpId = sampleAtt.mpId,
                             mpLongTitle = sampleAtt.mpLongTitle,
-                            attSchoolPeriodId = sampleAtt.attSchoolPeriodId
+                            attSchoolPeriodId = sampleAtt.attSchoolPeriodId,
+                            isExplicitEdit = item.isExplicitlyEdited
                         )
                         db.attendanceDao().insertAttendance(newAtt)
                     }
@@ -349,7 +359,9 @@ sealed class EditListItem {
         val studentId: String,
         val studentName: String,
         val isOriginallyPresent: Boolean,
-        var status: String // P, L, A, E
+        var status: String, // P, L, A, E
+        val originalStatus: String,
+        var isExplicitlyEdited: Boolean
     ) : EditListItem()
 }
 
@@ -399,76 +411,49 @@ class EditAttendanceAdapter(
             holder.cbA.setOnClickListener(null)
             holder.cbE.setOnClickListener(null)
 
+            fun renderStatus() {
+                holder.cbP.isChecked = item.status == "P"
+                holder.cbL.isChecked = item.status == "L"
+                holder.cbA.isChecked = item.status == "A"
+                holder.cbE.isChecked = item.status == "E"
+            }
+            fun selectStatus(status: String) {
+                item.status = status
+                item.isExplicitlyEdited = true
+                renderStatus()
+            }
+
             if (item.isOriginallyPresent) {
-                // Originally present students: can be toggled between P and L
+                // A Present/Late student can only move between Present and Late.
                 holder.cbP.visibility = View.VISIBLE
                 holder.cbL.visibility = View.VISIBLE
                 holder.cbA.visibility = View.GONE
                 holder.cbE.visibility = View.GONE
+                holder.cbP.text = "P"
+                renderStatus()
 
-                holder.cbP.isChecked = (item.status == "P")
-                holder.cbL.isChecked = (item.status == "L")
-
-                holder.cbP.setOnClickListener {
-                    if (holder.cbP.isChecked) {
-                        item.status = "P"
-                        holder.cbL.isChecked = false
-                    } else {
-                        item.status = "A"
-                        holder.cbP.isChecked = false
-                    }
-                }
-
-                holder.cbL.setOnClickListener {
-                    if (holder.cbL.isChecked) {
-                        item.status = "L"
-                        holder.cbP.isChecked = false
-                    } else {
-                        item.status = "A"
-                        holder.cbL.isChecked = false
-                    }
-                }
+                holder.cbP.setOnClickListener { selectStatus("P") }
+                holder.cbL.setOnClickListener { selectStatus("L") }
             } else {
-                // Originally absent students: show cbP (requires face verification), cbA, and cbE
+                // An Absent/Exempted student can stay Absent, become Exempted,
+                // or become Present only after face verification. Late is hidden.
                 holder.cbP.visibility = View.VISIBLE
                 holder.cbL.visibility = View.GONE
                 holder.cbA.visibility = View.VISIBLE
                 holder.cbE.visibility = View.VISIBLE
-
-                holder.cbP.isChecked = (item.status == "P")
-                holder.cbA.isChecked = (item.status == "A")
-                holder.cbE.isChecked = (item.status == "E")
-
-                // Camera icon overlay (tint/decoration on cbP text is optional, standard is enough)
                 holder.cbP.text = "P 📷"
+                renderStatus()
 
                 holder.cbP.setOnClickListener {
-                    if (item.status != "P") {
-                        // User wants to mark present: reset checkbox and trigger face verification
+                    if (item.status == "P") {
+                        renderStatus()
+                    } else {
                         holder.cbP.isChecked = false
                         onVerifyFace(item)
-                    } else {
-                        // Unchecking present goes back to Absent
-                        item.status = "A"
-                        holder.cbP.isChecked = false
-                        holder.cbA.isChecked = true
-                        holder.cbE.isChecked = false
                     }
                 }
-
-                holder.cbA.setOnClickListener {
-                    item.status = "A"
-                    holder.cbA.isChecked = true
-                    holder.cbP.isChecked = false
-                    holder.cbE.isChecked = false
-                }
-
-                holder.cbE.setOnClickListener {
-                    item.status = "E"
-                    holder.cbE.isChecked = true
-                    holder.cbP.isChecked = false
-                    holder.cbA.isChecked = false
-                }
+                holder.cbA.setOnClickListener { selectStatus("A") }
+                holder.cbE.setOnClickListener { selectStatus("E") }
             }
         }
     }

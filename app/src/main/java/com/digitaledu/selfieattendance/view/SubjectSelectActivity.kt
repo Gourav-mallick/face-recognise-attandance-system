@@ -753,6 +753,9 @@ class SubjectSelectActivity : ComponentActivity() {
                             return@launch
                         }
 
+                        // Complete the roster before assigning per-student course metadata.
+                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
+
                         // ✅ Pull CourseFullInfo once (titles, subjectTitle, classShortName)
                         val courseInfoList = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
                         val courseInfoMap = courseInfoList
@@ -833,9 +836,6 @@ class SubjectSelectActivity : ComponentActivity() {
                         val combinedCourseIds = selectedCourseIds.distinct().joinToString(",")
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, combinedCourseIds)
 
-                        // Ensure all non-scanned students in selected classes have absent ("A") records
-                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
-
                         // ✅ Navigate to PeriodSelectActivity
                         withContext(Dispatchers.Main) {
                             val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java).apply {
@@ -874,6 +874,9 @@ class SubjectSelectActivity : ComponentActivity() {
                             withContext(Dispatchers.Main) { showToast("No valid course period found for this course") }
                             return@launch
                         }
+
+                        // Complete the roster before assigning the correct class-specific CP.
+                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
                         // ✅ Map classId -> cp (so each class gets its own single CP)
                         val cpByClass = validCps.associateBy { it.classId }
@@ -917,9 +920,6 @@ class SubjectSelectActivity : ComponentActivity() {
 
                         // Session can keep courseId for display
                         db.sessionDao().updateSessionPeriodAndSubject(sessionId, courseId)
-
-                        // Ensure all non-scanned students in selected classes have absent ("A") records
-                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
 
                         withContext(Dispatchers.Main) {
                             val intent = Intent(this@SubjectSelectActivity, PeriodSelectActivity::class.java).apply {

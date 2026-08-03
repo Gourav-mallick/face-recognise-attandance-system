@@ -40,6 +40,7 @@ import android.widget.ImageView
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
 import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
+import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
 
 
 class ClassroomScanFragment : Fragment() {
@@ -916,8 +917,19 @@ class ClassroomScanFragment : Fragment() {
                         continue
                     }
 
+                    val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
+                        context = context,
+                        localAttendanceList = sessionAttendances
+                    )
+                    if (mergeOutcome.hasUnavailableSelection) {
+                        Log.w("LOGOUT_SYNC", "Server attendance could not be checked for $sessionId")
+                        allSuccess = false
+                        continue
+                    }
+                    val mergedAttendances = mergeOutcome.attendance
+
                     val attArray = JSONArray()
-                    for (att in sessionAttendances) {
+                    for (att in mergedAttendances) {
                         val date = att.date
                         val startTime = att.startTime
                         val endTime = att.endTime

@@ -229,6 +229,10 @@ data class Attendance(
     val mpId: String? = null,               // Master period ID / term ID
     val mpLongTitle: String? = null,
     val attSchoolPeriodId: String,
+    /** True only when this session captured the student's face. */
+    val isFaceCaptured: Boolean = false,
+    /** True only when the teacher explicitly changed the status in Edit Attendance. */
+    val isExplicitEdit: Boolean = false,
 ):Parcelable
 
 

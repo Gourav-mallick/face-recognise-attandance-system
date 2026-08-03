@@ -527,6 +527,18 @@ interface AttendanceDao {
     suspend fun updateAttendanceSchoolPeriodId(sessionId: String, spId: String)
 
     @Query("""
+        UPDATE attendance
+        SET attSchoolPeriodId = :spId,
+            period = :periodTitle
+        WHERE sessionId = :sessionId
+    """)
+    suspend fun updateAttendanceSchoolPeriod(
+        sessionId: String,
+        spId: String,
+        periodTitle: String
+    )
+
+    @Query("""
         SELECT * FROM attendance 
         WHERE attSchoolPeriodId = :spId 
           AND date = :date 

@@ -19,6 +19,7 @@ import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
 import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
+import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -183,15 +184,30 @@ class AttendanceOverviewActivity : ComponentActivity() {
                     Log.d("PAYLOAD_CHECK", "student=${it.studentId} cpId=${it.cpId}")
                 }
 
+                // Rebase local face captures and explicit edits onto the latest server baseline.
+                val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
+                    context = this@AttendanceOverviewActivity,
+                    localAttendanceList = attendanceList
+                )
+                if (mergeOutcome.hasUnavailableSelection) {
+                    withContext(Dispatchers.Main) {
+                        binding.progressBar.visibility = View.GONE
+                        showPopupWithOk("Server could not be checked. Attendance is saved locally and can be synced later.")
+                    }
+                    return@launch
+                }
+                val mergedAttendanceList = mergeOutcome.attendance
+                Log.d("ATTENDANCE_DEBUG", "Final attendance count after merge: ${mergedAttendanceList.size}")
+
                 val prefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
                 val baseUrl = prefs.getString("baseUrl", "")!!
                 val hash = prefs.getString("hash", "")!!
 
                 val apiService = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
 
-                // Prepare JSON payload
+                // Prepare JSON payload from merged attendance
                 val attArray = JSONArray()
-                for (att in attendanceList) {
+                for (att in mergedAttendanceList) {
                     val mapped = mapAttendanceToApiFormat(att)
                     Log.d("ATT_MAPPED", mapped.toString())
                     attArray.put(mapped)

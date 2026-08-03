@@ -22,11 +22,10 @@ class PeriodSelectAdapter(
     private val periodList: List<SchoolPeriod>,
     private val autoAssignedSpId: String,
     private val submittedPeriodsMap: Map<String, SubmittedPeriodInfo> = emptyMap(),
-    private val onPeriodCheckedChange: (spId: String, isChecked: Boolean) -> Unit,
-    private val onSubmittedPeriodClick: (item: SchoolPeriod, info: SubmittedPeriodInfo) -> Unit = { _, _ -> }
+    private val onPeriodCheckedChange: (spId: String, isChecked: Boolean) -> Unit
 ) : RecyclerView.Adapter<PeriodSelectAdapter.PeriodViewHolder>() {
 
-    private val selectedPeriodIds = mutableSetOf<String>()
+    private var selectedPeriodId: String? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PeriodViewHolder {
         val binding = ItemPeriodCheckboxBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -39,45 +38,33 @@ class PeriodSelectAdapter(
 
         holder.binding.checkboxPeriod.setOnCheckedChangeListener(null)
 
-        if (submittedInfo != null) {
-            // Submitted Period: Faded UI, checkbox disabled
-            val displayText = "${item.spTitle}  (${item.spIstTime} - ${item.spEndTime})  [Submitted]"
-            holder.binding.tvPeriodLabel.text = displayText
-
-            holder.itemView.alpha = 0.5f
-            holder.binding.checkboxPeriod.isChecked = false
-            holder.binding.checkboxPeriod.isEnabled = false
-
-            val clickListener = {
-                onSubmittedPeriodClick(item, submittedInfo)
-            }
-            holder.itemView.setOnClickListener { clickListener() }
-            holder.binding.checkboxPeriod.setOnClickListener { clickListener() }
+        // All periods are selectable — no blocking
+        val displayText = if (submittedInfo != null) {
+            "${item.spTitle}  (${item.spIstTime} - ${item.spEndTime})  [Submitted]"
         } else {
-            // Normal Unsubmitted Period
-            val displayText = "${item.spTitle}  (${item.spIstTime} - ${item.spEndTime})"
-            holder.binding.tvPeriodLabel.text = displayText
+            "${item.spTitle}  (${item.spIstTime} - ${item.spEndTime})"
+        }
+        holder.binding.tvPeriodLabel.text = displayText
 
-            holder.itemView.alpha = 1.0f
-            holder.binding.checkboxPeriod.isEnabled = true
-            holder.binding.checkboxPeriod.isChecked = selectedPeriodIds.contains(item.spId)
+        holder.itemView.alpha = 1.0f
+        holder.binding.checkboxPeriod.isEnabled = true
+        holder.binding.checkboxPeriod.isChecked = selectedPeriodId == item.spId
 
-            holder.binding.checkboxPeriod.setOnCheckedChangeListener { _, isChecked ->
-                if (isChecked) selectedPeriodIds.add(item.spId)
-                else selectedPeriodIds.remove(item.spId)
-                onPeriodCheckedChange(item.spId, isChecked)
-            }
+        holder.binding.checkboxPeriod.setOnCheckedChangeListener { _, isChecked ->
+            selectedPeriodId = if (isChecked) item.spId else null
+            onPeriodCheckedChange(item.spId, isChecked)
+            notifyDataSetChanged()
+        }
 
-            // Tap anywhere on row to toggle checkbox
-            holder.itemView.setOnClickListener {
-                holder.binding.checkboxPeriod.isChecked = !holder.binding.checkboxPeriod.isChecked
-            }
+        // Tap anywhere on row to toggle checkbox
+        holder.itemView.setOnClickListener {
+            holder.binding.checkboxPeriod.isChecked = !holder.binding.checkboxPeriod.isChecked
         }
     }
 
     override fun getItemCount() = periodList.size
 
-    fun getSelectedPeriodIds(): List<String> = selectedPeriodIds.toList()
+    fun getSelectedPeriodIds(): List<String> = selectedPeriodId?.let(::listOf) ?: emptyList()
 
     inner class PeriodViewHolder(val binding: ItemPeriodCheckboxBinding) :
         RecyclerView.ViewHolder(binding.root)

@@ -4,23 +4,18 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.databinding.ActivityPeriodSelectBinding
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import com.digitaledu.selfieattendance.api.ApiClient
+import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
 
 class PeriodSelectActivity : ComponentActivity() {
 
@@ -65,7 +60,11 @@ class PeriodSelectActivity : ComponentActivity() {
             Log.d(TAG, "Teacher selected No Period. Assigning default spId=999")
             lifecycleScope.launch(Dispatchers.IO) {
                 db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
-                db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, "999")
+                db.attendanceDao().updateAttendanceSchoolPeriod(
+                    sessionId,
+                    "999",
+                    "Default / Extra Class"
+                )
                 withContext(Dispatchers.Main) {
                     navigateToOverview()
                 }
@@ -78,42 +77,66 @@ class PeriodSelectActivity : ComponentActivity() {
                 return@setOnClickListener
             }
             val selected = adapter.getSelectedPeriodIds()
+            Log.i(AttendanceSyncMerger.FLOW_TAG, "PERIOD_CONTINUE_CLICK selectedPeriodIds=$selected")
             if (selected.isEmpty()) {
+                Log.w(AttendanceSyncMerger.FLOW_TAG, "PERIOD_CONTINUE_STOPPED no period selected")
                 Toast.makeText(this, "Please select at least one period, or tap Skip", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             lifecycleScope.launch(Dispatchers.IO) {
-                val firstSpId = selected.first()
-                Log.d(TAG, "Teacher selected ${selected.size} period(s): $selected")
-
-                // 1) Update existing attendance rows with FIRST selected period
-                db.sessionDao().updateSessionSchoolPeriodId(sessionId, firstSpId)
-                db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, firstSpId)
-                Log.d(TAG, "Updated existing rows with spId=$firstSpId")
-
-                // 2) For each ADDITIONAL period, duplicate all attendance rows
-                if (selected.size > 1) {
-                    val originalRows = db.attendanceDao().getAttendanceBySessionId(sessionId)
-                    Log.d(TAG, "Found ${originalRows.size} attendance rows to duplicate for ${selected.size - 1} extra period(s)")
-
-                    for (i in 1 until selected.size) {
-                        val extraSpId = selected[i]
-                        for (origAtt in originalRows) {
-                            val duplicated = origAtt.copy(
-                                atteId = java.util.UUID.randomUUID().toString(),
-                                attSchoolPeriodId = extraSpId
-                            )
-                            db.attendanceDao().insertAttendance(duplicated)
-                        }
-                        Log.d(TAG, "Duplicated ${originalRows.size} rows for spId=$extraSpId")
+                val selectedSpId = selected.single()
+                val selectedPeriod = db.schoolPeriodDao().getAll().firstOrNull { it.spId == selectedSpId }
+                if (selectedPeriod == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@PeriodSelectActivity, "Selected period not found", Toast.LENGTH_SHORT).show()
                     }
+                    return@launch
                 }
+                Log.d(TAG, "Teacher selected period ${selectedPeriod.spTitle} ($selectedSpId)")
+                val reportPeriodTitle = AttendanceSyncMerger.canonicalReportPeriodTitle(
+                    selectedPeriod.spTitle
+                )
+                Log.i(
+                    AttendanceSyncMerger.FLOW_TAG,
+                    "PERIOD_SELECTED spId=$selectedSpId title='${selectedPeriod.spTitle}' " +
+                        "reportTitle='$reportPeriodTitle' internetFetchStarting=true"
+                )
+
+                db.sessionDao().updateSessionSchoolPeriodId(sessionId, selectedSpId)
+                db.attendanceDao().updateAttendanceSchoolPeriod(
+                    sessionId,
+                    selectedSpId,
+                    reportPeriodTitle
+                )
+
+                val localAttendance = db.attendanceDao().getAttendanceBySessionId(sessionId)
+                Log.i(
+                    AttendanceSyncMerger.FLOW_TAG,
+                    "LOCAL_ROWS_READY sessionId=$sessionId rows=${localAttendance.size}"
+                )
+                val mergeOutcome = AttendanceSyncMerger.fetchMergeAndPersist(
+                    context = this@PeriodSelectActivity,
+                    localAttendanceList = localAttendance,
+                    db = db
+                )
+                Log.i(
+                    AttendanceSyncMerger.FLOW_TAG,
+                    "PERIOD_FETCH_FINISHED unavailable=${mergeOutcome.hasUnavailableSelection} " +
+                        "existingServerAttendance=${mergeOutcome.hadExistingServerAttendance} " +
+                        "finalRows=${mergeOutcome.attendance.size}"
+                )
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@PeriodSelectActivity,
-                        "Periods applied: ${selected.size} selected",
+                        if (mergeOutcome.hasUnavailableSelection) {
+                            "Server could not be checked. Attendance is saved locally."
+                        } else if (mergeOutcome.hadExistingServerAttendance) {
+                            "Existing attendance loaded and merged"
+                        } else {
+                            "Fresh attendance for ${selectedPeriod.spTitle}"
+                        },
                         Toast.LENGTH_SHORT
                     ).show()
 
@@ -157,7 +180,11 @@ class PeriodSelectActivity : ComponentActivity() {
                             dialog.dismiss()
                             lifecycleScope.launch(Dispatchers.IO) {
                                 db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
-                                db.attendanceDao().updateAttendanceSchoolPeriodId(sessionId, "999")
+                                db.attendanceDao().updateAttendanceSchoolPeriod(
+                                    sessionId,
+                                    "999",
+                                    "Default / Extra Class"
+                                )
                                 withContext(Dispatchers.Main) { navigateToOverview() }
                             }
                         }
@@ -175,7 +202,7 @@ class PeriodSelectActivity : ComponentActivity() {
                 return@launch
             }
 
-            // Check submitted periods for selected classes
+            // Check submitted periods for selected classes (for display label only, not blocking)
             val submittedPeriodsMap = mutableMapOf<String, SubmittedPeriodInfo>()
             val currentTeacherName = if (teacherId.isNotBlank()) db.teachersDao().getTeacherNameById(teacherId) ?: "" else ""
 
@@ -218,9 +245,7 @@ class PeriodSelectActivity : ComponentActivity() {
                 }
             }
 
-            // Also check server AttReport for multi-device locks
-            val selectedInstId = session.instId
-            fetchServerSubmittedPeriods(selectedInstId, sessionDate, selectedClasses, allPeriods, submittedPeriodsMap)
+            // No server period lock check — periods are never blocked
 
             withContext(Dispatchers.Main) {
                 binding.tvAutoAssigned.text = "Default Period ID: 999 (Out of Period / Extra Class)"
@@ -231,9 +256,6 @@ class PeriodSelectActivity : ComponentActivity() {
                     submittedPeriodsMap = submittedPeriodsMap,
                     onPeriodCheckedChange = { spId, isChecked ->
                         Log.d(TAG, "Period $spId checked=$isChecked")
-                    },
-                    onSubmittedPeriodClick = { item, info ->
-                        showSubmittedPeriodWarningDialog(item, info)
                     }
                 )
 
@@ -241,199 +263,6 @@ class PeriodSelectActivity : ComponentActivity() {
                 binding.recyclerViewPeriods.adapter = adapter
             }
         }
-    }
-
-    private fun showSubmittedPeriodWarningDialog(item: SchoolPeriod, info: SubmittedPeriodInfo) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_submitted_period_warning, null)
-
-        dialogView.findViewById<TextView>(R.id.tvDialogTitle).text = "Period ${info.spTitle} Already Taken Today!"
-        dialogView.findViewById<TextView>(R.id.tvPeriodSubtitle).text = "Period: ${info.spTitle} (${item.spIstTime} - ${item.spEndTime})"
-        dialogView.findViewById<TextView>(R.id.tvTeacherName).text = "👤 Teacher: ${info.teacherName}"
-        dialogView.findViewById<TextView>(R.id.tvClassName).text = "🏫 Class: ${info.classNames}"
-        dialogView.findViewById<TextView>(R.id.tvSubjectName).text = "📖 Subject: ${info.subjectTitle}"
-
-        dialogView.findViewById<TextView>(R.id.tvPresentCount).text = info.presentCount.toString()
-        dialogView.findViewById<TextView>(R.id.tvExemptedCount).text = info.exemptedCount.toString()
-        dialogView.findViewById<TextView>(R.id.tvLateCount).text = info.lateCount.toString()
-        dialogView.findViewById<TextView>(R.id.tvAbsentCount).text = info.absentCount.toString()
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setCancelable(true)
-            .create()
-
-        dialogView.findViewById<Button>(R.id.btnCancelDialog).setOnClickListener {
-            dialog.dismiss()
-        }
-
-        dialog.show()
-    }
-
-    private suspend fun fetchServerSubmittedPeriods(
-        instId: String,
-        date: String,
-        selectedClasses: List<String>,
-        allPeriods: List<SchoolPeriod>,
-        submittedPeriodsMap: MutableMap<String, SubmittedPeriodInfo>
-    ) {
-        try {
-            val prefs = getSharedPreferences("AttendancePrefs", MODE_PRIVATE)
-            val loginPrefs = getSharedPreferences("LoginPrefs", MODE_PRIVATE)
-
-            val rawBaseUrl = prefs.getString("baseUrl", null)
-                ?: loginPrefs.getString("baseUrl", null)
-                ?: prefs.getString("BASE_URL", null)
-                ?: ""
-
-            val hash = prefs.getString("HASH", null)
-                ?: prefs.getString("hash", null)
-                ?: loginPrefs.getString("hash", null)
-                ?: loginPrefs.getString("HASH", null)
-
-            if (rawBaseUrl.isBlank()) {
-                Log.w("PERIOD_LOCK_DEBUG", "Base URL is blank in SharedPreferences (AttendancePrefs & LoginPrefs), skipping server period report fetch.")
-                return
-            }
-
-            val baseUrl = if (rawBaseUrl.endsWith("///")) rawBaseUrl else if (rawBaseUrl.endsWith("/")) rawBaseUrl.removeSuffix("/") + "///" else "$rawBaseUrl///"
-            Log.d("PERIOD_LOCK_DEBUG", "Using baseUrl=$baseUrl for AttReport API")
-
-            val apiService = ApiClient.getClient(baseUrl, hash).create(com.digitaledu.selfieattendance.api.ApiService::class.java)
-
-            val savedInsts = db.instituteDao().getAll().map { it.id }.filter { it.isNotBlank() }
-            val selectedSchoolIds = if (savedInsts.isNotEmpty()) savedInsts.joinToString(",") else if (instId.isNotBlank()) instId else "1"
-
-            val dataParam = "{\"attParamDataObj\":{\"attReportType\":\"classLectureLandscapeReportDetails\",\"attReportTypeParamDataObj\":{\"schoolIds\":\"$selectedSchoolIds\",\"classType\":\"Academic\",\"courseSelectionMode\":\"AcademicProcessed\",\"frmDate\":\"$date\",\"toDate\":\"$date\",\"attCategory\":\"Regular\"}}}"
-
-            Log.d("PERIOD_LOCK_DEBUG", "Calling AttReport API with schoolIds=$selectedSchoolIds, date=$date, param=$dataParam")
-
-            val response = apiService.getAttendanceReport(data = dataParam)
-            Log.d("PERIOD_LOCK_DEBUG", "AttReport Response Code=${response.code()}")
-
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = response.body()!!.string()
-                Log.d("PERIOD_LOCK_DEBUG", "AttReport Response JSON=$jsonString")
-
-                val json = JSONObject(jsonString)
-                val collection = json.optJSONObject("collection")
-                val responseObj = collection?.optJSONObject("response")
-                val dataArray = responseObj?.optJSONArray("data") ?: JSONArray()
-
-                val selectedClassObjs = selectedClasses.mapNotNull { db.classDao().getClassById(it) }
-                val selectedClassNames = selectedClassObjs.map { it.classShortName.lowercase().trim() }
-                Log.d("PERIOD_LOCK_DEBUG", "Selected classes to match: $selectedClassNames")
-
-                for (i in 0 until dataArray.length()) {
-                    val item = dataArray.getJSONObject(i)
-                    val className = item.optString("Class", "").trim()
-                    Log.d("PERIOD_LOCK_DEBUG", "Processing report item for Class=$className")
-
-                    val isClassMatch = selectedClassNames.isEmpty() || selectedClassNames.any { name ->
-                        isClassMatchExact(className, name)
-                    }
-
-                    if (!isClassMatch) {
-                        Log.d("PERIOD_LOCK_DEBUG", "Class $className did not match $selectedClassNames, skipping")
-                        continue
-                    }
-
-                    val keys = item.keys()
-                    while (keys.hasNext()) {
-                        val rawKey = keys.next()
-                        if (rawKey.equals("Class", ignoreCase = true)) continue
-
-                        val slotArray = item.optJSONArray(rawKey) ?: continue
-                        var pCount = 0
-                        var aCount = 0
-                        var eCount = 0
-                        var lCount = 0
-                        var totalLectures = 0
-                        var detailsStr = ""
-
-                        for (j in 0 until slotArray.length()) {
-                            val str = slotArray.getString(j)
-                            if (str.startsWith("P:")) pCount = str.substringAfter("P:").trim().toIntOrNull() ?: 0
-                            else if (str.startsWith("A:")) aCount = str.substringAfter("A:").trim().toIntOrNull() ?: 0
-                            else if (str.startsWith("E:")) eCount = str.substringAfter("E:").trim().toIntOrNull() ?: 0
-                            else if (str.startsWith("L:")) lCount = str.substringAfter("L:").trim().toIntOrNull() ?: 0
-                            else if (str.startsWith("Total-Lectures:")) totalLectures = str.substringAfter("Total-Lectures:").trim().toIntOrNull() ?: 0
-                            else if (!str.contains("%")) detailsStr = str
-                        }
-
-                        Log.d("PERIOD_LOCK_DEBUG", "Slot Key=$rawKey → P=$pCount, A=$aCount, E=$eCount, L=$lCount, TotalLec=$totalLectures, Details=$detailsStr")
-
-                        if (totalLectures > 0 || (pCount + aCount + eCount + lCount) > 0) {
-                            val teacherName = if (detailsStr.contains("[") && detailsStr.contains("]")) {
-                                detailsStr.substringAfter("[").substringBefore("]")
-                            } else "Teacher"
-
-                            val subjectTitle = if (detailsStr.contains("[")) {
-                                detailsStr.substringBefore("[").trim()
-                            } else detailsStr.ifBlank { "Subject" }
-
-                            val cleanKey = rawKey.replace("</br>", " ").replace("<br>", " ").replace("<br/>", " ")
-
-                            var matchedPeriod = allPeriods.find { period ->
-                                cleanKey.lowercase().contains(period.spTitle.lowercase()) ||
-                                detailsStr.lowercase().contains(period.spTitle.lowercase())
-                            }
-
-                            if (matchedPeriod == null) {
-                                val isMorning = cleanKey.lowercase().contains("morning") || cleanKey.contains("7:") || cleanKey.contains("8:") || cleanKey.contains("9:") || cleanKey.contains("10:") || cleanKey.contains("11:")
-                                val isAfternoon = cleanKey.lowercase().contains("afternoon") || cleanKey.contains("12:") || cleanKey.contains("1:") || cleanKey.contains("2:") || cleanKey.contains("3:") || cleanKey.contains("4:") || cleanKey.contains("5:")
-
-                                matchedPeriod = allPeriods.find { period ->
-                                    val hour = period.spIstTime.substringBefore(":").toIntOrNull() ?: 9
-                                    if (isMorning && hour < 12) true
-                                    else if (isAfternoon && hour >= 12) true
-                                    else false
-                                } ?: allPeriods.firstOrNull()
-                            }
-
-                            if (matchedPeriod != null) {
-                                Log.d("PERIOD_LOCK_DEBUG", "✅ Locked Period spId=${matchedPeriod.spId} (${matchedPeriod.spTitle}) from server report!")
-                                submittedPeriodsMap[matchedPeriod.spId] = SubmittedPeriodInfo(
-                                    spId = matchedPeriod.spId,
-                                    spTitle = matchedPeriod.spTitle,
-                                    teacherName = teacherName,
-                                    classNames = className,
-                                    subjectTitle = subjectTitle,
-                                    presentCount = pCount,
-                                    exemptedCount = eCount,
-                                    absentCount = aCount,
-                                    lateCount = lCount
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                Log.e("PERIOD_LOCK_DEBUG", "AttReport response un-successful or null body: ${response.errorBody()?.string()}")
-            }
-        } catch (e: Exception) {
-            Log.e("PERIOD_LOCK_DEBUG", "Exception in fetchServerSubmittedPeriods: ${e.message}", e)
-        }
-    }
-
-    private fun isClassMatchExact(serverName: String, localName: String): Boolean {
-        val sName = serverName.substringBefore("#").trim().lowercase()
-        val lName = localName.substringBefore("#").trim().lowercase()
-
-        if (sName == lName) return true
-
-        // If local name specifies a Part (e.g. "part 1", "part ii") but server is generic ("msc finance"), DO NOT match!
-        if (lName.contains("part") && !sName.contains("part")) {
-            return false
-        }
-
-        // If both contain part, ensure exact part matches
-        if (sName.contains("part") && lName.contains("part")) {
-            val sPart = sName.substringAfter("part").trim()
-            val lPart = lName.substringAfter("part").trim()
-            return sPart == lPart || sName == lName
-        }
-
-        return sName.contains(lName)
     }
 
     private fun navigateToOverview() {

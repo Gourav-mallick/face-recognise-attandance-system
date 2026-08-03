@@ -18,6 +18,7 @@ import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.utility.CheckNetworkAndInternetUtils
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
 import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
+import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -103,6 +104,7 @@ class SyncAttendanceToServer : AppCompatActivity(){
                 val groupedBySession = pendingList.groupBy { it.sessionId }
                 val totalSessions = groupedBySession.size
                 var currentSession = 1
+                var allSessionsSynced = true
 
                 //  Sync each session one by one
                 for ((sessionId, sessionAttendances) in groupedBySession) {
@@ -119,6 +121,7 @@ class SyncAttendanceToServer : AppCompatActivity(){
                         attendanceInstituteIds = sessionAttendances.map { it.instId }
                     )
                     if (consistencyError != null) {
+                        allSessionsSynced = false
                         Log.e(
                             "SYNC_SESSION",
                             "Blocked session $sessionId: $consistencyError"
@@ -136,8 +139,22 @@ class SyncAttendanceToServer : AppCompatActivity(){
                         statusText.text = "Syncing session $currentSession of $totalSessions..."
                     }
 
+                    val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
+                        context = this@SyncAttendanceToServer,
+                        localAttendanceList = sessionAttendances
+                    )
+                    if (mergeOutcome.hasUnavailableSelection) {
+                        allSessionsSynced = false
+                        withContext(Dispatchers.Main) {
+                            statusText.text = "Could not check server attendance for session $currentSession; kept pending."
+                        }
+                        currentSession++
+                        continue
+                    }
+                    val mergedAttendances = mergeOutcome.attendance
+
                     val attArray = JSONArray()
-                    for (att in sessionAttendances) {
+                    for (att in mergedAttendances) {
                         attArray.put(mapAttendanceToApiFormat(att))
                     }
 
@@ -172,12 +189,14 @@ class SyncAttendanceToServer : AppCompatActivity(){
                             }
                             Log.d("SYNC_SESSION", "Session $sessionId synced OK")
                         } else {
+                            allSessionsSynced = false
                             withContext(Dispatchers.Main) {
                                 statusText.text = "⚠ Session $currentSession failed to sync!"
                             }
                             Log.e("SYNC_SESSION", "Session $sessionId failed!")
                         }
                     } else {
+                        allSessionsSynced = false
                         withContext(Dispatchers.Main) {
                             statusText.text = " Network error for session $currentSession"
                         }
@@ -193,7 +212,11 @@ class SyncAttendanceToServer : AppCompatActivity(){
 
                 withContext(Dispatchers.Main) {
                     progressBar.visibility = View.GONE
-                    statusText.text = " All sessions synced successfully!"
+                    statusText.text = if (allSessionsSynced) {
+                        " All sessions synced successfully!"
+                    } else {
+                        "Some sessions remain pending. Please try again."
+                    }
                 }
 
             } catch (e: Exception) {
