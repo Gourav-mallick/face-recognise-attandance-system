@@ -7,8 +7,6 @@ import com.digitaledu.selfieattendance.api.ApiService
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Attendance
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
@@ -47,6 +45,7 @@ object AttendanceSyncMerger {
         val mpId: String,
         val classId: String,
         val cpId: String,
+        val attendanceDate: String,
         val schoolPeriodId: String,
         val periodTitle: String
     )
@@ -58,6 +57,7 @@ object AttendanceSyncMerger {
         mpId: String,
         classIds: String,
         cpIds: String,
+        attendanceDate: String,
         periodTitle: String
     ): ServerFetchResult {
         return try {
@@ -66,10 +66,11 @@ object AttendanceSyncMerger {
                 FLOW_TAG,
                 "API_CHECK_START schoolId=$schoolIds syear=$syear mpId=$mpId " +
                     "classId=$classIds cpId=$cpIds selectedTitle='$periodTitle' " +
-                    "reportTitle='$reportPeriodTitle'"
+                    "reportTitle='$reportPeriodTitle' attendanceDate=$attendanceDate"
             )
             if (schoolIds.isBlank() || syear.isBlank() || mpId.isBlank() ||
-                classIds.isBlank() || cpIds.isBlank() || periodTitle.isBlank()
+                classIds.isBlank() || cpIds.isBlank() || attendanceDate.isBlank() ||
+                periodTitle.isBlank()
             ) {
                 Log.e(FLOW_TAG, "API_CHECK_SKIPPED incomplete attendance selection")
                 return ServerFetchResult.Unavailable("Incomplete attendance selection")
@@ -96,8 +97,6 @@ object AttendanceSyncMerger {
                 else -> "$rawBaseUrl///"
             }
             val apiService = ApiClient.getClient(baseUrl, hash).create(ApiService::class.java)
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
             val dataParam = JSONObject().apply {
                 put("attParamDataObj", JSONObject().apply {
                     put("attReportType", "landscapeMusterAttSubjectPeriodWise")
@@ -107,15 +106,16 @@ object AttendanceSyncMerger {
                         put("mpIds", mpId)
                         put("classIds", classIds)
                         put("cpIds", cpIds)
-                        put("frmDate", today)
-                        put("toDate", today)
+                        put("frmDate", attendanceDate)
+                        put("toDate", attendanceDate)
                     })
                 })
             }.toString()
 
             Log.i(
                 FLOW_TAG,
-                "API_REQUEST r=api/v1/Att/AttReport date=$today periodTitle='$reportPeriodTitle' data=$dataParam"
+                "API_REQUEST r=api/v1/Att/AttReport attendanceDate=$attendanceDate " +
+                    "periodTitle='$reportPeriodTitle' data=$dataParam"
             )
             val response = apiService.getAttendanceReport(data = dataParam)
             Log.i(
@@ -130,7 +130,7 @@ object AttendanceSyncMerger {
 
             val responseBody = response.body()!!.string()
             Log.i(FLOW_TAG, "API_RESPONSE_BODY $responseBody")
-            val parsed = parseServerResponse(responseBody, reportPeriodTitle, today)
+            val parsed = parseServerResponse(responseBody, reportPeriodTitle, attendanceDate)
             Log.i(FLOW_TAG, "API_CHECK_RESULT ${describe(parsed)}")
             parsed
         } catch (e: Exception) {
@@ -369,6 +369,7 @@ object AttendanceSyncMerger {
                 mpId = it.mpId.orEmpty(),
                 classId = it.classId,
                 cpId = it.cpId.orEmpty(),
+                attendanceDate = it.date,
                 schoolPeriodId = it.attSchoolPeriodId,
                 periodTitle = it.period
             )
@@ -387,6 +388,7 @@ object AttendanceSyncMerger {
                 mpId = selection.mpId,
                 classIds = selection.classId,
                 cpIds = selection.cpId,
+                attendanceDate = selection.attendanceDate,
                 periodTitle = selection.periodTitle
             )) {
                 is ServerFetchResult.Existing -> {

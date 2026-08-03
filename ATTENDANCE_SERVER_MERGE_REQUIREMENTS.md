@@ -15,14 +15,14 @@ Attendance is resolved using all of these values:
 - Marking period ID (`mpId`)
 - Class ID
 - Course-period ID (`cpId`)
-- Today's date
+- The attendance session's stored date
 - School-period ID and title
 
-Only one school period can be selected at a time. The report column must exactly match today's date and the selected school-period title, for example `2026-08-03(Afternoon Session)`. A different or first available period column must never be used as a fallback.
+Only one school period can be selected at a time. The report column must exactly match the stored attendance date and the selected school-period title, for example `2026-08-03(Afternoon Session)`. A different or first available period column must never be used as a fallback.
 
 ## Server Check
 
-After the teacher selects a school period, call the `landscapeMusterAttSubjectPeriodWise` attendance report for each exact class/course selection.
+After the teacher selects a school period, call the `landscapeMusterAttSubjectPeriodWise` attendance report for each exact class/course selection. Use the stored attendance date for `frmDate`, `toDate`, period-column matching, and submission, including when a pending session is synced on a later day.
 
 - `SUCCESS` with matching period data means existing server attendance must be used as the baseline.
 - `FAILED`, `data: false`, and `Attendance record details is not found` means this is fresh attendance.
