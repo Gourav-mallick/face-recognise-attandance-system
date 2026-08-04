@@ -40,6 +40,7 @@ import androidx.work.OneTimeWorkRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import com.digitaledu.selfieattendance.utility.SchoolPeriodTimeResolver
 
 
 class AttendanceActivity : AppCompatActivity() {
@@ -52,6 +53,14 @@ class AttendanceActivity : AppCompatActivity() {
         private const val TAG_CLASSROOM = "CLASSROOM"
         private const val TAG_TEACHER = "TEACHER"
         private const val TAG_STUDENT = "STUDENT"
+
+        /**
+         * Y = strictly auto-select and lock the period using the live attendance-cycle start time.
+         * N = preserve the existing teacher-controlled manual period selection flow.
+         */
+        @JvmField
+        @Volatile
+        var enforcedManualPeriodSelection: String = "N"
     }
 
 
@@ -401,19 +410,34 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 return@launch
             }
 
-            // Check if periods are empty for this institute
             val periods = withContext(Dispatchers.IO) {
                 db.schoolPeriodDao().getAll().filter { it.instId == selectedInstId }
             }
 
-            // Default initial period to "999" (Default / Extra class period)
-            val spId = "999"
+            val attendanceStartedAt = getEstimatedCurrentTime()
+            val attendanceStartTime = SimpleDateFormat("HH:mm", Locale.getDefault())
+                .format(attendanceStartedAt)
+            val liveTimePeriodSelection =
+                enforcedManualPeriodSelection.equals("Y", ignoreCase = true)
+            val spId = if (liveTimePeriodSelection) {
+                SchoolPeriodTimeResolver.findStrictPeriod(periods, attendanceStartTime)?.spId.orEmpty()
+            } else {
+                // Preserve the existing manual period selection starting state.
+                "999"
+            }
+
+            Log.i(
+                "PERIOD_ASSIGN",
+                "mode=${if (liveTimePeriodSelection) "LIVE_LOCKED" else "MANUAL"} " +
+                    "attendanceStart=$attendanceStartTime resolvedSpId='${spId}'"
+            )
             proceedWithNewTeacherSession(
                 teacherId,
                 teacherName,
                 classId,
                 spId,
-                selectedInstId
+                selectedInstId,
+                attendanceStartedAt
             )
         }
     }
@@ -423,15 +447,15 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
         teacherName: String,
         classId: String,
         spId: String,
-        selectedInstId: String
+        selectedInstId: String,
+        attendanceStartedAt: Date
     ) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
             val sessionId = UUID.randomUUID().toString()
-            val estimated = getEstimatedCurrentTime()
-            val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(estimated)
+            val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(attendanceStartedAt)
             Log.d("SESSION_DEBUG", "Session start time: $startTime")
-            val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(estimated)
+            val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(attendanceStartedAt)
 
             Log.d(
                 "PERIOD_SAVE",

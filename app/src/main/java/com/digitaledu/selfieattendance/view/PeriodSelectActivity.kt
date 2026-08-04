@@ -8,6 +8,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.StyleSpan
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
+import com.digitaledu.selfieattendance.utility.SchoolPeriodTimeResolver
 
 class PeriodSelectActivity : ComponentActivity() {
 
@@ -30,6 +32,11 @@ class PeriodSelectActivity : ComponentActivity() {
     private var selectedClasses: ArrayList<String> = arrayListOf()
     private var autoAssignedSpId: String = ""
     private lateinit var adapter: PeriodSelectAdapter
+    private var isDefaultPeriodWarningShowing = false
+
+    private val isLiveTimePeriodSelectionEnabled: Boolean
+        get() = AttendanceActivity.enforcedManualPeriodSelection
+            .equals("Y", ignoreCase = true)
 
     companion object {
         private const val TAG = "PERIOD_SELECT"
@@ -60,7 +67,10 @@ class PeriodSelectActivity : ComponentActivity() {
         loadPeriods()
 
         binding.btnSkipPeriod.text = "No Period Setup(Use Default Id 999)"
+        binding.btnSkipPeriod.visibility =
+            if (isLiveTimePeriodSelectionEnabled) View.GONE else View.VISIBLE
         binding.btnSkipPeriod.setOnClickListener {
+            if (isLiveTimePeriodSelectionEnabled) return@setOnClickListener
             Log.d(TAG, "Teacher selected No Period. Assigning default spId=999")
             lifecycleScope.launch(Dispatchers.IO) {
                 db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
@@ -247,32 +257,58 @@ class PeriodSelectActivity : ComponentActivity() {
 
             if (allPeriods.isEmpty()) {
                 withContext(Dispatchers.Main) {
-                    AlertDialog.Builder(this@PeriodSelectActivity)
-                        .setTitle("Setup Missing")
-                        .setMessage("school period setup not done yet .please contact authority and setup..\n\ndo you want to procced")
-                        .setCancelable(false)
-                        .setPositiveButton("Yes") { dialog, _ ->
-                            dialog.dismiss()
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
-                                db.attendanceDao().updateAttendanceSchoolPeriod(
-                                    sessionId,
-                                    "999",
-                                    "Default / Extra Class"
-                                )
-                                withContext(Dispatchers.Main) { navigateToOverview() }
+                    if (isLiveTimePeriodSelectionEnabled) {
+                        showDefaultPeriodWarning(
+                            title = "School Period Setup Missing",
+                            message = "No school period setup is available for the current time.\n\n" +
+                                "Attendance will be assigned to the default period (ID 999). " +
+                                "Please contact the support team to configure the correct school periods."
+                        )
+                    } else {
+                        AlertDialog.Builder(this@PeriodSelectActivity)
+                            .setTitle("Setup Missing")
+                            .setMessage("school period setup not done yet .please contact authority and setup..\n\ndo you want to procced")
+                            .setCancelable(false)
+                            .setPositiveButton("Yes") { dialog, _ ->
+                                dialog.dismiss()
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
+                                    db.attendanceDao().updateAttendanceSchoolPeriod(
+                                        sessionId,
+                                        "999",
+                                        "Default / Extra Class"
+                                    )
+                                    withContext(Dispatchers.Main) { navigateToOverview() }
+                                }
                             }
-                        }
-                        .setNegativeButton("No") { dialog, _ ->
-                            dialog.dismiss()
-                            getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
-                            getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
-                            val intent = Intent(this@PeriodSelectActivity, AttendanceActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish()
-                        }
-                        .show()
+                            .setNegativeButton("No") { dialog, _ ->
+                                dialog.dismiss()
+                                returnToAttendance()
+                            }
+                            .show()
+                    }
+                }
+                return@launch
+            }
+
+            val livePeriod = if (isLiveTimePeriodSelectionEnabled) {
+                SchoolPeriodTimeResolver.findStrictPeriod(allPeriods, session.startTime)
+            } else {
+                null
+            }
+
+            if (isLiveTimePeriodSelectionEnabled && livePeriod == null) {
+                withContext(Dispatchers.Main) {
+                    binding.tvPeriodTitle.text = "Default School Period"
+                    binding.tvAutoAssigned.text =
+                        "No configured period contains attendance start time ${session.startTime}."
+                    binding.btnContinuePeriod.isEnabled = false
+                    showDefaultPeriodWarning(
+                        title = "No Period Available at This Time",
+                        message = "Attendance started at ${session.startTime}, but no school period is configured for this time.\n\n" +
+                            "Attendance will be assigned to the default period (ID 999). " +
+                            "Please contact the support team to review and correct the period setup."
+                    )
                 }
                 return@launch
             }
@@ -323,12 +359,21 @@ class PeriodSelectActivity : ComponentActivity() {
             // No server period lock check — periods are never blocked
 
             withContext(Dispatchers.Main) {
-                binding.tvAutoAssigned.text = "Default Period ID: 999 (Out of Period / Extra Class)"
+                if (isLiveTimePeriodSelectionEnabled) {
+                    binding.tvPeriodTitle.text = "School Period (Automatically Selected)"
+                    binding.tvAutoAssigned.text =
+                        "Attendance start: ${session.startTime} • ${livePeriod?.spTitle}\nManual period changes are disabled."
+                    binding.btnContinuePeriod.isEnabled = true
+                } else {
+                    binding.tvAutoAssigned.text = "Default Period ID: 999 (Out of Period / Extra Class)"
+                }
 
                 adapter = PeriodSelectAdapter(
                     periodList = allPeriods,
                     autoAssignedSpId = autoAssignedSpId,
                     submittedPeriodsMap = submittedPeriodsMap,
+                    initialSelectedPeriodId = livePeriod?.spId,
+                    isSelectionLocked = isLiveTimePeriodSelectionEnabled,
                     onPeriodCheckedChange = { spId, isChecked ->
                         Log.d(TAG, "Period $spId checked=$isChecked")
                     }
@@ -338,6 +383,46 @@ class PeriodSelectActivity : ComponentActivity() {
                 binding.recyclerViewPeriods.adapter = adapter
             }
         }
+    }
+
+    private fun showDefaultPeriodWarning(title: String, message: String) {
+        if (isFinishing || isDestroyed || isDefaultPeriodWarningShowing) return
+        isDefaultPeriodWarningShowing = true
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("Proceed with Default") { dialog, _ ->
+                dialog.dismiss()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    db.sessionDao().updateSessionSchoolPeriodId(sessionId, "999")
+                    db.attendanceDao().updateAttendanceSchoolPeriod(
+                        sessionId,
+                        "999",
+                        "Default / Extra Class"
+                    )
+                    withContext(Dispatchers.Main) {
+                        navigateToOverview()
+                    }
+                }
+            }
+            .create()
+            .apply {
+                setOnDismissListener { isDefaultPeriodWarningShowing = false }
+                show()
+            }
+    }
+
+    private fun returnToAttendance() {
+        getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+        val intent = Intent(this, AttendanceActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+        finish()
     }
 
     private fun navigateToOverview() {
