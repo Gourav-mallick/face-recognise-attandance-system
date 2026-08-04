@@ -33,6 +33,8 @@ import android.widget.Spinner
 import com.digitaledu.selfieattendance.db.entity.Course
 import com.digitaledu.selfieattendance.db.entity.CoursePeriod
 import com.digitaledu.selfieattendance.db.entity.PendingTeacherAllocationEntity
+import com.digitaledu.selfieattendance.db.entity.Student
+import com.digitaledu.selfieattendance.utility.AttendanceRosterResolver
 
 
 class SubjectSelectActivity : ComponentActivity() {
@@ -314,46 +316,6 @@ class SubjectSelectActivity : ComponentActivity() {
             val session = db.sessionDao().getSessionById(sessionId)
             val teacherId = session?.teacherId ?: ""
 
-            if (isMassBunk) {
-                val existingCount = db.attendanceDao().getAttendancesForSession(sessionId).size
-                if (existingCount == 0 && session != null) {
-                    val students = db.studentsDao().getStudentsByClasses(selectedClasses)
-                    val teacherName = db.teachersDao().getTeacherById(session.teacherId)?.staffName ?: ""
-                    val instName = db.instituteDao().getInstituteNameById(session.instId) ?: ""
-                    val academicYear = db.instituteDao().getInstituteYearById(session.instId) ?: ""
-                    val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-                    val sessionEndTime = if (session.endTime.isNullOrBlank()) currentTime else session.endTime
-
-                    val attendanceList = students.map { student ->
-                        com.digitaledu.selfieattendance.db.entity.Attendance(
-                            atteId = com.digitaledu.selfieattendance.db.entity.AttendanceIdGenerator.nextId(),
-                            sessionId = sessionId,
-                            studentId = student.studentId,
-                            studentName = student.studentName,
-                            classId = student.classId,
-                            status = "A", // Default is Absent
-                            markedAt = currentTime,
-                            syncStatus = "pending",
-                            instId = session.instId,
-                            instShortName = instName,
-                            date = session.date,
-                            startTime = session.startTime,
-                            endTime = sessionEndTime,
-                            academicYear = academicYear,
-                            period = "",
-                            teacherId = session.teacherId,
-                            teacherName = teacherName,
-                            attSchoolPeriodId = session.attSchoolPeriodId
-                        )
-                    }
-
-                    attendanceList.forEach { att ->
-                        db.attendanceDao().insertAttendance(att)
-                    }
-                    Log.d("MASS_BUNK", "Inserted ${attendanceList.size} absent attendance records for mass bunk")
-                }
-            }
-
             Log.d("HANDLE_CONTINUE", "---------------- START ----------------")
             Log.d("HANDLE_CONTINUE", "sessionId=$sessionId")
             Log.d("HANDLE_CONTINUE", "teacherId=$teacherId")
@@ -404,6 +366,17 @@ class SubjectSelectActivity : ComponentActivity() {
                     showToast("No course periods found for your selection")
                 }
                 return@launch
+            }
+
+            val eligibleStudents = AttendanceRosterResolver.forSelection(
+                db = db,
+                classIds = selectedClasses,
+                selectedCourseIds = selectedCourseIds,
+                validCoursePeriods = validCps
+            )
+
+            if (isMassBunk && session != null) {
+                ensureMassBunkAttendance(db, session, eligibleStudents)
             }
 
             // 2) Get present students for this session
@@ -754,7 +727,13 @@ class SubjectSelectActivity : ComponentActivity() {
                         }
 
                         // Complete the roster before assigning per-student course metadata.
-                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
+                        val eligibleStudents = AttendanceRosterResolver.forSelection(
+                            db = db,
+                            classIds = selectedClasses,
+                            selectedCourseIds = selectedCourseIds,
+                            validCoursePeriods = validCps
+                        )
+                        ensureAbsentRecordsForSession(db, sessionId, eligibleStudents)
 
                         // ✅ Pull CourseFullInfo once (titles, subjectTitle, classShortName)
                         val courseInfoList = db.courseDao().getCourseDetailsForIds(selectedCourseIds)
@@ -876,7 +855,13 @@ class SubjectSelectActivity : ComponentActivity() {
                         }
 
                         // Complete the roster before assigning the correct class-specific CP.
-                        ensureAbsentRecordsForSession(db, sessionId, selectedClasses)
+                        val eligibleStudents = AttendanceRosterResolver.forSelection(
+                            db = db,
+                            classIds = selectedClasses,
+                            selectedCourseIds = selectedCourseIds,
+                            validCoursePeriods = validCps
+                        )
+                        ensureAbsentRecordsForSession(db, sessionId, eligibleStudents)
 
                         // ✅ Map classId -> cp (so each class gets its own single CP)
                         val cpByClass = validCps.associateBy { it.classId }
@@ -942,16 +927,59 @@ class SubjectSelectActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun ensureAbsentRecordsForSession(db: AppDatabase, sessionId: String, classIds: List<String>) {
+    private suspend fun ensureMassBunkAttendance(
+        db: AppDatabase,
+        session: com.digitaledu.selfieattendance.db.entity.Session,
+        eligibleStudents: List<Student>
+    ) {
+        if (db.attendanceDao().getAttendancesForSession(sessionId).isNotEmpty()) return
+
+        val teacherName = db.teachersDao().getTeacherById(session.teacherId)?.staffName ?: ""
+        val instName = db.instituteDao().getInstituteNameById(session.instId) ?: ""
+        val academicYear = db.instituteDao().getInstituteYearById(session.instId) ?: ""
+        val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val sessionEndTime = if (session.endTime.isNullOrBlank()) currentTime else session.endTime
+
+        eligibleStudents.forEach { student ->
+            db.attendanceDao().insertAttendance(
+                com.digitaledu.selfieattendance.db.entity.Attendance(
+                    atteId = com.digitaledu.selfieattendance.db.entity.AttendanceIdGenerator.nextId(),
+                    sessionId = sessionId,
+                    studentId = student.studentId,
+                    studentName = student.studentName,
+                    classId = student.classId,
+                    status = "A",
+                    markedAt = currentTime,
+                    syncStatus = "pending",
+                    instId = session.instId,
+                    instShortName = instName,
+                    date = session.date,
+                    startTime = session.startTime,
+                    endTime = sessionEndTime,
+                    academicYear = academicYear,
+                    period = "",
+                    teacherId = session.teacherId,
+                    teacherName = teacherName,
+                    attSchoolPeriodId = session.attSchoolPeriodId
+                )
+            )
+        }
+        Log.d("MASS_BUNK", "Inserted ${eligibleStudents.size} eligible absent attendance records")
+    }
+
+    private suspend fun ensureAbsentRecordsForSession(
+        db: AppDatabase,
+        sessionId: String,
+        eligibleStudents: List<Student>
+    ) {
         val sampleAtt = db.attendanceDao().getAttendancesForSession(sessionId).firstOrNull()
         val session = db.sessionDao().getSessionById(sessionId) ?: return
 
-        for (classId in classIds) {
-            val allStudents = db.studentsDao().getStudentsByClass(classId)
+        for ((classId, studentsForClass) in eligibleStudents.groupBy { it.classId }) {
             val existingAttendances = db.attendanceDao().getAttendancesForClass(sessionId, classId)
             val existingStudentIds = existingAttendances.map { it.studentId }.toSet()
 
-            val missingStudents = allStudents.filter { it.studentId !in existingStudentIds }
+            val missingStudents = studentsForClass.filter { it.studentId !in existingStudentIds }
             for (student in missingStudents) {
                 val absentAtt = com.digitaledu.selfieattendance.db.entity.Attendance(
                     atteId = java.util.UUID.randomUUID().toString(),

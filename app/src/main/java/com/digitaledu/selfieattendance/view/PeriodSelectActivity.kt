@@ -2,7 +2,11 @@ package com.digitaledu.selfieattendance.view
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -115,10 +119,11 @@ class PeriodSelectActivity : ComponentActivity() {
                     AttendanceSyncMerger.FLOW_TAG,
                     "LOCAL_ROWS_READY sessionId=$sessionId rows=${localAttendance.size}"
                 )
-                val mergeOutcome = AttendanceSyncMerger.fetchMergeAndPersist(
+                // Do not persist an existing server baseline until the teacher confirms
+                // that this submitted period should be opened for update/edit.
+                val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
                     context = this@PeriodSelectActivity,
-                    localAttendanceList = localAttendance,
-                    db = db
+                    localAttendanceList = localAttendance
                 )
                 Log.i(
                     AttendanceSyncMerger.FLOW_TAG,
@@ -127,23 +132,93 @@ class PeriodSelectActivity : ComponentActivity() {
                         "finalRows=${mergeOutcome.attendance.size}"
                 )
 
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@PeriodSelectActivity,
-                        if (mergeOutcome.hasUnavailableSelection) {
-                            "Server could not be checked. Attendance is saved locally."
-                        } else if (mergeOutcome.hadExistingServerAttendance) {
-                            "Existing attendance loaded and merged"
-                        } else {
-                            "Fresh attendance for ${selectedPeriod.spTitle}"
-                        },
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    navigateToOverview()
+                if (mergeOutcome.hasUnavailableSelection) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@PeriodSelectActivity,
+                            "Server could not be checked. Attendance is saved locally.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        navigateToOverview()
+                    }
+                } else if (mergeOutcome.hadExistingServerAttendance) {
+                    withContext(Dispatchers.Main) {
+                        showExistingAttendanceDialog(
+                            selectedPeriod = selectedPeriod,
+                            localAttendance = localAttendance,
+                            mergeOutcome = mergeOutcome
+                        )
+                    }
+                } else {
+                    AttendanceSyncMerger.persistMergeOutcome(mergeOutcome, db)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@PeriodSelectActivity,
+                            "Fresh attendance for ${selectedPeriod.spTitle}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        navigateToOverview()
+                    }
                 }
             }
         }
+    }
+
+    private fun showExistingAttendanceDialog(
+        selectedPeriod: SchoolPeriod,
+        localAttendance: List<com.digitaledu.selfieattendance.db.entity.Attendance>,
+        mergeOutcome: AttendanceSyncMerger.MergeOutcome
+    ) {
+        val classNames = localAttendance.mapNotNull { it.classShortName }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(", ")
+            .ifBlank { selectedClasses.joinToString(", ") }
+        val subjectNames = localAttendance.mapNotNull { it.subjectTitle }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(", ")
+            .ifBlank { "Selected subject" }
+
+        val message = SpannableStringBuilder().apply {
+            append("Attendance has already been submitted to the server.\n\n")
+            appendBoldLabel("Class: ", classNames)
+            append("\n")
+            appendBoldLabel("Subject: ", subjectNames)
+            append("\n")
+            appendBoldLabel("Period: ", selectedPeriod.spTitle)
+            append("\n\nDo you want to continue and edit/update this attendance?")
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Attendance Already Submitted")
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("Yes, Continue") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    AttendanceSyncMerger.persistMergeOutcome(mergeOutcome, db)
+                    withContext(Dispatchers.Main) {
+                        navigateToOverview()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                // Server data has not been persisted, so another period can be selected safely.
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun SpannableStringBuilder.appendBoldLabel(label: String, value: String) {
+        val start = length
+        append(label)
+        setSpan(
+            StyleSpan(Typeface.BOLD),
+            start,
+            length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        append(value)
     }
 
     override fun onResume() {

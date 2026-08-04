@@ -20,6 +20,7 @@ import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.utility.DatabaseCleanupUtils
 import com.digitaledu.selfieattendance.utility.AttendanceInstituteValidator
 import com.digitaledu.selfieattendance.utility.AttendanceSyncMerger
+import com.digitaledu.selfieattendance.utility.AttendanceRosterResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -92,12 +93,14 @@ class AttendanceOverviewActivity : ComponentActivity() {
             val classSummaries = mutableListOf<ClassOverviewData>()
 
             for (classId in selectedClasses) {
-                val students = db.studentsDao().getAllStudents().filter { it.classId == classId }
+                val students = AttendanceRosterResolver.forSessionClass(db, sessionId, classId)
                 val classObj=db.classDao().getClassById(classId)
                 val classShortName = classObj?.classShortName ?: classId
                 Log.d("ATTENDANCE_DEBUG", "classShortName is=$classShortName")
 
+                val eligibleStudentIds = students.map { it.studentId }.toSet()
                 val attendance = db.attendanceDao().getAttendancesForClass(sessionId, classId)
+                    .filter { it.studentId in eligibleStudentIds }
 
                 val totalStudents = students.size
                 val presentCount = attendance.count { it.status == "P" }

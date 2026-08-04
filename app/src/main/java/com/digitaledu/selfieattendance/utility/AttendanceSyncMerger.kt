@@ -415,18 +415,26 @@ object AttendanceSyncMerger {
     }
 
     /** Hydrates Room so Overview and Edit use the merged server baseline. */
-    suspend fun fetchMergeAndPersist(
-        context: Context,
-        localAttendanceList: List<Attendance>,
+    suspend fun persistMergeOutcome(
+        outcome: MergeOutcome,
         db: AppDatabase
-    ): MergeOutcome {
-        val outcome = fetchAndMerge(context, localAttendanceList)
+    ) {
         if (!outcome.hasUnavailableSelection) {
             outcome.attendance.forEach { db.attendanceDao().insertAttendance(it) }
             Log.i(FLOW_TAG, "ROOM_SAVE_COMPLETE rows=${outcome.attendance.size}")
         } else {
             Log.w(FLOW_TAG, "ROOM_SERVER_MERGE_NOT_SAVED because server check was unavailable")
         }
+    }
+
+    /** Fetches the server baseline and immediately persists it. */
+    suspend fun fetchMergeAndPersist(
+        context: Context,
+        localAttendanceList: List<Attendance>,
+        db: AppDatabase
+    ): MergeOutcome {
+        val outcome = fetchAndMerge(context, localAttendanceList)
+        persistMergeOutcome(outcome, db)
         return outcome
     }
 }

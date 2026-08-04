@@ -23,6 +23,7 @@ import com.digitaledu.selfieattendance.databinding.ActivityEditAttendanceBinding
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Attendance
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
+import com.digitaledu.selfieattendance.utility.AttendanceRosterResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,7 +99,7 @@ class EditAttendanceActivity : ComponentActivity() {
                 }
             }
 
-            val allStudents = db.studentsDao().getStudentsByClass(classId)
+            val allStudents = AttendanceRosterResolver.forSessionClass(db, sessionId, classId)
             val attendances = db.attendanceDao().getAttendancesForClass(sessionId, classId)
 
             val presentStudents = allStudents.filter { s ->
