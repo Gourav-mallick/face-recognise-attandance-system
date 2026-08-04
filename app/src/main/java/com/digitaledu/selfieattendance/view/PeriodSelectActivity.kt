@@ -33,10 +33,10 @@ class PeriodSelectActivity : ComponentActivity() {
     private var autoAssignedSpId: String = ""
     private lateinit var adapter: PeriodSelectAdapter
     private var isDefaultPeriodWarningShowing = false
+    private var enforcedManualPeriodSelection: String = "N"
 
     private val isLiveTimePeriodSelectionEnabled: Boolean
-        get() = AttendanceActivity.enforcedManualPeriodSelection
-            .equals("Y", ignoreCase = true)
+        get() = enforcedManualPeriodSelection.equals("Y", ignoreCase = true)
 
     companion object {
         private const val TAG = "PERIOD_SELECT"
@@ -67,8 +67,8 @@ class PeriodSelectActivity : ComponentActivity() {
         loadPeriods()
 
         binding.btnSkipPeriod.text = "No Period Setup(Use Default Id 999)"
-        binding.btnSkipPeriod.visibility =
-            if (isLiveTimePeriodSelectionEnabled) View.GONE else View.VISIBLE
+        // Hidden until the saved per-school selection mode has loaded.
+        binding.btnSkipPeriod.visibility = View.GONE
         binding.btnSkipPeriod.setOnClickListener {
             if (isLiveTimePeriodSelectionEnabled) return@setOnClickListener
             Log.d(TAG, "Teacher selected No Period. Assigning default spId=999")
@@ -251,6 +251,16 @@ class PeriodSelectActivity : ComponentActivity() {
             val instId = session.instId
             val sessionDate = session.date
             autoAssignedSpId = session.attSchoolPeriodId
+            enforcedManualPeriodSelection = db.globalAttendanceConfigDao()
+                .getBySchoolId(instId)
+                ?.enforcedManualPeriodSelection
+                ?: com.digitaledu.selfieattendance.utility.GlobalAttendanceConfigParser
+                    .DEFAULT_MANUAL_PERIOD_SELECTION
+
+            withContext(Dispatchers.Main) {
+                binding.btnSkipPeriod.visibility =
+                    if (isLiveTimePeriodSelectionEnabled) View.GONE else View.VISIBLE
+            }
 
             // Get all school periods for this institute
             val allPeriods = db.schoolPeriodDao().getAll().filter { it.instId == instId }

@@ -544,6 +544,9 @@ class ClassroomScanFragment : Fragment() {
                     // Refresh the latest server thresholds during a manual Device Sync.
                     // This also applies them to FaceDetectionConfig immediately.
                     repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
+
+                    // Refresh per-school Global Attendance period-selection rules.
+                    repository.fetchAndSaveGlobalAttendanceConfig(apiService, db, instId)
                 }
 
                 // Subjects do not depend on institute, sync once

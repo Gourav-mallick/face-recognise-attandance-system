@@ -54,13 +54,6 @@ class AttendanceActivity : AppCompatActivity() {
         private const val TAG_TEACHER = "TEACHER"
         private const val TAG_STUDENT = "STUDENT"
 
-        /**
-         * Y = strictly auto-select and lock the period using the live attendance-cycle start time.
-         * N = preserve the existing teacher-controlled manual period selection flow.
-         */
-        @JvmField
-        @Volatile
-        var enforcedManualPeriodSelection: String = "N"
     }
 
 
@@ -412,6 +405,13 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
             val periods = withContext(Dispatchers.IO) {
                 db.schoolPeriodDao().getAll().filter { it.instId == selectedInstId }
+            }
+            val enforcedManualPeriodSelection = withContext(Dispatchers.IO) {
+                db.globalAttendanceConfigDao()
+                    .getBySchoolId(selectedInstId)
+                    ?.enforcedManualPeriodSelection
+                    ?: com.digitaledu.selfieattendance.utility.GlobalAttendanceConfigParser
+                        .DEFAULT_MANUAL_PERIOD_SELECTION
             }
 
             val attendanceStartedAt = getEstimatedCurrentTime()

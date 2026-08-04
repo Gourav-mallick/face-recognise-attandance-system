@@ -22,6 +22,7 @@ import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
+import com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig
 
 
 
@@ -45,9 +46,10 @@ import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
     SchoolPeriod::class,
     AttendanceCode::class,
     ProgramConfig::class,
+    GlobalAttendanceConfig::class,
     TeacherInstituteMap::class
     ],
-    version = 6, exportSchema = true)
+    version = 7, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -73,6 +75,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun schoolPeriodDao(): SchoolPeriodDao
     abstract fun attendanceCodeDao(): AttendanceCodeDao
     abstract fun programConfigDao(): ProgramConfigDao
+    abstract fun globalAttendanceConfigDao(): GlobalAttendanceConfigDao
 
 
 
@@ -175,6 +178,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `global_attendance_config` (
+                        `schoolId` TEXT NOT NULL,
+                        `syear` TEXT NOT NULL,
+                        `programConfId` TEXT NOT NULL,
+                        `value` TEXT NOT NULL,
+                        `otherDetails` TEXT NOT NULL,
+                        `enforcedManualPeriodSelection` TEXT NOT NULL DEFAULT 'N',
+                        PRIMARY KEY(`schoolId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -187,7 +208,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_2_3,
                     MIGRATION_3_4,
                     MIGRATION_4_5,
-                    MIGRATION_5_6
+                    MIGRATION_5_6,
+                    MIGRATION_6_7
                 )
                 .build()
                 INSTANCE = instance

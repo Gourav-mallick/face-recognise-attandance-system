@@ -24,6 +24,7 @@ import com.digitaledu.selfieattendance.db.entity.TeacherClassMap
 import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
+import com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig
 
 
 @Dao
@@ -644,5 +645,17 @@ interface ProgramConfigDao {
     suspend fun getValueByTitle(title: String): String?
 
     @Query("DELETE FROM program_config")
+    suspend fun clear()
+}
+
+@Dao
+interface GlobalAttendanceConfigDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(config: GlobalAttendanceConfig)
+
+    @Query("SELECT * FROM global_attendance_config WHERE schoolId = :schoolId LIMIT 1")
+    suspend fun getBySchoolId(schoolId: String): GlobalAttendanceConfig?
+
+    @Query("DELETE FROM global_attendance_config")
     suspend fun clear()
 }

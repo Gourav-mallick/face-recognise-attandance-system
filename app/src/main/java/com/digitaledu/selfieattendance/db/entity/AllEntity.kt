@@ -365,3 +365,14 @@ data class ProgramConfig(
     val syear: String,
     val programConfId: String = ""
 )
+
+@Entity(tableName = "global_attendance_config")
+data class GlobalAttendanceConfig(
+    @PrimaryKey val schoolId: String,
+    val syear: String,
+    val programConfId: String,
+    val value: String,
+    val otherDetails: String,
+    /** N keeps manual selection; Y enables strict live-time automatic selection. */
+    val enforcedManualPeriodSelection: String = "N"
+)

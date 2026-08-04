@@ -702,6 +702,67 @@ Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
         }
     }
 
+    /**
+     * Syncs the per-school Global Attendance configuration. A missing or invalid
+     * enforcedManualPeriodSelection key is stored as N (the existing manual flow).
+     */
+    suspend fun fetchAndSaveGlobalAttendanceConfig(
+        apiService: ApiService,
+        db: AppDatabase,
+        schoolId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val syear = db.instituteDao().getInstituteYearById(schoolId) ?: ""
+            val dataParam = JSONObject().apply {
+                put("programName", "GlobalAttendance")
+                put("title", "GlobalAttendanceConfig")
+                put("syear", syear)
+                put("school_id", schoolId)
+            }.toString()
+
+            Log.d(TAG, "GLOBAL_ATT_CONFIG_API_REQUEST: $dataParam")
+            val response = apiService.getProgramConfig(data = dataParam)
+            if (!response.isSuccessful || response.body() == null) {
+                Log.w(TAG, "GLOBAL_ATT_CONFIG_API_FAILED: HTTP ${response.code()} — keeping saved/default N")
+                return@withContext false
+            }
+
+            val responseBody = response.body()!!.string()
+            Log.d(TAG, "GLOBAL_ATT_CONFIG_API_RESPONSE: $responseBody")
+            val configObj = JSONObject(responseBody)
+                .optJSONObject("collection")
+                ?.optJSONObject("response")
+                ?.optJSONArray("retConfigData")
+                ?.optJSONObject(0)
+
+            val otherDetails = configObj?.optString("other_details", "").orEmpty()
+            val normalizedSelection =
+                com.digitaledu.selfieattendance.utility.GlobalAttendanceConfigParser
+                    .enforcedManualPeriodSelection(otherDetails)
+
+            db.globalAttendanceConfigDao().insertOrUpdate(
+                com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig(
+                    schoolId = schoolId,
+                    syear = configObj?.optString("syear", syear).orEmpty().ifBlank { syear },
+                    programConfId = configObj?.optString("programConfId", "").orEmpty(),
+                    value = configObj?.optString("value", "").orEmpty(),
+                    otherDetails = otherDetails,
+                    enforcedManualPeriodSelection = normalizedSelection
+                )
+            )
+
+            Log.i(
+                TAG,
+                "GLOBAL_ATT_CONFIG_APPLIED schoolId=$schoolId " +
+                    "enforcedManualPeriodSelection=$normalizedSelection"
+            )
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "GLOBAL_ATT_CONFIG_EXCEPTION: ${e.message} — keeping saved/default N", e)
+            false
+        }
+    }
+
     suspend fun fetchAndSaveAttendanceCodes(
         apiService: ApiService,
         db: AppDatabase,
@@ -794,4 +855,3 @@ Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
     }
 
 }
-

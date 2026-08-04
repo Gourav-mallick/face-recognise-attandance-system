@@ -66,6 +66,7 @@ class AutoSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 //   if (!sc) allOk = false
 
                 repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
+                repository.fetchAndSaveGlobalAttendanceConfig(apiService, db, instId)
             }
 
             if (allOk) {

@@ -164,6 +164,9 @@ class SelectInstituteActivity : AppCompatActivity() {
                         // 🔥 Face Detection & Recognition Thresholds (ManageProgramConfig API)
                         repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
 
+                        // Global attendance period-selection rules (ManageProgramConfig API)
+                        repository.fetchAndSaveGlobalAttendanceConfig(apiService, db, instId)
+
                         // 🔥 Attendance Codes (schoolAttCodeToMarkAtt API)
                         val ac = repository.fetchAndSaveAttendanceCodes(apiService, db, instId)
                         if (!ac) {
