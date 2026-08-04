@@ -151,8 +151,8 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
 
-
-
+    // LeakCanary for memory leak detection in debug builds
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
 }
 

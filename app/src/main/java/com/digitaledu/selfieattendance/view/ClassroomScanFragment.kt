@@ -252,9 +252,20 @@ class ClassroomScanFragment : Fragment() {
                 .show()
         }
 
-        val cardCounter = view.findViewById<View>(R.id.cardCounter)
-        cardCounter?.setOnClickListener {
-            val intent = Intent(requireContext(), UnregisteredUsersActivity::class.java)
+        val cardTotalUsers = view.findViewById<View>(R.id.cardTotalUsers)
+        val cardUnregisteredUsers = view.findViewById<View>(R.id.cardUnregisteredUsers)
+
+        cardTotalUsers?.setOnClickListener {
+            val intent = Intent(requireContext(), UnregisteredUsersActivity::class.java).apply {
+                putExtra("SHOW_MODE", "ALL")
+            }
+            startActivity(intent)
+        }
+
+        cardUnregisteredUsers?.setOnClickListener {
+            val intent = Intent(requireContext(), UnregisteredUsersActivity::class.java).apply {
+                putExtra("SHOW_MODE", "UNREGISTERED")
+            }
             startActivity(intent)
         }
 

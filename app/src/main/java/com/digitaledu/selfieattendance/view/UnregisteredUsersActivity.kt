@@ -1,5 +1,6 @@
 package com.digitaledu.selfieattendance.view
 
+import android.graphics.Color
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -26,22 +27,27 @@ import kotlinx.coroutines.withContext
 class UnregisteredUsersActivity : AppCompatActivity() {
 
     private lateinit var btnBack: ImageButton
+    private lateinit var tvHeaderTitle: TextView
     private lateinit var editSearch: EditText
     private lateinit var spinnerUserType: Spinner
+    private lateinit var spinnerStatus: Spinner
     private lateinit var spinnerClass: Spinner
     private lateinit var recyclerViewUsers: RecyclerView
     private lateinit var tvEmpty: TextView
     private lateinit var progressBar: ProgressBar
 
     // Database cache
-    private var allUnregisteredStudents = listOf<Student>()
-    private var allUnregisteredTeachers = listOf<Teacher>()
+    private var allStudents = listOf<Student>()
+    private var allTeachers = listOf<Teacher>()
     private var classMap = mapOf<String, String>() // classId -> classShortName
     private var classList = listOf<Class>()
 
+    // Mode passed via intent: "ALL" / "TOTAL" vs "UNREGISTERED"
+    private var showMode: String = "UNREGISTERED"
+
     // Filtered/combined cache
     private var filteredCombinedList = listOf<UnregisteredUser>()
-    
+
     // Pagination parameters
     private val PAGE_SIZE = 20
     private var currentPage = 0
@@ -57,13 +63,23 @@ class UnregisteredUsersActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_unregistered_users)
 
+        showMode = intent.getStringExtra("SHOW_MODE") ?: "UNREGISTERED"
+
         btnBack = findViewById(R.id.btnBack)
+        tvHeaderTitle = findViewById(R.id.tvHeaderTitle)
         editSearch = findViewById(R.id.editSearch)
         spinnerUserType = findViewById(R.id.spinnerUserType)
+        spinnerStatus = findViewById(R.id.spinnerStatus)
         spinnerClass = findViewById(R.id.spinnerClass)
         recyclerViewUsers = findViewById(R.id.recyclerViewUsers)
         tvEmpty = findViewById(R.id.tvEmpty)
         progressBar = findViewById(R.id.progressBar)
+
+        if (showMode.equals("ALL", ignoreCase = true) || showMode.equals("TOTAL", ignoreCase = true)) {
+            tvHeaderTitle.text = "Total Users"
+        } else {
+            tvHeaderTitle.text = "Unregistered Users"
+        }
 
         btnBack.setOnClickListener { finish() }
 
@@ -102,14 +118,14 @@ class UnregisteredUsersActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val db = AppDatabase.getDatabase(this@UnregisteredUsersActivity)
-                
+
                 // Fetch classes
                 classList = db.classDao().getAllClasses()
                 classMap = classList.associate { it.classId to it.classShortName }
 
-                // Fetch unregistered students and teachers
-                allUnregisteredStudents = db.studentsDao().getUnregisteredStudents()
-                allUnregisteredTeachers = db.teachersDao().getUnregisteredTeachers()
+                // Fetch ALL students and teachers so filtering by status works dynamically
+                allStudents = db.studentsDao().getAllStudents()
+                allTeachers = db.teachersDao().getAllTeachers()
 
                 withContext(Dispatchers.Main) {
                     setupSpinners()
@@ -127,13 +143,26 @@ class UnregisteredUsersActivity : AppCompatActivity() {
     }
 
     private fun setupSpinners() {
-        // User Type Spinner
+        // 1. User Type Spinner ("All Users", "Students", "Teachers")
         val userTypes = arrayOf("All Users", "Students", "Teachers")
         val userTypeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, userTypes)
         userTypeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerUserType.adapter = userTypeAdapter
 
-        // Class Spinner
+        // 2. Status Spinner ("All Status", "Registered", "Unregistered")
+        val statuses = arrayOf("All Status", "Registered", "Unregistered")
+        val statusAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, statuses)
+        statusAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerStatus.adapter = statusAdapter
+
+        // Default selection based on Intent SHOW_MODE
+        if (showMode.equals("ALL", ignoreCase = true) || showMode.equals("TOTAL", ignoreCase = true)) {
+            spinnerStatus.setSelection(0) // "All Status"
+        } else {
+            spinnerStatus.setSelection(2) // "Unregistered"
+        }
+
+        // 3. Class Spinner ("All Classes", class 1, class 2...)
         val classesList = mutableListOf("All Classes")
         classesList.addAll(classList.map { it.classShortName })
         val classSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, classesList)
@@ -159,6 +188,7 @@ class UnregisteredUsersActivity : AppCompatActivity() {
         }
 
         spinnerUserType.onItemSelectedListener = listener
+        spinnerStatus.onItemSelectedListener = listener
         spinnerClass.onItemSelectedListener = listener
     }
 
@@ -179,6 +209,7 @@ class UnregisteredUsersActivity : AppCompatActivity() {
     private fun applyFiltersAndRefresh() {
         progressBar.visibility = View.VISIBLE
         val selectedType = spinnerUserType.selectedItem?.toString() ?: "All Users"
+        val selectedStatus = spinnerStatus.selectedItem?.toString() ?: "All Status"
         val selectedClassShort = spinnerClass.selectedItem?.toString() ?: "All Classes"
         val searchQuery = editSearch.text.toString().trim().lowercase()
 
@@ -192,12 +223,18 @@ class UnregisteredUsersActivity : AppCompatActivity() {
 
             // 1. Process Students
             if (selectedType == "All Users" || selectedType == "Students") {
-                val filteredStudents = allUnregisteredStudents.filter { student ->
+                val filteredStudents = allStudents.filter { student ->
+                    val isRegistered = !student.embedding.isNullOrBlank()
+                    val matchesStatus = when (selectedStatus) {
+                        "Registered" -> isRegistered
+                        "Unregistered" -> !isRegistered
+                        else -> true
+                    }
                     val matchesClass = selectedClassId == null || student.classId == selectedClassId
-                    val matchesSearch = searchQuery.isEmpty() || 
+                    val matchesSearch = searchQuery.isEmpty() ||
                             student.studentName.lowercase().contains(searchQuery) ||
                             student.studentId.lowercase().contains(searchQuery)
-                    matchesClass && matchesSearch
+                    matchesStatus && matchesClass && matchesSearch
                 }
                 combinedList.addAll(filteredStudents.map { student ->
                     UnregisteredUser(
@@ -205,24 +242,32 @@ class UnregisteredUsersActivity : AppCompatActivity() {
                         name = student.studentName,
                         type = "Student",
                         classId = student.classId,
-                        className = classMap[student.classId] ?: student.classId
+                        className = classMap[student.classId] ?: student.classId,
+                        isRegistered = !student.embedding.isNullOrBlank()
                     )
                 })
             }
 
             // 2. Process Teachers
             if (selectedType == "All Users" || selectedType == "Teachers") {
-                val filteredTeachers = allUnregisteredTeachers.filter { teacher ->
-                    val matchesSearch = searchQuery.isEmpty() || 
+                val filteredTeachers = allTeachers.filter { teacher ->
+                    val isRegistered = !teacher.embedding.isNullOrBlank()
+                    val matchesStatus = when (selectedStatus) {
+                        "Registered" -> isRegistered
+                        "Unregistered" -> !isRegistered
+                        else -> true
+                    }
+                    val matchesSearch = searchQuery.isEmpty() ||
                             teacher.staffName.lowercase().contains(searchQuery) ||
                             teacher.staffId.lowercase().contains(searchQuery)
-                    matchesSearch
+                    matchesStatus && matchesSearch
                 }
                 combinedList.addAll(filteredTeachers.map { teacher ->
                     UnregisteredUser(
                         id = teacher.staffId,
                         name = teacher.staffName,
-                        type = "Teacher"
+                        type = "Teacher",
+                        isRegistered = !teacher.embedding.isNullOrBlank()
                     )
                 })
             }
@@ -275,6 +320,11 @@ class UnregisteredUsersActivity : AppCompatActivity() {
     private fun updateEmptyState() {
         if (displayedUsers.isEmpty()) {
             tvEmpty.visibility = View.VISIBLE
+            tvEmpty.text = if (showMode.equals("ALL", ignoreCase = true) || showMode.equals("TOTAL", ignoreCase = true)) {
+                "No users found matching filters"
+            } else {
+                "No unregistered users found matching filters"
+            }
             recyclerViewUsers.visibility = View.GONE
         } else {
             tvEmpty.visibility = View.GONE
@@ -282,13 +332,14 @@ class UnregisteredUsersActivity : AppCompatActivity() {
         }
     }
 
-    // Unregistered User unified representation
+    // User representation (Both Students & Teachers)
     data class UnregisteredUser(
         val id: String,
         val name: String,
         val type: String,
         val classId: String? = null,
-        val className: String? = null
+        val className: String? = null,
+        val isRegistered: Boolean = false
     )
 
     // RecyclerView Adapter and ViewHolder
@@ -301,6 +352,7 @@ class UnregisteredUsersActivity : AppCompatActivity() {
             val tvUserId: TextView = view.findViewById(R.id.tvUserId)
             val tvUserClass: TextView = view.findViewById(R.id.tvUserClass)
             val tvUserTypeBadge: TextView = view.findViewById(R.id.tvUserTypeBadge)
+            val tvStatusBadge: TextView = view.findViewById(R.id.tvStatusBadge)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UserViewHolder {
@@ -323,8 +375,18 @@ class UnregisteredUsersActivity : AppCompatActivity() {
             } else {
                 holder.tvUserClass.visibility = View.GONE
                 holder.tvUserTypeBadge.text = "TEACHER"
-                holder.tvUserTypeBadge.setTextColor(0xFF7C3AED.toInt()) // purple text color
+                holder.tvUserTypeBadge.setTextColor(Color.parseColor("#7C3AED")) // purple text color
                 holder.tvUserTypeBadge.setBackgroundResource(R.drawable.bg_badge_teacher)
+            }
+
+            if (user.isRegistered) {
+                holder.tvStatusBadge.text = "REGISTERED"
+                holder.tvStatusBadge.setTextColor(Color.parseColor("#15803D")) // green text
+                holder.tvStatusBadge.setBackgroundResource(R.drawable.bg_badge_ongoing)
+            } else {
+                holder.tvStatusBadge.text = "UNREGISTERED"
+                holder.tvStatusBadge.setTextColor(Color.parseColor("#DC2626")) // red text
+                holder.tvStatusBadge.setBackgroundResource(R.drawable.bg_badge_student)
             }
         }
 

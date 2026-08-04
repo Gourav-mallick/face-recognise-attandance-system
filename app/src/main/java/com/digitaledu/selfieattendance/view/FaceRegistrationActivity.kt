@@ -135,9 +135,20 @@ class FaceRegistrationActivity : AppCompatActivity() {
 
         btnEnrollFace.setOnClickListener { handleActionClick() }
 
-        val cardCounter = findViewById<View>(R.id.cardCounter)
-        cardCounter?.setOnClickListener {
-            val intent = Intent(this, UnregisteredUsersActivity::class.java)
+        val cardTotalUsers = findViewById<View>(R.id.cardTotalUsers)
+        val cardUnregisteredUsers = findViewById<View>(R.id.cardUnregisteredUsers)
+
+        cardTotalUsers?.setOnClickListener {
+            val intent = Intent(this, UnregisteredUsersActivity::class.java).apply {
+                putExtra("SHOW_MODE", "ALL")
+            }
+            startActivity(intent)
+        }
+
+        cardUnregisteredUsers?.setOnClickListener {
+            val intent = Intent(this, UnregisteredUsersActivity::class.java).apply {
+                putExtra("SHOW_MODE", "UNREGISTERED")
+            }
             startActivity(intent)
         }
 

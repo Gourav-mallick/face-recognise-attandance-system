@@ -230,17 +230,19 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:orientation="horizontal"
-                    android:clickable="true"
-                    android:focusable="true"
                     android:weightSum="2">
 
                     <!-- Total Users Card -->
                     <LinearLayout
+                        android:id="@+id/cardTotalUsers"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginEnd="6dp"
                         android:background="@drawable/bg_card_premium"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
                         android:orientation="vertical"
                         android:padding="16dp">
 
@@ -278,11 +280,15 @@
 
                     <!-- Unregistered Card -->
                     <LinearLayout
+                        android:id="@+id/cardUnregisteredUsers"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginStart="6dp"
                         android:background="@drawable/bg_card_premium"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
                         android:orientation="vertical"
                         android:padding="16dp">
 
