@@ -90,47 +90,52 @@ class PeriodSelectActivity : ComponentActivity() {
             if (!::adapter.isInitialized) {
                 return@setOnClickListener
             }
-            val selected = adapter.getSelectedPeriodIds()
-            Log.i(AttendanceSyncMerger.FLOW_TAG, "PERIOD_CONTINUE_CLICK selectedPeriodIds=$selected")
-            if (selected.isEmpty()) {
+            val selectedMap = adapter.getSelectedPeriodMap() // Map<instId, spId>
+            Log.i(AttendanceSyncMerger.FLOW_TAG, "PERIOD_CONTINUE_CLICK selectedMap=$selectedMap")
+            if (selectedMap.isEmpty()) {
                 Log.w(AttendanceSyncMerger.FLOW_TAG, "PERIOD_CONTINUE_STOPPED no period selected")
                 Toast.makeText(this, "Please select at least one period, or tap Skip", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             lifecycleScope.launch(Dispatchers.IO) {
-                val selectedSpId = selected.single()
-                val selectedPeriod = db.schoolPeriodDao().getAll().firstOrNull { it.spId == selectedSpId }
-                if (selectedPeriod == null) {
+                val allPeriods = db.schoolPeriodDao().getAll()
+                val selectedPeriods = selectedMap.mapNotNull { (instId, spId) ->
+                    allPeriods.firstOrNull { it.spId == spId }
+                }
+
+                if (selectedPeriods.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@PeriodSelectActivity, "Selected period not found", Toast.LENGTH_SHORT).show()
                     }
                     return@launch
                 }
-                Log.d(TAG, "Teacher selected period ${selectedPeriod.spTitle} ($selectedSpId)")
-                val reportPeriodTitle = AttendanceSyncMerger.canonicalReportPeriodTitle(
-                    selectedPeriod.spTitle
-                )
-                Log.i(
-                    AttendanceSyncMerger.FLOW_TAG,
-                    "PERIOD_SELECTED spId=$selectedSpId title='${selectedPeriod.spTitle}' " +
-                        "reportTitle='$reportPeriodTitle' internetFetchStarting=true"
-                )
 
-                db.sessionDao().updateSessionSchoolPeriodId(sessionId, selectedSpId)
-                db.attendanceDao().updateAttendanceSchoolPeriod(
-                    sessionId,
-                    selectedSpId,
-                    reportPeriodTitle
-                )
+                val firstSelected = selectedPeriods.first()
+                Log.d(TAG, "Teacher selected ${selectedPeriods.size} period(s): ${selectedPeriods.map { it.spTitle }}")
+
+                selectedMap.forEach { (instId, spId) ->
+                    val periodObj = allPeriods.firstOrNull { it.spId == spId } ?: return@forEach
+                    val reportPeriodTitle = AttendanceSyncMerger.canonicalReportPeriodTitle(periodObj.spTitle)
+                    db.attendanceDao().updateAttendanceSchoolPeriodForInst(
+                        sessionId = sessionId,
+                        instId = instId,
+                        spId = spId,
+                        periodTitle = reportPeriodTitle
+                    )
+                }
+
+                val session = db.sessionDao().getSessionById(sessionId)
+                val sessionInstId = session?.instId ?: ""
+                val primarySpId = selectedMap[sessionInstId] ?: firstSelected.spId
+                db.sessionDao().updateSessionSchoolPeriodId(sessionId, primarySpId)
 
                 val localAttendance = db.attendanceDao().getAttendanceBySessionId(sessionId)
                 Log.i(
                     AttendanceSyncMerger.FLOW_TAG,
                     "LOCAL_ROWS_READY sessionId=$sessionId rows=${localAttendance.size}"
                 )
-                // Do not persist an existing server baseline until the teacher confirms
-                // that this submitted period should be opened for update/edit.
+
                 val mergeOutcome = AttendanceSyncMerger.fetchAndMerge(
                     context = this@PeriodSelectActivity,
                     localAttendanceList = localAttendance
@@ -154,7 +159,7 @@ class PeriodSelectActivity : ComponentActivity() {
                 } else if (mergeOutcome.hadExistingServerAttendance) {
                     withContext(Dispatchers.Main) {
                         showExistingAttendanceDialog(
-                            selectedPeriod = selectedPeriod,
+                            selectedPeriod = firstSelected,
                             localAttendance = localAttendance,
                             mergeOutcome = mergeOutcome
                         )
@@ -164,7 +169,7 @@ class PeriodSelectActivity : ComponentActivity() {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             this@PeriodSelectActivity,
-                            "Fresh attendance for ${selectedPeriod.spTitle}",
+                            "Fresh attendance updated",
                             Toast.LENGTH_SHORT
                         ).show()
                         navigateToOverview()
@@ -248,11 +253,27 @@ class PeriodSelectActivity : ComponentActivity() {
                 return@launch
             }
 
-            val instId = session.instId
+            val sessionInstId = session.instId
             val sessionDate = session.date
             autoAssignedSpId = session.attSchoolPeriodId
+
+            val attendances = db.attendanceDao().getAttendancesForSession(sessionId)
+            val instIdsInSession = attendances.map { it.instId.trim() }
+                .distinct()
+                .filter { it.isNotEmpty() }
+                .ifEmpty { listOf(sessionInstId) }
+
+            // Fetch institute names map
+            val instNamesMap = mutableMapOf<String, String>()
+            for (currInstId in instIdsInSession) {
+                val instName = db.instituteDao().getInstituteNameById(currInstId)
+                if (!instName.isNullOrBlank()) {
+                    instNamesMap[currInstId] = instName
+                }
+            }
+
             enforcedManualPeriodSelection = db.globalAttendanceConfigDao()
-                .getBySchoolId(instId)
+                .getBySchoolId(sessionInstId)
                 ?.enforcedManualPeriodSelection
                 ?: com.digitaledu.selfieattendance.utility.GlobalAttendanceConfigParser
                     .DEFAULT_MANUAL_PERIOD_SELECTION
@@ -261,8 +282,8 @@ class PeriodSelectActivity : ComponentActivity() {
                 binding.btnSkipPeriod.visibility = View.GONE
             }
 
-            // Get all school periods for this institute
-            val allPeriods = db.schoolPeriodDao().getAll().filter { it.instId == instId }
+            // Get all school periods for all institutes in this session
+            val allPeriods = db.schoolPeriodDao().getAll().filter { it.instId in instIdsInSession }
 
             if (allPeriods.isEmpty()) {
                 withContext(Dispatchers.Main) {
@@ -300,21 +321,49 @@ class PeriodSelectActivity : ComponentActivity() {
                 return@launch
             }
 
-            val livePeriod = if (isLiveTimePeriodSelectionEnabled) {
-                SchoolPeriodTimeResolver.resolveAutoPeriod(allPeriods, session.startTime)
-            } else {
-                null
+            // Resolve per-institute auto period
+            val resolvedInstPeriods = mutableMapOf<String, SchoolPeriod?>()
+            val initialSelectedPeriods = mutableMapOf<String, String>()
+
+            for (currInstId in instIdsInSession) {
+                val instPeriods = allPeriods.filter { it.instId == currInstId }
+                val resolved = SchoolPeriodTimeResolver.resolveAutoPeriod(instPeriods, session.startTime)
+                resolvedInstPeriods[currInstId] = resolved
+
+                val selectedSpId = resolved?.spId
+                    ?: instPeriods.firstOrNull()?.spId
+                    ?: ""
+
+                if (selectedSpId.isNotEmpty()) {
+                    initialSelectedPeriods[currInstId] = selectedSpId
+                }
+
+                if (resolved != null) {
+                    db.attendanceDao().updateAttendanceSchoolPeriodForInst(
+                        sessionId = sessionId,
+                        instId = currInstId,
+                        spId = resolved.spId,
+                        periodTitle = AttendanceSyncMerger.canonicalReportPeriodTitle(resolved.spTitle)
+                    )
+                } else {
+                    db.attendanceDao().updateAttendanceSchoolPeriodForInst(
+                        sessionId = sessionId,
+                        instId = currInstId,
+                        spId = "999",
+                        periodTitle = "Default / Extra Class"
+                    )
+                }
             }
 
-            if (isLiveTimePeriodSelectionEnabled && livePeriod != null) {
-                autoAssignedSpId = livePeriod.spId
-                db.sessionDao().updateSessionSchoolPeriodId(sessionId, livePeriod.spId)
-                db.attendanceDao().updateAttendanceSchoolPeriod(
-                    sessionId,
-                    livePeriod.spId,
-                    livePeriod.spTitle
-                )
-            } else if (isLiveTimePeriodSelectionEnabled && livePeriod == null) {
+            val primaryResolved = resolvedInstPeriods[sessionInstId]
+                ?: resolvedInstPeriods.values.firstOrNull()
+            autoAssignedSpId = primaryResolved?.spId ?: "999"
+            if (isLiveTimePeriodSelectionEnabled) {
+                db.sessionDao().updateSessionSchoolPeriodId(sessionId, autoAssignedSpId)
+            }
+            val livePeriod = primaryResolved
+
+            if (isLiveTimePeriodSelectionEnabled && livePeriod == null) {
                 withContext(Dispatchers.Main) {
                     binding.tvPeriodTitle.text = "Default School Period"
                     binding.tvAutoAssigned.text =
@@ -373,8 +422,6 @@ class PeriodSelectActivity : ComponentActivity() {
                 }
             }
 
-            // No server period lock check — periods are never blocked
-
             withContext(Dispatchers.Main) {
                 if (isLiveTimePeriodSelectionEnabled) {
                     binding.tvPeriodTitle.text = "School Period (Automatically Selected)"
@@ -387,9 +434,9 @@ class PeriodSelectActivity : ComponentActivity() {
 
                 adapter = PeriodSelectAdapter(
                     periodList = allPeriods,
-                    autoAssignedSpId = autoAssignedSpId,
+                    instNamesMap = instNamesMap,
                     submittedPeriodsMap = submittedPeriodsMap,
-                    initialSelectedPeriodId = livePeriod?.spId,
+                    initialSelectedPeriods = initialSelectedPeriods,
                     isSelectionLocked = isLiveTimePeriodSelectionEnabled,
                     onPeriodCheckedChange = { spId, isChecked ->
                         Log.d(TAG, "Period $spId checked=$isChecked")

@@ -368,160 +368,217 @@ class SubjectSelectActivity : ComponentActivity() {
                 return@launch
             }
 
-            val eligibleStudents = AttendanceRosterResolver.forSelection(
-                db = db,
-                classIds = selectedClasses,
-                selectedCourseIds = selectedCourseIds,
-                validCoursePeriods = validCps
-            )
+            // Check if every selected class is covered by at least one selected course
+            val coveredClassIds = validCps.map { it.classId }.toSet()
+            val uncoveredClassIds = selectedClasses.filter { it !in coveredClassIds }
 
-            if (isMassBunk && session != null) {
-                ensureMassBunkAttendance(db, session, eligibleStudents)
-            }
-
-            // 2) Get present students for this session
-            val sessionAttendances = db.attendanceDao().getAttendancesForSession(sessionId)
-            Log.d("HANDLE_CONTINUE", "sessionAttendances size = ${sessionAttendances.size}")
-
-            val studentsInSession = sessionAttendances.mapNotNull { att ->
-                try {
-                    db.studentsDao().getStudentById(att.studentId)
-                } catch (e: Exception) {
-                    Log.e("HANDLE_CONTINUE", "Student not found in DB: ${att.studentId}")
-                    null
+            if (uncoveredClassIds.isNotEmpty()) {
+                // Look up class names for user-friendly display
+                val uncoveredNames = uncoveredClassIds.map { classId ->
+                    val cls = db.classDao().getClassById(classId)
+                    cls?.classShortName ?: classId
                 }
-            }
+                val classListStr = uncoveredNames.joinToString("\n• ", prefix = "• ")
 
-            Log.d("HANDLE_CONTINUE", "studentsInSession size = ${studentsInSession.size}")
-            studentsInSession.forEach {
-                Log.d("HANDLE_CONTINUE_STUDENT", "id=${it.studentId}, name=${it.studentName}, classId=${it.classId}, instId=${it.instId}")
-            }
-
-            // 3) Load all schedules (local)
-            val schedules = db.studentScheduleDao().getAll()
-            Log.d("HANDLE_CONTINUE", "student_schedule rows = ${schedules.size}")
-
-            // 4) ✅ Find students NOT scheduled for the selected course(s)
-            // Logic: for each student -> requiredCpIds = validCps filtered by student.classId
-            // If student's saved schedules have no intersection with requiredCpIds -> not scheduled
-            val notScheduleStudents = studentsInSession.filter { student ->
-
-                val requiredCpIdsForStudent = validCps
-                    .filter { it.classId == student.classId }   // ✅ per-student class filter
-                    .map { it.cpId }
-                    .toSet()
-
-                val studentCpIds = schedules
-                    .filter { it.studentId == student.studentId }
-                    .map { it.cpId }
-                    .toSet()
-
-                val isNotEnrolled = (studentCpIds.intersect(requiredCpIdsForStudent)).isEmpty()
-
-                Log.d(
-                    "HANDLE_CONTINUE_CHECK",
-                    "student=${student.studentId} classId=${student.classId} " +
-                            "requiredCpIds=$requiredCpIdsForStudent " +
-                            "studentCpIds=$studentCpIds " +
-                            "NOT_ENROLLED=$isNotEnrolled"
-                )
-
-                isNotEnrolled
-            }
-
-            Log.d("HANDLE_CONTINUE", "notScheduleStudents size = ${notScheduleStudents.size}")
-
-            // 5) If not scheduled students exist -> show checkbox popup
-            if (notScheduleStudents.isNotEmpty()) {
+                Log.w("HANDLE_CONTINUE", "Uncovered classes: $uncoveredClassIds")
 
                 withContext(Dispatchers.Main) {
-
-                    val inflater = LayoutInflater.from(this@SubjectSelectActivity)
-                    val view = inflater.inflate(R.layout.dialog_student_not_schedule_checkbox_list, null)
-                    val container = view.findViewById<LinearLayout>(R.id.containerStudents)
-
-                    val tempSelected = mutableSetOf<String>()
-
-                    notScheduleStudents.forEach { s ->
-                        tempSelected.add(s.studentId)
-
-                        val cb = CheckBox(this@SubjectSelectActivity)
-                        cb.text = "${s.studentName} (${s.studentId})"
-                        cb.isChecked = true
-
-                        cb.setOnCheckedChangeListener { _, isChecked ->
-                            if (isChecked) tempSelected.add(s.studentId)
-                            else tempSelected.remove(s.studentId)
-                        }
-
-                        container.addView(cb)
-                    }
-
                     AlertDialog.Builder(this@SubjectSelectActivity)
-                        .setTitle("Students Not Schedule : (${notScheduleStudents.size})")
-                        .setView(view)
-                        .setPositiveButton("OK") { _, _ ->
-
+                        .setTitle("Subject not selected for some classes")
+                        .setMessage(
+                            "The following class(es) have no subject selected:\n\n" +
+                                "$classListStr\n\n" +
+                                "Do you want to discard attendance for these classes and continue?"
+                        )
+                        .setCancelable(false)
+                        .setPositiveButton("Discard & Continue") { dialog, _ ->
+                            dialog.dismiss()
                             lifecycleScope.launch(Dispatchers.IO) {
-
-                                var removedCount = 0
-
-                                // remove unchecked students from attendance
-                                notScheduleStudents.forEach { s ->
-                                    if (!tempSelected.contains(s.studentId)) {
-                                        removedCount++
-                                        Log.d(
-                                            "HANDLE_CONTINUE_DELETE",
-                                            "Removing attendance for studentId=${s.studentId} name=${s.studentName} session=$sessionId"
-                                        )
-                                        db.attendanceDao().deleteAttendanceForStudent(sessionId, s.studentId)
-                                    }
+                                // Delete attendance for uncovered classes
+                                uncoveredClassIds.forEach { classId ->
+                                    db.attendanceDao().deleteAttendanceForClass(sessionId, classId)
+                                    Log.d("HANDLE_CONTINUE", "Discarded attendance for class=$classId")
                                 }
-
-                                Log.d("HANDLE_CONTINUE", "removedCount=$removedCount")
-
-                                if (removedCount > 0) {
-                                    withContext(Dispatchers.Main) {
-                                        showToast("Unchecked $removedCount students, their attendance ignored by the system.")
-                                    }
-                                }
-
-                                // ✅ Scheduling call (IMPORTANT)
-                                // You should update your scheduling function to use validCps per student class.
-                                // Example:
-                                // scheduleStudentsForSelectedCoursesV2(tempSelected, validCps, selectedCourseIds)
-
-                                Log.d("HANDLE_CONTINUE", "Calling scheduling API for selected students = ${tempSelected.size}")
-                                // TODO: replace with your updated scheduling function
-                                scheduleStudentsForSelectedCourses(tempSelected, validCps)
-
-                                // continue flow
-                                val remainingAttendance = db.attendanceDao().getAttendancesForSession(sessionId)
-                                Log.d("HANDLE_CONTINUE", "remainingAttendance size after delete = ${remainingAttendance.size}")
-
-                                withContext(Dispatchers.Main) {
-                                    continueAndSaveSelectedCourse()
-                                }
+                                // Continue with only covered classes
+                                val coveredClasses = selectedClasses.filter { it in coveredClassIds }
+                                proceedWithContinue(
+                                    db, teacherId, coveredClasses, validCps
+                                )
                             }
                         }
-                        .setNegativeButton("Cancel") { dialog, _ ->
+                        .setNegativeButton("Go Back") { dialog, _ ->
                             dialog.dismiss()
+                            // User goes back to select more subjects
                         }
-                        .setCancelable(false)
                         .show()
                 }
-
-                Log.d("HANDLE_CONTINUE", "Popup shown -> stop until OK")
                 return@launch
             }
 
-            // 6) If all students scheduled -> continue directly
-            Log.d("HANDLE_CONTINUE", "All students are scheduled -> continue")
-            withContext(Dispatchers.Main) {
-                continueAndSaveSelectedCourse()
-            }
+            // All classes covered — proceed with full selection
+            proceedWithContinue(db, teacherId, selectedClasses, validCps)
 
             Log.d("HANDLE_CONTINUE", "---------------- END ----------------")
+        }
+    }
+
+    /**
+     * Extracted continuation of handleContinue() that runs AFTER
+     * the class-subject coverage validation has passed. The caller
+     * supplies the effective [classIds] (which may be a subset of
+     * the original selectedClasses if some were discarded).
+     */
+    private suspend fun proceedWithContinue(
+        db: AppDatabase,
+        teacherId: String,
+        classIds: List<String>,
+        validCps: List<CoursePeriod>
+    ) {
+        val session = db.sessionDao().getSessionById(sessionId) ?: return
+
+        val eligibleStudents = AttendanceRosterResolver.forSelection(
+            db = db,
+            classIds = classIds,
+            selectedCourseIds = selectedCourseIds,
+            validCoursePeriods = validCps
+        )
+
+        if (isMassBunk && session != null) {
+            ensureMassBunkAttendance(db, session, eligibleStudents)
+        }
+
+        // 2) Get present students for this session
+        val sessionAttendances = db.attendanceDao().getAttendancesForSession(sessionId)
+        Log.d("HANDLE_CONTINUE", "sessionAttendances size = ${sessionAttendances.size}")
+
+        val studentsInSession = sessionAttendances.mapNotNull { att ->
+            try {
+                db.studentsDao().getStudentById(att.studentId)
+            } catch (e: Exception) {
+                Log.e("HANDLE_CONTINUE", "Student not found in DB: ${att.studentId}")
+                null
+            }
+        }
+
+        Log.d("HANDLE_CONTINUE", "studentsInSession size = ${studentsInSession.size}")
+        studentsInSession.forEach {
+            Log.d("HANDLE_CONTINUE_STUDENT", "id=${it.studentId}, name=${it.studentName}, classId=${it.classId}, instId=${it.instId}")
+        }
+
+        // 3) Load all schedules (local)
+        val schedules = db.studentScheduleDao().getAll()
+        Log.d("HANDLE_CONTINUE", "student_schedule rows = ${schedules.size}")
+
+        // 4) Find students NOT scheduled for the selected course(s)
+        val notScheduleStudents = studentsInSession.filter { student ->
+
+            val requiredCpIdsForStudent = validCps
+                .filter { it.classId == student.classId }
+                .map { it.cpId }
+                .toSet()
+
+            val studentCpIds = schedules
+                .filter { it.studentId == student.studentId }
+                .map { it.cpId }
+                .toSet()
+
+            val isNotEnrolled = (studentCpIds.intersect(requiredCpIdsForStudent)).isEmpty()
+
+            Log.d(
+                "HANDLE_CONTINUE_CHECK",
+                "student=${student.studentId} classId=${student.classId} " +
+                        "requiredCpIds=$requiredCpIdsForStudent " +
+                        "studentCpIds=$studentCpIds " +
+                        "NOT_ENROLLED=$isNotEnrolled"
+            )
+
+            isNotEnrolled
+        }
+
+        Log.d("HANDLE_CONTINUE", "notScheduleStudents size = ${notScheduleStudents.size}")
+
+        // 5) If not scheduled students exist -> show checkbox popup
+        if (notScheduleStudents.isNotEmpty()) {
+
+            withContext(Dispatchers.Main) {
+
+                val inflater = LayoutInflater.from(this@SubjectSelectActivity)
+                val view = inflater.inflate(R.layout.dialog_student_not_schedule_checkbox_list, null)
+                val container = view.findViewById<LinearLayout>(R.id.containerStudents)
+
+                val tempSelected = mutableSetOf<String>()
+
+                notScheduleStudents.forEach { s ->
+                    tempSelected.add(s.studentId)
+
+                    val cb = CheckBox(this@SubjectSelectActivity)
+                    cb.text = "${s.studentName} (${s.studentId})"
+                    cb.isChecked = true
+
+                    cb.setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) tempSelected.add(s.studentId)
+                        else tempSelected.remove(s.studentId)
+                    }
+
+                    container.addView(cb)
+                }
+
+                AlertDialog.Builder(this@SubjectSelectActivity)
+                    .setTitle("Students Not Schedule : (${notScheduleStudents.size})")
+                    .setView(view)
+                    .setPositiveButton("OK") { _, _ ->
+
+                        lifecycleScope.launch(Dispatchers.IO) {
+
+                            var removedCount = 0
+
+                            // remove unchecked students from attendance
+                            notScheduleStudents.forEach { s ->
+                                if (!tempSelected.contains(s.studentId)) {
+                                    removedCount++
+                                    Log.d(
+                                        "HANDLE_CONTINUE_DELETE",
+                                        "Removing attendance for studentId=${s.studentId} name=${s.studentName} session=$sessionId"
+                                    )
+                                    db.attendanceDao().deleteAttendanceForStudent(sessionId, s.studentId)
+                                }
+                            }
+
+                            Log.d("HANDLE_CONTINUE", "removedCount=$removedCount")
+
+                            if (removedCount > 0) {
+                                withContext(Dispatchers.Main) {
+                                    showToast("Unchecked $removedCount students, their attendance ignored by the system.")
+                                }
+                            }
+
+                            Log.d("HANDLE_CONTINUE", "Calling scheduling API for selected students = ${tempSelected.size}")
+                            scheduleStudentsForSelectedCourses(tempSelected, validCps)
+
+                            // continue flow
+                            val remainingAttendance = db.attendanceDao().getAttendancesForSession(sessionId)
+                            Log.d("HANDLE_CONTINUE", "remainingAttendance size after delete = ${remainingAttendance.size}")
+
+                            withContext(Dispatchers.Main) {
+                                continueAndSaveSelectedCourse()
+                            }
+                        }
+                    }
+                    .setNegativeButton("Cancel") { dialog, _ ->
+                        dialog.dismiss()
+                    }
+                    .setCancelable(false)
+                    .show()
+            }
+
+            Log.d("HANDLE_CONTINUE", "Popup shown -> stop until OK")
+            return
+        }
+
+        // 6) If all students scheduled -> continue directly
+        Log.d("HANDLE_CONTINUE", "All students are scheduled -> continue")
+        withContext(Dispatchers.Main) {
+            continueAndSaveSelectedCourse()
         }
     }
 
@@ -935,12 +992,15 @@ class SubjectSelectActivity : ComponentActivity() {
         if (db.attendanceDao().getAttendancesForSession(sessionId).isNotEmpty()) return
 
         val teacherName = db.teachersDao().getTeacherById(session.teacherId)?.staffName ?: ""
-        val instName = db.instituteDao().getInstituteNameById(session.instId) ?: ""
-        val academicYear = db.instituteDao().getInstituteYearById(session.instId) ?: ""
         val currentTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
         val sessionEndTime = if (session.endTime.isNullOrBlank()) currentTime else session.endTime
 
         eligibleStudents.forEach { student ->
+            // Use student's own institute data
+            val studentInstId = student.instId.trim()
+            val instName = db.instituteDao().getInstituteNameById(studentInstId) ?: ""
+            val academicYear = db.instituteDao().getInstituteYearById(studentInstId) ?: ""
+
             db.attendanceDao().insertAttendance(
                 com.digitaledu.selfieattendance.db.entity.Attendance(
                     atteId = com.digitaledu.selfieattendance.db.entity.AttendanceIdGenerator.nextId(),
@@ -951,7 +1011,7 @@ class SubjectSelectActivity : ComponentActivity() {
                     status = "A",
                     markedAt = currentTime,
                     syncStatus = "pending",
-                    instId = session.instId,
+                    instId = studentInstId,
                     instShortName = instName,
                     date = session.date,
                     startTime = session.startTime,
@@ -981,6 +1041,11 @@ class SubjectSelectActivity : ComponentActivity() {
 
             val missingStudents = studentsForClass.filter { it.studentId !in existingStudentIds }
             for (student in missingStudents) {
+                // Use student's own institute data
+                val studentInstId = student.instId.trim()
+                val instName = db.instituteDao().getInstituteNameById(studentInstId) ?: ""
+                val academicYear = db.instituteDao().getInstituteYearById(studentInstId) ?: ""
+
                 val absentAtt = com.digitaledu.selfieattendance.db.entity.Attendance(
                     atteId = java.util.UUID.randomUUID().toString(),
                     sessionId = sessionId,
@@ -990,12 +1055,12 @@ class SubjectSelectActivity : ComponentActivity() {
                     status = "A",
                     markedAt = sampleAtt?.markedAt ?: java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()),
                     syncStatus = "pending",
-                    instId = session.instId ?: sampleAtt?.instId ?: "",
-                    instShortName = sampleAtt?.instShortName ?: "",
+                    instId = studentInstId,
+                    instShortName = instName,
                     date = session.date ?: sampleAtt?.date ?: "",
                     startTime = session.startTime ?: sampleAtt?.startTime ?: "",
                     endTime = session.endTime ?: sampleAtt?.endTime ?: "",
-                    academicYear = sampleAtt?.academicYear ?: "",
+                    academicYear = academicYear,
                     period = sampleAtt?.period ?: session.periodId ?: "",
                     teacherId = session.teacherId ?: sampleAtt?.teacherId ?: "",
                     teacherName = sampleAtt?.teacherName ?: "",

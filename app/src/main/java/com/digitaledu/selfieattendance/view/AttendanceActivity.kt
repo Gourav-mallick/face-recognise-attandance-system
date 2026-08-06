@@ -310,76 +310,37 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                     .distinctBy { it.id }
             }
 
-            when (availableInstitutes.size) {
-                0 -> {
-                    AlertDialog.Builder(this@AttendanceActivity)
-                        .setTitle("Institute not available")
-                        .setMessage(
-                            "No institute assigned to $teacherName is available on this device. " +
-                                "Please sync the latest institute data and try again."
-                        )
-                        .setPositiveButton("OK", null)
-                        .show()
-                }
-
-                1 -> {
-                    val institute = availableInstitutes.first()
-                    Toast.makeText(
-                        this@AttendanceActivity,
-                        "Institute: ${institute.shortName}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    startNewTeacherSession(
-                        teacherId,
-                        teacherName,
-                        classId,
-                        institute.id
+            if (availableInstitutes.isEmpty()) {
+                AlertDialog.Builder(this@AttendanceActivity)
+                    .setTitle("Institute not available")
+                    .setMessage(
+                        "No institute assigned to $teacherName is available on this device. " +
+                            "Please sync the latest institute data and try again."
                     )
-                }
-
-                else -> {
-                    var selectedIndex = -1
-                    val labels = availableInstitutes.map { institute ->
-                        val name = institute.title
-                            ?.takeIf { it.isNotBlank() }
-                            ?: institute.shortName
-                        "$name (${institute.id})"
-                    }.toTypedArray()
-
-                    val dialog = AlertDialog.Builder(this@AttendanceActivity)
-                        .setTitle("Choose institute")
-                        .setSingleChoiceItems(labels, -1) { _, which ->
-                            selectedIndex = which
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Continue", null)
-                        .create()
-
-                    dialog.setOnShowListener {
-                        val continueButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                        continueButton.isEnabled = false
-                        dialog.listView.setOnItemClickListener { _, _, position, _ ->
-                            selectedIndex = position
-                            dialog.listView.setItemChecked(position, true)
-                            continueButton.isEnabled = true
-                        }
-                        continueButton.setOnClickListener {
-                            if (selectedIndex !in availableInstitutes.indices) {
-                                return@setOnClickListener
-                            }
-                            val institute = availableInstitutes[selectedIndex]
-                            dialog.dismiss()
-                            startNewTeacherSession(
-                                teacherId,
-                                teacherName,
-                                classId,
-                                institute.id
-                            )
-                        }
-                    }
-                    dialog.show()
-                }
+                    .setPositiveButton("OK", null)
+                    .show()
+                return@launch
             }
+
+            // Use the first institute as the primary session institute.
+            // For multi-institute teachers, cross-institute students are
+            // allowed during scanning and their own instId is stored on
+            // each attendance record.
+            val primaryInstitute = availableInstitutes.first()
+            val instNames = availableInstitutes.joinToString(", ") { it.shortName }
+            Toast.makeText(
+                this@AttendanceActivity,
+                "Institute(s): $instNames",
+                Toast.LENGTH_SHORT
+            ).show()
+            Log.i("MULTI_INST", "Teacher $teacherName assigned to ${availableInstitutes.size} institute(s): $instNames")
+
+            startNewTeacherSession(
+                teacherId,
+                teacherName,
+                classId,
+                primaryInstitute.id
+            )
         }
     }
 
@@ -611,27 +572,30 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 return@launch
             }
 
-            if (student.instId.trim() != inst_id.trim()) {
+            // Multi-institute check: verify student's institute is in teacher's assigned institutes
+            val teacherInstIds = db.teacherInstituteMapDao().getInstituteIdsForTeacher(cycle.teacherId!!)
+            if (student.instId.trim() !in teacherInstIds.map { it.trim() }) {
                 Toast.makeText(
                     this@AttendanceActivity,
-                    "This student belongs to a different institute than the active session.",
+                    "This student belongs to an institute not assigned to the teacher.",
                     Toast.LENGTH_LONG
                 ).show()
                 Log.w(
                     TAG,
                     "Blocked cross-institute attendance: session=${cycle.sessionId}, " +
-                        "sessionInst=$inst_id, studentInst=${student.instId}"
+                        "teacherInsts=$teacherInstIds, studentInst=${student.instId}"
                 )
                 onResult(StudentAttendanceResult.NO_ACTIVE_SESSION)
                 return@launch
             }
 
-
-            Log.d("SYNC_DEBUG_attandance", "Institute Id get: $inst_id")
-            val instName = inst_id?.let { db.instituteDao().getInstituteNameById(it) } ?: ""
-            val academicYear = inst_id?.let { db.instituteDao().getInstituteYearById(it) } ?: ""
+            // Use student's own institute data (not session's)
+            val studentInstId = student.instId.trim()
+            Log.d("SYNC_DEBUG_attandance", "Student Institute Id: $studentInstId")
+            val instName = db.instituteDao().getInstituteNameById(studentInstId) ?: ""
+            val academicYear = db.instituteDao().getInstituteYearById(studentInstId) ?: ""
             Log.d("SYNC_DEBUG_attandance", "Academic Year: $academicYear")
-          Log.d("SYNC_DEBUG_attandance", "Institute Name: $instName")
+            Log.d("SYNC_DEBUG_attandance", "Institute Name: $instName")
 
 
             val attendance = Attendance(
@@ -643,14 +607,14 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 status = "P",
                 markedAt = timeStamp,
                 syncStatus = "pending",
-                instId = inst_id!!,
+                instId = studentInstId,
                 instShortName = instName,
                 date = currentDate,
                 startTime = startTime,
                 endTime = "",
                 academicYear = academicYear,
                 period = "",
-                teacherId =cycle.teacherId!!,
+                teacherId = cycle.teacherId!!,
                 teacherName = cycle.teacherName!!,
                 attSchoolPeriodId = attSchoolPeriodId,
                 isFaceCaptured = true

@@ -163,10 +163,17 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 }
 
                 val session = db.sessionDao().getSessionById(sessionId)
+                val allowedInstIds = db.instituteDao().getAll().map { it.id.trim() }.filter { it.isNotEmpty() }.toSet()
+
                 val consistencyError = AttendanceInstituteValidator.validate(
                     session?.instId,
-                    attendanceList.map { it.instId }
+                    attendanceList.map { it.instId },
+                    allowedInstIds
                 )
+
+                // Write debug report to text file upon submit attempt for easy inspection
+                writeAttendanceDebugFile(session?.instId, allowedInstIds, attendanceList, consistencyError)
+
                 if (consistencyError != null) {
                     Log.e(
                         "AttendanceOverview",
@@ -176,7 +183,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         binding.progressBar.visibility = View.GONE
                         android.widget.Toast.makeText(
                             this@AttendanceOverviewActivity,
-                            "Attendance institute data is inconsistent. Sync was blocked.",
+                            "Attendance institute data is inconsistent. Sync was blocked. Debug log saved to attendance_submit_debug.txt",
                             android.widget.Toast.LENGTH_LONG
                         ).show()
                     }
@@ -387,6 +394,58 @@ class AttendanceOverviewActivity : ComponentActivity() {
 
         }
 
+    }
+
+    private fun writeAttendanceDebugFile(
+        sessionInstId: String?,
+        allowedInstIds: Set<String>,
+        attendanceList: List<com.digitaledu.selfieattendance.db.entity.Attendance>,
+        consistencyError: String?
+    ) {
+        try {
+            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            val sb = StringBuilder()
+            sb.append("====================================================\n")
+            sb.append("ATTENDANCE SUBMIT DEBUG REPORT ($timestamp)\n")
+            sb.append("====================================================\n")
+            sb.append("Session ID: $sessionId\n")
+            sb.append("Session Primary Institute ID: $sessionInstId\n")
+            sb.append("Allowed Institute IDs in DB: $allowedInstIds\n")
+            sb.append("Consistency Validation Result: ${consistencyError ?: "SUCCESS (VALID)"}\n")
+            sb.append("Total Attendance Records: ${attendanceList.size}\n\n")
+
+            sb.append("ATTENDANCE OBJECTS DETAILS:\n")
+            sb.append("----------------------------------------------------\n")
+            attendanceList.forEachIndexed { index, att ->
+                sb.append("[$index] StudentID: ${att.studentId} | Name: ${att.studentName}\n")
+                sb.append("     InstID: '${att.instId}' | InstShortName: '${att.instShortName}'\n")
+                sb.append("     ClassID: '${att.classId}' | ClassShortName: '${att.classShortName}'\n")
+                sb.append("     CpID: '${att.cpId}' | CourseID: '${att.courseId}' | SubjectID: '${att.subjectId}'\n")
+                sb.append("     SchoolPeriodID: '${att.attSchoolPeriodId}' | PeriodTitle: '${att.period}'\n")
+                sb.append("     Status: '${att.status}' | FaceCaptured: ${att.isFaceCaptured} | ExplicitEdit: ${att.isExplicitEdit}\n")
+                sb.append("     SyncStatus: '${att.syncStatus}' | MarkedAt: '${att.markedAt}'\n")
+                sb.append("----------------------------------------------------\n")
+            }
+
+            val reportContent = sb.toString()
+            Log.d("ATTENDANCE_SUBMIT_DEBUG", reportContent)
+
+            // 1. External files directory
+            val externalDir = getExternalFilesDir(null)
+            if (externalDir != null) {
+                val debugFile = java.io.File(externalDir, "attendance_submit_debug.txt")
+                debugFile.writeText(reportContent)
+                Log.i("ATTENDANCE_SUBMIT_DEBUG", "Saved debug file to: ${debugFile.absolutePath}")
+            }
+
+            // 2. Internal files directory
+            val internalFile = java.io.File(filesDir, "attendance_submit_debug.txt")
+            internalFile.writeText(reportContent)
+            Log.i("ATTENDANCE_SUBMIT_DEBUG", "Saved debug file to: ${internalFile.absolutePath}")
+
+        } catch (e: Exception) {
+            Log.e("ATTENDANCE_SUBMIT_DEBUG", "Failed to write debug file: ${e.message}", e)
+        }
     }
 
     private fun showPopupWithOk(message: String) {

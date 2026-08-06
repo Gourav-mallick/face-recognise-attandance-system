@@ -36,4 +36,16 @@ class AttendanceInstituteValidatorTest {
             )
         )
     }
+
+    @Test
+    fun acceptsMultiInstituteAttendanceWhenAllowed() {
+        assertNull(
+            AttendanceInstituteValidator.validate(
+                sessionInstituteId = "I1",
+                attendanceInstituteIds = listOf("I1", "I2"),
+                allowedInstituteIds = setOf("I1", "I2")
+            )
+        )
+    }
 }
+
