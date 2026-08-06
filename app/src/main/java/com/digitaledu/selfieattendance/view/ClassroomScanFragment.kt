@@ -542,6 +542,7 @@ class ClassroomScanFragment : Fragment() {
                 var allOk = true
 
                 for (instId in instIdList) {
+                    repository.fetchAndSaveClasses(apiService, db, instId)
 
                     val st = repository.fetchAndSaveStudents(apiService, db, instId)
                     if (!st) allOk = false
@@ -552,12 +553,18 @@ class ClassroomScanFragment : Fragment() {
                     val sc = repository.fetchAndSaveStudentSchedulingData(apiService, db, instId)
                     if (!sc) allOk = false
 
+                    val pd = repository.fetchAndSaveSchoolPeriods(apiService, db, instId)
+                    if (!pd) allOk = false
+
                     // Refresh the latest server thresholds during a manual Device Sync.
                     // This also applies them to FaceDetectionConfig immediately.
                     repository.fetchAndSaveFaceDetectionConfig(apiService, db, instId)
 
                     // Refresh per-school Global Attendance period-selection rules.
                     repository.fetchAndSaveGlobalAttendanceConfig(apiService, db, instId)
+
+                    // Refresh Attendance Codes (Present, Absent, Late, Exempted)
+                    repository.fetchAndSaveAttendanceCodes(apiService, db, instId)
                 }
 
                 // Subjects do not depend on institute, sync once

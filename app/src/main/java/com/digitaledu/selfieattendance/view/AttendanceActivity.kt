@@ -420,10 +420,9 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             val liveTimePeriodSelection =
                 enforcedManualPeriodSelection.equals("Y", ignoreCase = true)
             val spId = if (liveTimePeriodSelection) {
-                SchoolPeriodTimeResolver.findStrictPeriod(periods, attendanceStartTime)?.spId.orEmpty()
+                SchoolPeriodTimeResolver.resolveAutoPeriod(periods, attendanceStartTime)?.spId.orEmpty()
             } else {
-                // Preserve the existing manual period selection starting state.
-                "999"
+                ""
             }
 
             Log.i(

@@ -11,6 +11,7 @@ import com.digitaledu.selfieattendance.db.entity.Class
 class ClassSelectAdapter(
     private val classList: List<Class>,
     private val preSelectedIds: List<String>,
+    private val classInstituteMap: Map<String, String> = emptyMap(),
     private val onClassCheckedChange: (classId: String, isChecked: Boolean, wasPreSelected: Boolean) -> Unit
 ) : RecyclerView.Adapter<ClassSelectAdapter.ClassViewHolder>() {
 
@@ -29,7 +30,14 @@ class ClassSelectAdapter(
         val item = classList[position]
         val wasPreSelected = preSelectedIds.contains(item.classId)
 
-        holder.binding.checkboxClass.text = item.classShortName
+        val instName = classInstituteMap[item.classId]
+        val displayText = if (!instName.isNullOrBlank()) {
+            "${item.classShortName} ($instName)"
+        } else {
+            item.classShortName
+        }
+
+        holder.binding.checkboxClass.text = displayText
         holder.binding.checkboxClass.setOnCheckedChangeListener(null)
         holder.binding.checkboxClass.isChecked = selectedClasses.contains(item.classId)
 

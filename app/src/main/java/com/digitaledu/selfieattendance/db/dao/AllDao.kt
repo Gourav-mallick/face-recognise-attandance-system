@@ -23,6 +23,7 @@ import com.digitaledu.selfieattendance.db.entity.StudentSchedule
 import com.digitaledu.selfieattendance.db.entity.TeacherClassMap
 import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
 import com.digitaledu.selfieattendance.db.entity.AttendanceCode
+import com.digitaledu.selfieattendance.db.entity.ClassInstituteMap
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 import com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig
 
@@ -215,11 +216,23 @@ interface ClassDao {
     @Query("SELECT * FROM classes WHERE classId = :classId")
     suspend fun getClassById(classId: String): Class?
 
-
     @Query("SELECT * FROM classes")
     suspend fun getAllClasses(): List<Class>
 
+    @Query("SELECT * FROM classes WHERE instId = :instId OR classId IN (SELECT classId FROM class_institute_map WHERE instId = :instId)")
+    suspend fun getClassesForInstitute(instId: String): List<Class>
+}
 
+@Dao
+interface ClassInstituteMapDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(maps: List<ClassInstituteMap>)
+
+    @Query("SELECT classId FROM class_institute_map WHERE instId = :instId")
+    suspend fun getClassIdsForInstitute(instId: String): List<String>
+
+    @Query("SELECT instId FROM class_institute_map WHERE classId = :classId")
+    suspend fun getInstituteIdsForClass(classId: String): List<String>
 }
 
 @Dao

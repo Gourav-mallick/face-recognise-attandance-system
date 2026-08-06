@@ -43,12 +43,13 @@ class ClassSelectActivity : ComponentActivity() {
         val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
 
         lifecycleScope.launch {
+            val session = db.sessionDao().getSessionById(sessionId)
+            val sessionInstId = session?.instId ?: ""
             val preSelected = if (isMassBunk) emptyList() else db.attendanceDao().getDistinctClassIdsForCurrentSession(sessionId)
             val allClasses = db.classDao().getAllClasses()
 
             // 🔹 Filter only preselected classes or teacher's mapped classes
             val classesToShow = if (isMassBunk) {
-                val session = db.sessionDao().getSessionById(sessionId)
                 val teacherId = session?.teacherId ?: ""
                 val mappedClassIds = db.teacherClassMapDao().getClassesForTeacher(teacherId)
                 allClasses.filter { mappedClassIds.contains(it.classId) }
@@ -56,9 +57,25 @@ class ClassSelectActivity : ComponentActivity() {
                 allClasses.filter { preSelected.contains(it.classId) }
             }
 
+            // 🔹 Map classId -> institute shortName for displaying class_name (institute_name)
+            val allInstitutesMap = db.instituteDao().getAll().associateBy { it.id }
+            val classInstituteMap = mutableMapOf<String, String>()
+
+            for (c in classesToShow) {
+                var instId = c.instId
+                if (instId.isNullOrBlank()) {
+                    val mappedInstIds = db.classInstituteMapDao().getInstituteIdsForClass(c.classId)
+                    instId = mappedInstIds.firstOrNull() ?: sessionInstId
+                }
+                val instName = allInstitutesMap[instId]?.shortName ?: if (instId.isNotBlank()) db.instituteDao().getInstituteNameById(instId) else null
+                if (!instName.isNullOrBlank()) {
+                    classInstituteMap[c.classId] = instName
+                }
+            }
+
             selectedClassIds.addAll(preSelected)
 
-            val adapter = ClassSelectAdapter(classesToShow, preSelected) { classId, isChecked, wasPreSelected ->
+            val adapter = ClassSelectAdapter(classesToShow, preSelected, classInstituteMap) { classId, isChecked, wasPreSelected ->
                 handleClassSelectionChange(classId, isChecked, wasPreSelected)
             }
 
@@ -116,43 +133,46 @@ class ClassSelectActivity : ComponentActivity() {
 
     private fun handleClassSelectionChange(classId: String, isChecked: Boolean, wasPreSelected: Boolean) {
         lifecycleScope.launch {
-            if (!isChecked && wasPreSelected) {
-                // Class was preselected → warn teacher before removing
-                val students = db.attendanceDao().getStudentsForClassInSession(sessionId, classId)
+            if (!isChecked) {
+                if (wasPreSelected) {
+                    // Class was preselected → warn teacher before removing
+                    val students = db.attendanceDao().getStudentsForClassInSession(sessionId, classId)
 
-                if (students.isNotEmpty()) {
-                  //  val studentListText = students.joinToString("\n") { "${it.studentId} - ${it.studentName}" }
-
-                    runOnUiThread {
-                        AlertDialog.Builder(this@ClassSelectActivity)
-                            .setTitle("Remove Attandance")
-                            .setMessage(
-                                "This will Ignore all attendance records for Class ID: ${classId}\nNumber of Students -\n${students.size} \n\n" +
-                                        "Are you sure?"
-                            )
-                            .setPositiveButton("Yes") { _, _ ->
-                                lifecycleScope.launch {
-                                    db.attendanceDao().deleteAttendanceForClass(sessionId, classId)
-                                    selectedClassIds.remove(classId)
-                                    Toast.makeText(
-                                        this@ClassSelectActivity,
-                                        "Attendance removed for ${students.size} student(s)",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                    if (students.isNotEmpty()) {
+                        runOnUiThread {
+                            AlertDialog.Builder(this@ClassSelectActivity)
+                                .setTitle("Remove Attandance")
+                                .setMessage(
+                                    "This will Ignore all attendance records for Class ID: ${classId}\nNumber of Students -\n${students.size} \n\n" +
+                                            "Are you sure?"
+                                )
+                                .setPositiveButton("Yes") { _, _ ->
+                                    lifecycleScope.launch {
+                                        db.attendanceDao().deleteAttendanceForClass(sessionId, classId)
+                                        selectedClassIds.remove(classId)
+                                        Toast.makeText(
+                                            this@ClassSelectActivity,
+                                            "Attendance removed for ${students.size} student(s)",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
-                            }
-                            .setNegativeButton("No") { dialog, _ ->
-                                dialog.dismiss()
-                                selectedClassIds.add(classId) // keep it checked again
-                                recreate() // refresh UI
-                            }
-                            .show()
+                                .setNegativeButton("No") { dialog, _ ->
+                                    dialog.dismiss()
+                                    selectedClassIds.add(classId) // keep it checked again
+                                    recreate() // refresh UI
+                                }
+                                .show()
+                        }
+                    } else {
+                        // no students found, just remove silently
+                        selectedClassIds.remove(classId)
                     }
                 } else {
-                    // no students found, just remove silently
+                    // Newly checked class unchecked → remove silently from selected set
                     selectedClassIds.remove(classId)
                 }
-            } else if (isChecked) {
+            } else {
                 selectedClassIds.add(classId)
             }
         }

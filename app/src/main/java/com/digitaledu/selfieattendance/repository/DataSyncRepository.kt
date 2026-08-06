@@ -39,6 +39,7 @@ class DataSyncRepository(context: Context) {
 
                 val studentsList = mutableListOf<Student>()
                 val classList = mutableListOf<Class>()
+                val classMapList = mutableListOf<ClassInstituteMap>()
 
                 for (i in 0 until dataArray.length()) {
                     val obj = dataArray.getJSONObject(i)
@@ -50,7 +51,8 @@ class DataSyncRepository(context: Context) {
                     val fingerData = obj.optString("fingerData", "")
                     val instId = instIds
                     studentsList.add(Student(studentId, studentName, classId, instId, fingerType, fingerData))
-                    classList.add(Class(classId, classShortName))
+                    classList.add(Class(classId, classShortName, instId))
+                    classMapList.add(ClassInstituteMap(classId, instId))
                 }
 
                 if (studentsList.isEmpty()) {
@@ -60,6 +62,7 @@ class DataSyncRepository(context: Context) {
 
                 db.studentsDao().insertAll(studentsList)
                 db.classDao().insertAll(classList)
+                db.classInstituteMapDao().insertAll(classMapList)
                 Log.d(TAG, "Inserted ${studentsList.size} students and ${classList.size} classes.")
                 Log.d(TAG, "Inserted ${studentsList} students.")
                 true
@@ -850,6 +853,57 @@ Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
             }
         } catch (e: Exception) {
             Log.e(TAG, "ATT_CODES_EXCEPTION: ${e.message}", e)
+            false
+        }
+    }
+
+    suspend fun fetchAndSaveClasses(
+        apiService: ApiService,
+        db: AppDatabase,
+        instId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val rParam = "api/v1/Class/List"
+            val dataParam = "{\"schoolId\":\"$instId\"}"
+            val response = apiService.getClassList(rParam, dataParam)
+
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = response.body()!!.string()
+                val json = JSONObject(jsonString)
+                val collection = json.optJSONObject("collection")
+                val dataArray = collection?.optJSONArray("response") ?: JSONArray()
+
+                val classList = mutableListOf<Class>()
+                val classMapList = mutableListOf<ClassInstituteMap>()
+
+                for (i in 0 until dataArray.length()) {
+                    val obj = dataArray.getJSONObject(i)
+                    val schoolId = obj.optString("schoolId", instId).ifBlank { instId }
+                    val classId = obj.optString("id", "")
+                    val title = obj.optString("title", "").ifBlank { obj.optString("short_name", "") }
+
+                    if (classId.isNotBlank()) {
+                        classList.add(Class(classId = classId, classShortName = title, instId = schoolId))
+                        classMapList.add(ClassInstituteMap(classId = classId, instId = schoolId))
+                        Log.d("CLASS_INSTITUTE_MAPPING", "🏫 Mapped Class -> Institute ID: $schoolId | Class ID: $classId | Class Title: '$title'")
+                    }
+                }
+
+                if (classList.isNotEmpty()) {
+                    db.classDao().insertAll(classList)
+                    db.classInstituteMapDao().insertAll(classMapList)
+                    Log.i("CLASS_INSTITUTE_MAPPING", "✅ Saved ${classList.size} classes for Institute [$instId]: ${classList.map { "${it.classShortName} (ID:${it.classId})" }}")
+                    true
+                } else {
+                    Log.w("CLASS_INSTITUTE_MAPPING", "⚠️ No classes found for institute $instId")
+                    false
+                }
+            } else {
+                Log.e(TAG, "FETCH_CLASSES_API_FAILED: Code ${response.code()}")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "FETCH_CLASSES_EXCEPTION: ${e.message}", e)
             false
         }
     }

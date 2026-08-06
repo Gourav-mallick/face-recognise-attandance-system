@@ -145,6 +145,9 @@ class SelectInstituteActivity : AppCompatActivity() {
 
                     // 🔥 NEW: Sync each institute one-by-one
                     selectedInstitutes.forEach { instId ->
+                        // 🔥 Classes
+                        repository.fetchAndSaveClasses(apiService, db, instId)
+
                         // 🔥 Students
                         val st = repository.fetchAndSaveStudents(apiService, db, instId)
                         if (!st) allOk = false

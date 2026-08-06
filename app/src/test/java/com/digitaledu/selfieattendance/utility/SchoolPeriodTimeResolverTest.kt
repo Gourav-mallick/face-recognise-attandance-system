@@ -2,48 +2,80 @@ package com.digitaledu.selfieattendance.utility
 
 import com.digitaledu.selfieattendance.db.entity.SchoolPeriod
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SchoolPeriodTimeResolverTest {
 
-    private val periods = listOf(
-        period("1", "Period 1", "10:00", "11:00"),
-        period("2", "Period 2", "11:00", "12:00")
+    private val period1 = SchoolPeriod(
+        spId = "P1",
+        spTitle = "Period 1 (9-10 AM)",
+        spStartTime = "09:00 AM",
+        spEndTime = "10:00 AM",
+        spIstTime = "09:00",
+        instId = "1"
     )
 
-    @Test
-    fun `10 59 selects period 1`() {
-        assertEquals("1", SchoolPeriodTimeResolver.findStrictPeriod(periods, "10:59")?.spId)
-    }
-
-    @Test
-    fun `11 00 selects period 2 without grace`() {
-        assertEquals("2", SchoolPeriodTimeResolver.findStrictPeriod(periods, "11:00")?.spId)
-    }
-
-    @Test
-    fun `11 01 selects period 2`() {
-        assertEquals("2", SchoolPeriodTimeResolver.findStrictPeriod(periods, "11:01")?.spId)
-    }
-
-    @Test
-    fun `outside configured periods has no fallback`() {
-        assertNull(SchoolPeriodTimeResolver.findStrictPeriod(periods, "12:01"))
-    }
-
-    @Test
-    fun `supports twelve hour API times`() {
-        val twelveHourPeriods = listOf(period("1", "Period 1", "10:00 AM", "11:00 AM"))
-        assertEquals("1", SchoolPeriodTimeResolver.findStrictPeriod(twelveHourPeriods, "10:30")?.spId)
-    }
-
-    private fun period(id: String, title: String, start: String, end: String) = SchoolPeriod(
-        spId = id,
-        spTitle = title,
-        spStartTime = start,
-        spEndTime = end,
-        spIstTime = start,
-        instId = "school"
+    private val period2 = SchoolPeriod(
+        spId = "P2",
+        spTitle = "Period 2 (11-12 PM)",
+        spStartTime = "11:00 AM",
+        spEndTime = "12:00 PM",
+        spIstTime = "11:00",
+        instId = "1"
     )
+
+    private val testPeriods = listOf(period1, period2)
+
+    @Test
+    fun testExactMatchWithinPeriodRange() {
+        val result1 = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "09:30")
+        assertNotNull(result1)
+        assertEquals("P1", result1?.spId)
+
+        val result2 = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "11:15")
+        assertNotNull(result2)
+        assertEquals("P2", result2?.spId)
+    }
+
+    @Test
+    fun testCase1BeforeFirstSchoolPeriodReturnsPeriod1() {
+        val resultEarly = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "08:30")
+        assertNotNull(resultEarly)
+        assertEquals("P1", resultEarly?.spId)
+
+        val resultMidnight = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "06:00")
+        assertNotNull(resultMidnight)
+        assertEquals("P1", resultMidnight?.spId)
+    }
+
+    @Test
+    fun testCase2AfterLastSchoolPeriodReturnsLastPeriod() {
+        val resultLate = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "12:30")
+        assertNotNull(resultLate)
+        assertEquals("P2", resultLate?.spId)
+
+        val resultEvening = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "17:00")
+        assertNotNull(resultEvening)
+        assertEquals("P2", resultEvening?.spId)
+    }
+
+    @Test
+    fun testCase3BreakGapBetweenPeriodsReturnsPastPeriod() {
+        // Gap is between 10:00 AM and 11:00 AM
+        val resultGap = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "10:30")
+        assertNotNull(resultGap)
+        assertEquals("P1", resultGap?.spId) // Should return Period 1 (past period before gap)
+
+        val resultBoundary = SchoolPeriodTimeResolver.resolveAutoPeriod(testPeriods, "10:00")
+        assertNotNull(resultBoundary)
+        assertEquals("P1", resultBoundary?.spId)
+    }
+
+    @Test
+    fun testEmptyPeriodListReturnsNull() {
+        val result = SchoolPeriodTimeResolver.resolveAutoPeriod(emptyList(), "09:30")
+        assertNull(result)
+    }
 }

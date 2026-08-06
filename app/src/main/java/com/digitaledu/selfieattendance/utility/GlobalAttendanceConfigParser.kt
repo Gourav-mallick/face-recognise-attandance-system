@@ -8,12 +8,18 @@ object GlobalAttendanceConfigParser {
     fun enforcedManualPeriodSelection(otherDetails: String?): String {
         if (otherDetails.isNullOrBlank()) return DEFAULT_MANUAL_PERIOD_SELECTION
         return try {
-            when (
-                JSONObject(otherDetails)
-                    .optString("enforcedManualPeriodSelection", DEFAULT_MANUAL_PERIOD_SELECTION)
-                    .trim()
-                    .uppercase()
-            ) {
+            var valStr = try {
+                JSONObject(otherDetails).optString("enforcedManualPeriodSelection", "")
+            } catch (_: Throwable) {
+                ""
+            }
+
+            if (valStr.isBlank()) {
+                val match = Regex(""""enforcedManualPeriodSelection"\s*:\s*"([^"]+)"""").find(otherDetails)
+                valStr = match?.groupValues?.get(1) ?: DEFAULT_MANUAL_PERIOD_SELECTION
+            }
+
+            when (valStr.trim().uppercase()) {
                 "Y" -> "Y"
                 else -> DEFAULT_MANUAL_PERIOD_SELECTION
             }

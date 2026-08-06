@@ -258,8 +258,7 @@ class PeriodSelectActivity : ComponentActivity() {
                     .DEFAULT_MANUAL_PERIOD_SELECTION
 
             withContext(Dispatchers.Main) {
-                binding.btnSkipPeriod.visibility =
-                    if (isLiveTimePeriodSelectionEnabled) View.GONE else View.VISIBLE
+                binding.btnSkipPeriod.visibility = View.GONE
             }
 
             // Get all school periods for this institute
@@ -302,22 +301,30 @@ class PeriodSelectActivity : ComponentActivity() {
             }
 
             val livePeriod = if (isLiveTimePeriodSelectionEnabled) {
-                SchoolPeriodTimeResolver.findStrictPeriod(allPeriods, session.startTime)
+                SchoolPeriodTimeResolver.resolveAutoPeriod(allPeriods, session.startTime)
             } else {
                 null
             }
 
-            if (isLiveTimePeriodSelectionEnabled && livePeriod == null) {
+            if (isLiveTimePeriodSelectionEnabled && livePeriod != null) {
+                autoAssignedSpId = livePeriod.spId
+                db.sessionDao().updateSessionSchoolPeriodId(sessionId, livePeriod.spId)
+                db.attendanceDao().updateAttendanceSchoolPeriod(
+                    sessionId,
+                    livePeriod.spId,
+                    livePeriod.spTitle
+                )
+            } else if (isLiveTimePeriodSelectionEnabled && livePeriod == null) {
                 withContext(Dispatchers.Main) {
                     binding.tvPeriodTitle.text = "Default School Period"
                     binding.tvAutoAssigned.text =
-                        "No configured period contains attendance start time ${session.startTime}."
+                        "No configured school periods found for institute."
                     binding.btnContinuePeriod.isEnabled = false
                     showDefaultPeriodWarning(
-                        title = "No Period Available at This Time",
-                        message = "Attendance started at ${session.startTime}, but no school period is configured for this time.\n\n" +
+                        title = "No Period Setup Available",
+                        message = "No school periods are configured for this institute.\n\n" +
                             "Attendance will be assigned to the default period (ID 999). " +
-                            "Please contact the support team to review and correct the period setup."
+                            "Please contact the support team to review and setup school periods."
                     )
                 }
                 return@launch
@@ -375,7 +382,7 @@ class PeriodSelectActivity : ComponentActivity() {
                         "Attendance start: ${session.startTime} • ${livePeriod?.spTitle}\nManual period changes are disabled."
                     binding.btnContinuePeriod.isEnabled = true
                 } else {
-                    binding.tvAutoAssigned.text = "Default Period ID: 999 (Out of Period / Extra Class)"
+                    binding.tvAutoAssigned.text = "Please select period(s) for this session below."
                 }
 
                 adapter = PeriodSelectAdapter(

@@ -83,8 +83,19 @@ data class Subject(
 @Parcelize
 data class Class(
     @PrimaryKey val classId: String,
-    val classShortName: String
+    val classShortName: String,
+    val instId: String? = null
 ) : Parcelable
+
+
+@Entity(
+    tableName = "class_institute_map",
+    primaryKeys = ["classId", "instId"]
+)
+data class ClassInstituteMap(
+    val classId: String,
+    val instId: String
+)
 
 
 @Entity(tableName = "teacher_class_map",

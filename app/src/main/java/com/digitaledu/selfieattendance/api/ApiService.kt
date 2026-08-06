@@ -42,6 +42,13 @@ interface ApiService {
         @Query("data") data: String
     ): Response<ResponseBody>
 
+    @GET("sims-services/digitalsims/")
+    suspend fun getClassList(
+        @Query("r") r: String = "api/v1/Class/List",
+        @Query("data") data: String
+    ): Response<ResponseBody>
+
+
 
 
 
