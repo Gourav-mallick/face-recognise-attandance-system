@@ -255,7 +255,176 @@ Estimating time for a crash fix requires breaking the work into **Discovery (50%
 
 ---
 
-## ❓ Q4: (Space reserved for future questions)
+## ❓ Q4: How do you manage local database schema changes or new entities when updating an APK, and how do you preserve existing local user data?
+
+---
+
+### 💡 1. Non-Technical Analogy: The "House Renovation"
+
+Imagine your app's local database (SQLite/Room) as a **Filing Cabinet** inside a user's office:
+- In **Version 1.0**, the cabinet has 2 drawers (*Student Name & Student ID*). Users store important offline files inside it.
+- In **Version 2.0**, your new app feature requires adding a 3rd drawer (*Face Biometric Embedding*) or a new compartment (*School Period Config*).
+
+#### ❌ The Destructive Approach (Bad):
+Throwing away the old filing cabinet and installing a brand new empty cabinet. 
+> **Result:** All existing files (user's saved offline attendance, offline records, settings) are **wiped out and lost forever!** Users will be very angry.
+
+#### ✅ The Migration Approach (Good / Professional):
+Sending a technician (a **Room DB Migration script**) to add the new 3rd drawer to the existing cabinet **without touching or disturbing the files in drawers #1 and #2**.
+> **Result:** The database structure is upgraded, and 100% of the user's existing data is **safely preserved**.
+
+---
+
+### 🛠️ 2. Technical Strategies for Database Migration in Android (Room DB)
+
+When using **Room Database** in Android, preserving local data during an APK update requires managing **Database Versioning** and **Migrations**.
+
+```
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 1. Modify Database Entity Classes (Add Field / Table)       │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 2. Increment Database Version (@Database(version = N + 1))  │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 3. Write Explicit Migration Script (MIGRATION_N_N+1)        │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 4. Register Migration in Room.databaseBuilder()             │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 5. Test APK Upgrade (Install Old APK -> Upgrade to New APK)  │
+  └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 📜 3. Real Code Examples of Migration Scenarios
+
+#### Scenario A: Adding a New Column to an Existing Table (Additive Change)
+When adding a new field (e.g. adding `isFaceCaptured` to the `attendance` table):
+
+```kotlin
+// Step 1: Update Entity
+@Entity(tableName = "attendance")
+data class Attendance(
+    @PrimaryKey val atteId: String,
+    val studentId: String,
+    val isFaceCaptured: Boolean = false // New field added
+)
+
+// Step 2: Write Migration (Version 5 -> 6)
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // SQL ALTER TABLE adds the column with a default value so existing rows are safe
+        db.execSQL("ALTER TABLE attendance ADD COLUMN isFaceCaptured INTEGER NOT NULL DEFAULT 0")
+    }
+}
+```
+
+---
+
+#### Scenario B: Adding a Completely New Entity / Table
+When adding a brand new table (e.g. `global_attendance_config` table):
+
+```kotlin
+// Write Migration (Version 6 -> 7)
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `global_attendance_config` (
+                `schoolId` TEXT NOT NULL,
+                `syear` TEXT NOT NULL,
+                `programConfId` TEXT NOT NULL,
+                `value` TEXT NOT NULL,
+                `otherDetails` TEXT NOT NULL,
+                `enforcedManualPeriodSelection` TEXT NOT NULL DEFAULT 'N',
+                PRIMARY KEY(`schoolId`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+```
+
+---
+
+#### Scenario C: Complex Data Transformation / Splitting Tables
+When transforming existing data (e.g., extracting comma-separated string `instId` into a normalized mapping table `teacher_institute_map`):
+
+```kotlin
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // 1. Create the new normalized table
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `teacher_institute_map` (
+                `teacherId` TEXT NOT NULL,
+                `instId` TEXT NOT NULL,
+                PRIMARY KEY(`teacherId`, `instId`)
+            )
+            """.trimIndent()
+        )
+
+        // 2. Read existing teacher records and migrate data without loss
+        db.query("SELECT staffId, instId FROM teachers WHERE instId IS NOT NULL AND TRIM(instId) != ''").use { cursor ->
+            val teacherIdIdx = cursor.getColumnIndexOrThrow("staffId")
+            val instIdIdx = cursor.getColumnIndexOrThrow("instId")
+            val insertStmt = db.compileStatement("INSERT OR IGNORE INTO teacher_institute_map(teacherId, instId) VALUES(?, ?)")
+
+            while (cursor.moveToNext()) {
+                val teacherId = cursor.getString(teacherIdIdx).trim()
+                val instIds = cursor.getString(instIdIdx).split(",")
+                for (id in instIds) {
+                    val trimmed = id.trim()
+                    if (trimmed.isNotEmpty()) {
+                        insertStmt.clearBindings()
+                        insertStmt.bindString(1, teacherId)
+                        insertStmt.bindString(2, trimmed)
+                        insertStmt.executeInsert()
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+### ⚠️ 4. Crucial Rules to Prevent Data Wiping in Production
+
+1. **NEVER use `fallbackToDestructiveMigration()` in Production:**
+   - Calling `.fallbackToDestructiveMigration()` tells Room: *"If a migration script is missing, wipe all database tables and start clean."*
+   - In production, this causes total data loss! Always provide explicit migration scripts.
+
+2. **Always increment `@Database(version = X)`:**
+   - If you modify an Entity but forget to increment the database version, Room will throw an `IllegalStateException` on app startup.
+
+3. **Use `exportSchema = true`:**
+   - Configured in `AppDatabase.kt` and `build.gradle.kts`:
+     ```kotlin
+     @Database(entities = [...], version = 7, exportSchema = true)
+     ```
+   - Room exports a JSON schema file for every version. This allows automated testing of migrations.
+
+4. **Always Test Upgrades Locally:**
+   - Install the **previous version APK** on a test phone -> Add some offline sample data -> Install the **new version APK** on top of it.
+   - Verify that all old data remains intact and the app launches smoothly without crashing!
+
+---
+
+## ❓ Q5: (Space reserved for future questions)
 *Add your next question here...*
+
 
 
