@@ -145,14 +145,14 @@ class UnregisteredUsersActivity : AppCompatActivity() {
     private fun setupSpinners() {
         // 1. User Type Spinner ("All Users", "Students", "Teachers")
         val userTypes = arrayOf("All Users", "Students", "Teachers")
-        val userTypeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, userTypes)
-        userTypeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val userTypeAdapter = ArrayAdapter(this, R.layout.item_spinner_selected, userTypes)
+        userTypeAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
         spinnerUserType.adapter = userTypeAdapter
 
         // 2. Status Spinner ("All Status", "Registered", "Unregistered")
         val statuses = arrayOf("All Status", "Registered", "Unregistered")
-        val statusAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, statuses)
-        statusAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val statusAdapter = ArrayAdapter(this, R.layout.item_spinner_selected, statuses)
+        statusAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
         spinnerStatus.adapter = statusAdapter
 
         // Default selection based on Intent SHOW_MODE
@@ -165,8 +165,8 @@ class UnregisteredUsersActivity : AppCompatActivity() {
         // 3. Class Spinner ("All Classes", class 1, class 2...)
         val classesList = mutableListOf("All Classes")
         classesList.addAll(classList.map { it.classShortName })
-        val classSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, classesList)
-        classSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val classSpinnerAdapter = ArrayAdapter(this, R.layout.item_spinner_selected, classesList)
+        classSpinnerAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
         spinnerClass.adapter = classSpinnerAdapter
 
         // Spinner Listeners

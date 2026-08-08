@@ -99,9 +99,17 @@
 
                     <Spinner
                         android:id="@+id/spinnerUserType"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:background="@null" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/outline_arrow_drop_down_24"
+                        app:tint="@color/text_gray"
+                        android:importantForAccessibility="no" />
                 </LinearLayout>
 
                 <!-- Status Spinner Container -->
@@ -117,9 +125,17 @@
 
                     <Spinner
                         android:id="@+id/spinnerStatus"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:background="@null" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/outline_arrow_drop_down_24"
+                        app:tint="@color/text_gray"
+                        android:importantForAccessibility="no" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -139,9 +155,17 @@
 
                 <Spinner
                     android:id="@+id/spinnerClass"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:background="@null" />
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/outline_arrow_drop_down_24"
+                    app:tint="@color/text_gray"
+                    android:importantForAccessibility="no" />
             </LinearLayout>
 
             <!-- RecyclerView for the list -->
