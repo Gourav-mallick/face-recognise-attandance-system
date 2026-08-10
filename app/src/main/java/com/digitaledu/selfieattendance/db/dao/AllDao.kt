@@ -291,8 +291,18 @@ interface CoursePeriodDao {
         courseIds: List<String>
     ): List<CoursePeriod>
 
+    @Query("""
+    SELECT * FROM course_periods
+    WHERE classId = :classId
+      AND courseId = :courseId
+""")
+    suspend fun getCoursePeriodsForClassAndCourse(
+        classId: String,
+        courseId: String
+    ): List<CoursePeriod>
 
-
+    @Query("SELECT * FROM course_periods WHERE classId = :classId")
+    suspend fun getCoursePeriodsForClass(classId: String): List<CoursePeriod>
 }
 
 
@@ -452,6 +462,9 @@ interface AttendanceDao {
         mpId: String?,
         mpLongTitle: String?
     )
+
+    @Query("UPDATE attendance SET attCoLectureCpIds = :coLectureCpIds WHERE sessionId = :sessionId AND classId = :classId")
+    suspend fun updateCoLectureCpIdsForClass(sessionId: String, classId: String, coLectureCpIds: String)
 
 
     @Query("SELECT * FROM attendance WHERE syncStatus = 'pending'")

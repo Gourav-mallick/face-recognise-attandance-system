@@ -244,6 +244,9 @@ data class Attendance(
     val isFaceCaptured: Boolean = false,
     /** True only when the teacher explicitly changed the status in Edit Attendance. */
     val isExplicitEdit: Boolean = false,
+    val attCoLectureCpIds: String? = null,
+    val toRemoveCoLecturerCpIds: String? = null,
+    val toAddCoLecturerCpIds: String? = null,
 ):Parcelable
 
 

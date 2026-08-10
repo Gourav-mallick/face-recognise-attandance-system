@@ -88,6 +88,46 @@ class AttendanceOverviewActivity : ComponentActivity() {
         }
     }
 
+    private data class CoTeacherItem(
+        val teacherId: String,
+        val teacherName: String,
+        val cpId: String,
+        var isVerified: Boolean
+    )
+
+    private var pendingCoTeacherItem: CoTeacherItem? = null
+    private var pendingClassOverviewData: ClassOverviewData? = null
+    private var activeCoTeacherList: MutableList<CoTeacherItem> = mutableListOf()
+
+    private val coTeacherFaceVerificationLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val item = pendingCoTeacherItem
+            if (item != null) {
+                item.isVerified = true
+                android.widget.Toast.makeText(
+                    this,
+                    "Face verified for ${item.teacherName}",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                val targetClass = pendingClassOverviewData
+                if (targetClass != null) {
+                    showCoLecturerSelectionDialog(targetClass, activeCoTeacherList)
+                }
+            }
+        } else {
+            val item = pendingCoTeacherItem
+            val teacherName = item?.teacherName ?: "Teacher"
+            android.widget.Toast.makeText(
+                this,
+                "Face verification failed/canceled for $teacherName",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+        pendingCoTeacherItem = null
+    }
+
     private fun loadOverviewData() {
         lifecycleScope.launch {
             val classSummaries = mutableListOf<ClassOverviewData>()
@@ -110,8 +150,24 @@ class AttendanceOverviewActivity : ComponentActivity() {
                 val unrecordedCount = (totalStudents - attendance.size).coerceAtLeast(0)
                 val absentCount = recordedAbsent + unrecordedCount
 
-                // Subject name (take from first attendance row)
-                val subjectName = attendance.firstOrNull()?.subjectTitle
+                // Subject name & Co-Lecturers
+                val sampleAtt = attendance.firstOrNull()
+                val subjectName = sampleAtt?.subjectTitle
+
+                val rawCpIds = sampleAtt?.attCoLectureCpIds.orEmpty()
+                val cpIdList = rawCpIds.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                val coLecturerNameList = mutableListOf<String>()
+                for (cpId in cpIdList) {
+                    val cpObj = db.coursePeriodDao().getCoursePeriodByCpId(cpId)
+                    val tId = cpObj?.teacherId
+                    val tName = if (!tId.isNullOrEmpty()) db.teachersDao().getTeacherNameById(tId) else null
+                    if (!tName.isNullOrEmpty()) {
+                        coLecturerNameList.add(tName)
+                    } else {
+                        coLecturerNameList.add("Teacher #$cpId")
+                    }
+                }
+                val coLecturerNames = if (coLecturerNameList.isNotEmpty()) coLecturerNameList.joinToString(", ") else null
 
                 classSummaries.add(
                     ClassOverviewData(
@@ -122,23 +178,155 @@ class AttendanceOverviewActivity : ComponentActivity() {
                         presentCount = presentCount,
                         lateCount = lateCount,
                         exemptedCount = exemptedCount,
-                        absentCount = absentCount
+                        absentCount = absentCount,
+                        coLecturerNames = coLecturerNames,
+                        coLectureCpIds = if (cpIdList.isNotEmpty()) rawCpIds else null
                     )
                 )
             }
 
-            val adapter = AttendanceOverviewAdapter(classSummaries) { selectedClassId ->
-                val intent = Intent(this@AttendanceOverviewActivity, EditAttendanceActivity::class.java)
-                intent.putExtra("CLASS_ID", selectedClassId)
-                intent.putExtra("SESSION_ID", sessionId)
-                intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
-                editAttendanceLauncher.launch(intent)
-            }
+            val adapter = AttendanceOverviewAdapter(
+                classSummaries,
+                onEditClick = { selectedClassId ->
+                    val intent = Intent(this@AttendanceOverviewActivity, EditAttendanceActivity::class.java)
+                    intent.putExtra("CLASS_ID", selectedClassId)
+                    intent.putExtra("SESSION_ID", sessionId)
+                    intent.putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+                    editAttendanceLauncher.launch(intent)
+                },
+                onAddCoLecturerClick = { classOverviewData ->
+                    showCoLecturerSelectionDialog(classOverviewData)
+                }
+            )
 
             binding.recyclerViewOverview.layoutManager = LinearLayoutManager(this@AttendanceOverviewActivity)
             binding.recyclerViewOverview.adapter = adapter
         }
     }
+
+    private fun showCoLecturerSelectionDialog(
+        classData: ClassOverviewData,
+        existingList: MutableList<CoTeacherItem>? = null
+    ) {
+        if (existingList != null) {
+            displayCoLecturerDialog(classData, existingList)
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val session = db.sessionDao().getSessionById(sessionId)
+            val primaryTeacherId = session?.teacherId.orEmpty()
+            val attendanceRows = db.attendanceDao().getAttendancesForClass(sessionId, classData.classId)
+            val existingCoLectureCpIds = attendanceRows.firstOrNull()?.attCoLectureCpIds.orEmpty()
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+
+            val activeCourseId = attendanceRows.firstOrNull()?.courseId.orEmpty()
+
+            val coursePeriods = if (activeCourseId.isNotBlank()) {
+                db.coursePeriodDao().getCoursePeriodsForClassAndCourse(classData.classId, activeCourseId)
+            } else {
+                db.coursePeriodDao().getCoursePeriodsForClass(classData.classId)
+            }
+
+            val candidates = mutableListOf<CoTeacherItem>()
+            val seenTeacherCpPair = mutableSetOf<String>()
+
+            for (cp in coursePeriods) {
+                val tId = cp.teacherId.orEmpty()
+                if (tId.isBlank() || tId == primaryTeacherId) continue
+
+                val pairKey = "$tId#${cp.cpId}"
+                if (seenTeacherCpPair.contains(pairKey)) continue
+                seenTeacherCpPair.add(pairKey)
+
+                val teacherObj = db.teachersDao().getTeacherById(tId)
+                val teacherName = teacherObj?.staffName ?: "Teacher #$tId"
+                val isAlreadyVerified = existingCoLectureCpIds.contains(cp.cpId)
+
+                candidates.add(
+                    CoTeacherItem(
+                        teacherId = tId,
+                        teacherName = teacherName,
+                        cpId = cp.cpId,
+                        isVerified = isAlreadyVerified
+                    )
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                if (candidates.isEmpty()) {
+                    android.widget.Toast.makeText(
+                        this@AttendanceOverviewActivity,
+                        "No co-lecturers assigned to this course/subject.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    return@withContext
+                }
+                displayCoLecturerDialog(classData, candidates)
+            }
+        }
+    }
+
+    private fun displayCoLecturerDialog(
+        classData: ClassOverviewData,
+        candidates: MutableList<CoTeacherItem>
+    ) {
+        activeCoTeacherList = candidates
+        pendingClassOverviewData = classData
+
+        val itemTitles = candidates.map { item ->
+            val statusText = if (item.isVerified) " [Verified]" else ""
+            "${item.teacherName} (CP ID: ${item.cpId})$statusText"
+        }.toTypedArray()
+
+        val checkedArray = BooleanArray(candidates.size) { candidates[it].isVerified }
+
+        var dialog: AlertDialog? = null
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle("Select Co-Lecturer for ${classData.className}")
+            .setMultiChoiceItems(itemTitles, checkedArray) { _, which, isChecked ->
+                val item = candidates[which]
+                if (isChecked) {
+                    if (!item.isVerified) {
+                        pendingCoTeacherItem = item
+                        dialog?.dismiss()
+
+                        val intent = Intent(this@AttendanceOverviewActivity, FaceVerificationActivity::class.java).apply {
+                            putExtra("USER_TYPE", "staff")
+                            putExtra("TEACHER_ID", item.teacherId)
+                            putExtra("TEACHER_NAME", item.teacherName)
+                        }
+                        coTeacherFaceVerificationLauncher.launch(intent)
+                    }
+                } else {
+                    item.isVerified = false
+                }
+            }
+            .setPositiveButton("Save") { d, _ ->
+                d.dismiss()
+                val verifiedCpIds = candidates.filter { it.isVerified }.map { it.cpId }.distinct().joinToString(",")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    db.attendanceDao().updateCoLectureCpIdsForClass(sessionId, classData.classId, verifiedCpIds)
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            this@AttendanceOverviewActivity,
+                            "Co-lecturers updated successfully",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        loadOverviewData()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
+
+        dialog = builder.create()
+        dialog.show()
+    }
+
 
 
     private fun submitAttendanceForSession() {
@@ -387,9 +575,9 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("atsaIsProxy","")
             put("atsaDistanceDeltaInMeter","")
             put("isSelfUsrAttMarked","")
-            put("attCoLectureCpIds","")
-            put("toRemoveCoLecturerCpIds","")
-            put("toAddCoLecturerCpIds","")
+            put("attCoLectureCpIds", att.attCoLectureCpIds ?: "")
+            put("toRemoveCoLecturerCpIds", att.toRemoveCoLecturerCpIds ?: "")
+            put("toAddCoLecturerCpIds", att.toAddCoLecturerCpIds ?: "")
             put("status", "A")
 
         }
@@ -476,5 +664,8 @@ data class ClassOverviewData(
     val presentCount: Int,
     val lateCount: Int,
     val exemptedCount: Int,
-    val absentCount: Int
+    val absentCount: Int,
+    val coLecturerNames: String? = null,
+    val coLectureCpIds: String? = null
 )
+

@@ -1032,9 +1032,9 @@ class ClassroomScanFragment : Fragment() {
                             put("atsaIsProxy", "")
                             put("atsaDistanceDeltaInMeter", "")
                             put("isSelfUsrAttMarked", "")
-                            put("attCoLectureCpIds", "")
-                            put("toRemoveCoLecturerCpIds", "")
-                            put("toAddCoLecturerCpIds", "")
+                            put("attCoLectureCpIds", att.attCoLectureCpIds ?: "")
+                            put("toRemoveCoLecturerCpIds", att.toRemoveCoLecturerCpIds ?: "")
+                            put("toAddCoLecturerCpIds", att.toAddCoLecturerCpIds ?: "")
                             put("status", "A")
                         }
                         attArray.put(attJson)

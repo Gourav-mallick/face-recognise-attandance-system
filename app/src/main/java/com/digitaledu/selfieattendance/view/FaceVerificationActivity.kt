@@ -55,6 +55,7 @@ class FaceVerificationActivity : ComponentActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
 
+    private var userType = "student"
     private var studentId = ""
     private var studentName = ""
     private var targetEmbedding: FloatArray? = null
@@ -76,8 +77,17 @@ class FaceVerificationActivity : ComponentActivity() {
         tvInstruction = findViewById(R.id.tvInstruction)
         btnCancel = findViewById(R.id.btnCancel)
 
-        studentId = intent.getStringExtra("STUDENT_ID").orEmpty()
-        studentName = intent.getStringExtra("STUDENT_NAME").orEmpty()
+        userType = intent.getStringExtra("USER_TYPE") ?: if (intent.hasExtra("TEACHER_ID")) "staff" else "student"
+        studentId = if (userType == "staff") {
+            intent.getStringExtra("TEACHER_ID") ?: intent.getStringExtra("STUDENT_ID").orEmpty()
+        } else {
+            intent.getStringExtra("STUDENT_ID").orEmpty()
+        }
+        studentName = if (userType == "staff") {
+            intent.getStringExtra("TEACHER_NAME") ?: intent.getStringExtra("STUDENT_NAME").orEmpty()
+        } else {
+            intent.getStringExtra("STUDENT_NAME").orEmpty()
+        }
         tvStudentName.text = studentName
         updateAttemptUi()
 
@@ -95,7 +105,11 @@ class FaceVerificationActivity : ComponentActivity() {
 
     private fun loadTargetEmbedding() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val value = db.studentsDao().getStudentById(studentId)?.embedding
+            val value = if (userType == "staff") {
+                db.teachersDao().getTeacherById(studentId)?.embedding
+            } else {
+                db.studentsDao().getStudentById(studentId)?.embedding
+            }
             val parsed = value
                 ?.split(",")
                 ?.mapNotNull { it.trim().toFloatOrNull() }
@@ -103,9 +117,10 @@ class FaceVerificationActivity : ComponentActivity() {
 
             if (parsed == null || parsed.size != YuNetSFaceEngine.SFACE_DIMENSIONS) {
                 withContext(Dispatchers.Main) {
+                    val entityName = if (userType == "staff") "teacher" else "student"
                     Toast.makeText(
                         this@FaceVerificationActivity,
-                        "No compatible registered face found for this student",
+                        "No compatible registered face found for this $entityName",
                         Toast.LENGTH_LONG
                     ).show()
                     setResult(Activity.RESULT_CANCELED)

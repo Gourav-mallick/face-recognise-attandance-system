@@ -7,7 +7,8 @@ import com.digitaledu.selfieattendance.databinding.ItemClassOverviewBinding
 
 class AttendanceOverviewAdapter(
     private val classList: List<ClassOverviewData>,
-    private val onEditClick: (String) -> Unit
+    private val onEditClick: (String) -> Unit,
+    private val onAddCoLecturerClick: (ClassOverviewData) -> Unit
 ) : RecyclerView.Adapter<AttendanceOverviewAdapter.ViewHolder>() {
 
     inner class ViewHolder(val binding: ItemClassOverviewBinding) : RecyclerView.ViewHolder(binding.root)
@@ -30,8 +31,20 @@ class AttendanceOverviewAdapter(
         holder.binding.textExempted.text = "Exempted: ${data.exemptedCount}"
         holder.binding.textAbsent.text = "Absent: ${data.absentCount}"
 
+        if (!data.coLecturerNames.isNullOrEmpty()) {
+            holder.binding.textCoLecturers.visibility = android.view.View.VISIBLE
+            holder.binding.textCoLecturers.text = "Co-Lecturers: ${data.coLecturerNames}"
+        } else {
+            holder.binding.textCoLecturers.visibility = android.view.View.GONE
+        }
+
         holder.binding.btnEdit.setOnClickListener {
             onEditClick(data.classId)
         }
+
+        holder.binding.btnAddCoLecturer.setOnClickListener {
+            onAddCoLecturerClick(data)
+        }
     }
 }
+
