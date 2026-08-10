@@ -577,7 +577,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("isSelfUsrAttMarked","")
             put("attCoLectureCpIds", att.attCoLectureCpIds ?: "")
             put("toRemoveCoLecturerCpIds", att.toRemoveCoLecturerCpIds ?: "")
-            put("toAddCoLecturerCpIds", att.toAddCoLecturerCpIds ?: "")
+            put("toAddCoLecturerCpIds", att.attCoLectureCpIds ?: "")
             put("status", "A")
 
         }
