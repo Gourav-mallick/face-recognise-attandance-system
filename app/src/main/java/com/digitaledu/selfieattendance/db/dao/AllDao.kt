@@ -446,8 +446,8 @@ interface AttendanceDao {
             subjectTitle = :subjectTitle,
             classShortName = :classShortName,
             mpId = :mpId,
-            mpLongTitle = :mpLongTitle
-
+            mpLongTitle = :mpLongTitle,
+            attCoLectureCpIds = NULL
         WHERE sessionId = :sessionId
     """)
     suspend fun updateAttendanceWithCourseDetails(

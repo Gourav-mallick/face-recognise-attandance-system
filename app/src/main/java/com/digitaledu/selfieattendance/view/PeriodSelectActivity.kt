@@ -56,13 +56,17 @@ class PeriodSelectActivity : ComponentActivity() {
         teacherId = intent.getStringExtra("TEACHER_ID") ?: ""
         selectedClasses = intent.getStringArrayListExtra("SELECTED_CLASSES") ?: arrayListOf()
 
-        // Disable back button to prevent skipping this screen
+        // Enable back navigation to SubjectSelectActivity for course/subject correction
         val backCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                Toast.makeText(this@PeriodSelectActivity, "Back disabled on this screen", Toast.LENGTH_SHORT).show()
+                navigateBackToSubjectSelect()
             }
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
+
+        binding.btnBack.setOnClickListener {
+            navigateBackToSubjectSelect()
+        }
 
         loadPeriods()
 
@@ -500,6 +504,18 @@ class PeriodSelectActivity : ComponentActivity() {
         startActivity(intent)
         getSharedPreferences("APP_STATE", MODE_PRIVATE).edit().clear().apply()
         getSharedPreferences("AttendancePrefs", MODE_PRIVATE).edit().clear().apply()
+        finish()
+    }
+
+    private fun navigateBackToSubjectSelect() {
+        val isMassBunk = intent.getBooleanExtra("IS_MASS_BUNK", false)
+        val intent = Intent(this@PeriodSelectActivity, SubjectSelectActivity::class.java).apply {
+            putExtra("SESSION_ID", sessionId)
+            putExtra("TEACHER_ID", teacherId)
+            putStringArrayListExtra("SELECTED_CLASSES", ArrayList(selectedClasses))
+            putExtra("IS_MASS_BUNK", isMassBunk)
+        }
+        startActivity(intent)
         finish()
     }
 
