@@ -28,6 +28,9 @@ import androidx.lifecycle.lifecycleScope
 import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.ml.ActiveLivenessVerifier
+import com.digitaledu.selfieattendance.ml.AntiSpoofConfig
+import com.digitaledu.selfieattendance.ml.MiniFASNetEngine
+import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
@@ -51,6 +54,8 @@ class FaceVerificationActivity : ComponentActivity() {
     private lateinit var db: AppDatabase
     private lateinit var faceEngine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var antiSpoofEngine: MiniFASNetEngine
+    private val temporalLivenessBuffer = TemporalLivenessBuffer()
     private lateinit var voiceGuidance: VoiceGuidance
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
@@ -94,6 +99,7 @@ class FaceVerificationActivity : ComponentActivity() {
         db = AppDatabase.getDatabase(this)
         faceEngine = YuNetSFaceEngine(applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
+        antiSpoofEngine = MiniFASNetEngine(applicationContext)
         voiceGuidance = VoiceGuidance(applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
         btnCancel.setOnClickListener {
@@ -176,6 +182,7 @@ class FaceVerificationActivity : ComponentActivity() {
 
             if (face == null) {
                 faceStableStart = 0L
+                temporalLivenessBuffer.reset()
                 previousFace = null
                 runOnUiThread {
                     landmarkOverlay.clear()
@@ -229,6 +236,26 @@ class FaceVerificationActivity : ComponentActivity() {
                 stable &&
                 now - faceStableStart >= LOCK_DURATION_MS
             ) {
+                // ── Anti-spoofing gate ──
+                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                    frame, face.bounds, AntiSpoofConfig.attendanceThreshold
+                )
+                temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+
+                if (!temporalResult.passed) {
+                    runOnUiThread {
+                        faceGuide.background.setTint(Color.RED)
+                        tvInstruction.text = temporalResult.guidance
+                        voiceGuidance.guide(temporalResult.guidance, "verification_antispoof:${antiSpoofResult.status}")
+                    }
+                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                        faceStableStart = 0L
+                    }
+                    return
+                }
+                // ── Anti-spoofing passed — proceed to SFace ──
+                temporalLivenessBuffer.reset()
                 isVerifying = true
                 val embedding = faceEngine.embedding(frame, face)
                 runOnUiThread { verifyEmbedding(embedding) }
@@ -296,6 +323,7 @@ class FaceVerificationActivity : ComponentActivity() {
         faceStableStart = 0L
         previousFace = null
         livenessVerifier.reset()
+        temporalLivenessBuffer.reset()
         voiceGuidance.resetGuidance()
         landmarkOverlay.clear()
     }
@@ -377,6 +405,7 @@ class FaceVerificationActivity : ComponentActivity() {
         cameraExecutor.shutdown()
         faceEngine.close()
         livenessVerifier.close()
+        antiSpoofEngine.close()
         voiceGuidance.close()
         super.onDestroy()
     }

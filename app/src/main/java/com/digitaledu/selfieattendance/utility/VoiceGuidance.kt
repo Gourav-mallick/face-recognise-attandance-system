@@ -77,6 +77,7 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
     fun guide(message: String, key: String = message) {
         if (
             closed ||
+            !isVoiceGuidanceEnabled ||
             SystemClock.elapsedRealtime() < guidanceMutedUntil ||
             key == lastGuidanceKey
         ) return
@@ -86,7 +87,7 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
 
     /** Interrupt guidance to announce a recognition or attendance outcome. */
     fun announce(message: String, key: String = message, onComplete: (() -> Unit)? = null) {
-        if (closed) {
+        if (closed || !isVoiceGuidanceEnabled) {
             onComplete?.invoke()
             return
         }
@@ -185,6 +186,16 @@ class VoiceGuidance(context: Context) : TextToSpeech.OnInitListener, AutoCloseab
     companion object {
         const val TAG = "VoiceGuidance"
         const val OUTCOME_GUIDANCE_PAUSE_MS = 2_200L
+
+        /**
+         * Global master key for voice/audio guidance.
+         *
+         * Set `VoiceGuidance.isVoiceGuidanceEnabled = false` (or `AntiSpoofConfig.enableAudioGuidance = false`)
+         * to disable all application audio/voice guidance output.
+         *
+         * Set `true` to enable application audio guidance.
+         */
+        @Volatile var isVoiceGuidanceEnabled: Boolean = false
 
         /**
          * Converts database-style names such as "GOURAV KUMAR" or

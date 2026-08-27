@@ -24,6 +24,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.ml.ActiveLivenessVerifier
+import com.digitaledu.selfieattendance.ml.AntiSpoofConfig
+import com.digitaledu.selfieattendance.ml.MiniFASNetEngine
+import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
@@ -47,6 +50,8 @@ class CameraCaptureActivity : AppCompatActivity() {
     private var imageAnalysis: ImageAnalysis? = null
     private lateinit var engine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var antiSpoofEngine: MiniFASNetEngine
+    private val temporalLivenessBuffer = TemporalLivenessBuffer()
     private lateinit var voiceGuidance: VoiceGuidance
 
     private var stableSince = 0L
@@ -69,6 +74,7 @@ class CameraCaptureActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         engine = YuNetSFaceEngine(applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
+        antiSpoofEngine = MiniFASNetEngine(applicationContext)
         voiceGuidance = VoiceGuidance(applicationContext)
         voiceGuidance.guide("Look at camera", "registration_start")
 
@@ -124,6 +130,7 @@ class CameraCaptureActivity : AppCompatActivity() {
                     enrollmentSamples.clear()
                     lastSampleAt = 0L
                     livenessVerifier.reset()
+                    temporalLivenessBuffer.reset()
                 }
                 runOnUiThread {
                     landmarkOverlay.clear()
@@ -203,6 +210,25 @@ class CameraCaptureActivity : AppCompatActivity() {
                 now - stableSince >= LOCK_DURATION_MS &&
                 now - lastSampleAt >= SAMPLE_INTERVAL_MS
             ) {
+                // ── Anti-spoofing gate (registration uses stricter threshold) ──
+                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                    frame, face.bounds, AntiSpoofConfig.registrationThreshold
+                )
+                temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.registrationThreshold)
+
+                if (!temporalResult.passed) {
+                    runOnUiThread {
+                        setGuide(Color.RED, temporalResult.guidance, "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%")
+                        voiceGuidance.guide(temporalResult.guidance, "registration_antispoof:${antiSpoofResult.status}")
+                    }
+                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                        stableSince = 0L
+                    }
+                    return
+                }
+                // ── Anti-spoofing passed — proceed to sample capture ──
+                temporalLivenessBuffer.reset()
                 captureEnrollmentObservation(frame, face, now)
             }
         } catch (error: Exception) {
@@ -224,6 +250,7 @@ class CameraCaptureActivity : AppCompatActivity() {
         lastSampleAt = 0L
         feedbackUntil = 0L
         livenessVerifier.reset()
+        temporalLivenessBuffer.reset()
     }
 
     private fun isStable(face: YuNetFace): Boolean {
@@ -396,6 +423,7 @@ class CameraCaptureActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
         engine.close()
         livenessVerifier.close()
+        antiSpoofEngine.close()
         voiceGuidance.close()
         super.onDestroy()
     }

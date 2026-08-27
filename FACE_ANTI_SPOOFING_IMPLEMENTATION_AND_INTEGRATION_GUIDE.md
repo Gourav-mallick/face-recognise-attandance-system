@@ -529,6 +529,21 @@ Before releasing to production, validate your threshold on an attack dataset con
 
 ---
 
+
+
+Step 1: Test with LIVENESS_THRESHOLD = 0.90
+        → If real students get rejected in low light → lower to 0.85
+        → If phone screen replay passes → raise to 0.93
+
+Step 2: Test with CROP_SCALE = 2.7
+        → If high-brightness OLED screens bypass → raise to 3.0 or 3.5
+        → If face crops become too zoomed out → stay at 2.7
+
+Step 3: Test with windowSize = 5
+        → If spoofs occasionally sneak through → raise to 7-10
+        → If attendance feels sluggish → lower to 3
+
+
 ## 6. Senior Engineer Summary Checklist
 
 - [x] **Separation of Concerns:** YuNet detects, Quality Gate filters, MiniFASNet verifies liveness, Active Challenge tests motion, SFace identifies.

@@ -19,6 +19,9 @@ import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Student
 import com.digitaledu.selfieattendance.ml.ActiveLivenessVerifier
+import com.digitaledu.selfieattendance.ml.AntiSpoofConfig
+import com.digitaledu.selfieattendance.ml.MiniFASNetEngine
+import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
@@ -71,6 +74,8 @@ class StudentScanFragment : Fragment() {
 
     private lateinit var faceEngine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var antiSpoofEngine: MiniFASNetEngine
+    private val temporalLivenessBuffer = TemporalLivenessBuffer()
     private lateinit var voiceGuidance: VoiceGuidance
     private val MIRROR_FRONT = true
 
@@ -125,6 +130,7 @@ class StudentScanFragment : Fragment() {
 
         faceEngine = YuNetSFaceEngine(requireContext().applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
+        antiSpoofEngine = MiniFASNetEngine(requireContext().applicationContext)
         voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -146,6 +152,7 @@ class StudentScanFragment : Fragment() {
         cameraExecutor.shutdown()
         faceEngine.close()
         livenessVerifier.close()
+        antiSpoofEngine.close()
         voiceGuidance.close()
         _viewFinder = null
         _faceGuide = null
@@ -223,6 +230,7 @@ class StudentScanFragment : Fragment() {
 
             if (face == null) {
                 faceStableStart = 0L
+                temporalLivenessBuffer.reset()
                 prevFace = null
                 runOnViewThread {
                     landmarkOverlay.clear()
@@ -247,19 +255,14 @@ class StudentScanFragment : Fragment() {
                 landmarkOverlay.show(face.landmarks, frame.width, frame.height)
                 faceGuide.background.setTint(
                     when {
-                        liveness.passed && quality.accepted && stable -> Color.GREEN
-                        quality.accepted -> Color.rgb(30, 94, 255)
-                        else -> Color.YELLOW
+                        !quality.accepted || !stable -> Color.YELLOW
+                        else -> Color.rgb(30, 94, 255) // BLUE while analyzing
                     }
                 )
-                tvInstruction.text = if (liveness.passed) quality.guidance else liveness.guidance
+                tvInstruction.text = if (!liveness.passed) liveness.guidance else if (!quality.accepted) quality.guidance else "Hold still — verifying..."
                 voiceGuidance.guide(
                     if (liveness.passed) quality.guidance else liveness.guidance,
-                    if (liveness.passed) {
-                        "student_quality:${quality.guidance}"
-                    } else {
-                        "student_liveness:${liveness.guidance}"
-                    }
+                    if (liveness.passed) "student_quality:${quality.guidance}" else "student_liveness:${liveness.guidance}"
                 )
                 tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
             }
@@ -268,9 +271,37 @@ class StudentScanFragment : Fragment() {
                 quality.accepted &&
                 stable &&
                 liveness.passed &&
-                now - faceStableStart >= 700 &&
+                now - faceStableStart >= 500 &&
                 !isVerifying
             ) {
+                // ── Anti-spoofing gate ──
+                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                    frame, face.bounds, AntiSpoofConfig.attendanceThreshold
+                )
+                temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+
+                if (!temporalResult.passed) {
+                    runOnViewThread {
+                        if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                            faceGuide.background.setTint(Color.RED)
+                            tvInstruction.text = antiSpoofResult.guidance
+                        } else {
+                            faceGuide.background.setTint(Color.rgb(30, 94, 255)) // Blue while buffering
+                            tvInstruction.text = "Hold still — verifying live face..."
+                        }
+                    }
+                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                        faceStableStart = 0L
+                    }
+                    return
+                }
+                // ── Anti-spoofing passed — proceed to SFace ──
+                runOnViewThread {
+                    faceGuide.background.setTint(Color.GREEN)
+                    tvInstruction.text = "Live face verified"
+                }
+                temporalLivenessBuffer.reset()
                 isVerifying = true
                 val embedding = faceEngine.embedding(frame, face)
                 verifyFace(embedding)
@@ -588,6 +619,7 @@ class StudentScanFragment : Fragment() {
     private fun done() {
         isVerifying = scanningPausedForDialog
         livenessVerifier.reset()
+        temporalLivenessBuffer.reset()
         voiceGuidance.resetGuidance()
         prevFace = null           //  reset motion reference
     }

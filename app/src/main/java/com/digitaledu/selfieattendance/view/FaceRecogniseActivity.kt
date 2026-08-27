@@ -32,6 +32,9 @@ import com.digitaledu.selfieattendance.R
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.Class
 import com.digitaledu.selfieattendance.ml.ActiveLivenessVerifier
+import com.digitaledu.selfieattendance.ml.AntiSpoofConfig
+import com.digitaledu.selfieattendance.ml.MiniFASNetEngine
+import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
@@ -73,6 +76,8 @@ class FaceRecogniseActivity : AppCompatActivity() {
     private lateinit var layoutClassSelector: View
     private lateinit var engine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
+    private lateinit var antiSpoofEngine: MiniFASNetEngine
+    private val temporalLivenessBuffer = TemporalLivenessBuffer()
     private lateinit var voiceGuidance: VoiceGuidance
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
@@ -112,6 +117,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
         engine = YuNetSFaceEngine(applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
+        antiSpoofEngine = MiniFASNetEngine(applicationContext)
         voiceGuidance = VoiceGuidance(applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
         setPausedUi()
@@ -224,6 +230,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
 
             if (face == null) {
                 resetTracking()
+                temporalLivenessBuffer.reset()
                 runOnUiThread {
                     landmarkOverlay.clear()
                     faceGuide.background.setTint(Color.YELLOW)
@@ -267,6 +274,27 @@ class FaceRecogniseActivity : AppCompatActivity() {
             }
 
             if (quality.accepted && stable && liveness.passed && now - stableSince >= LOCK_DURATION_MS) {
+                // ── Anti-spoofing gate ──
+                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                    frame, face.bounds, AntiSpoofConfig.attendanceThreshold
+                )
+                temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+
+                if (!temporalResult.passed) {
+                    runOnUiThread {
+                        faceGuide.background.setTint(Color.RED)
+                        tvScreenHint.text = temporalResult.guidance
+                        tvBottomHint.text = "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%"
+                        voiceGuidance.guide(temporalResult.guidance, "recognise_antispoof:${antiSpoofResult.status}")
+                    }
+                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                        stableSince = 0L
+                    }
+                    return
+                }
+                // ── Anti-spoofing passed — proceed to SFace ──
+                temporalLivenessBuffer.reset()
                 isVerifying = true
                 val embedding = engine.embedding(frame, face)
                 runOnUiThread {
@@ -389,6 +417,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
         lastFace = null
         isVerifying = false
         livenessVerifier.reset()
+        temporalLivenessBuffer.reset()
         voiceGuidance.resetGuidance()
         landmarkOverlay.clear()
         faceGuide.background.setTint(Color.YELLOW)
@@ -635,6 +664,7 @@ class FaceRecogniseActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
         engine.close()
         livenessVerifier.close()
+        antiSpoofEngine.close()
         voiceGuidance.close()
         super.onDestroy()
     }
