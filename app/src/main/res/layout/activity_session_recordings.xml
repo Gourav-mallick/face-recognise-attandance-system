@@ -3,11 +3,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:orientation="vertical"
-    android:background="#F4F6F9">
+    android:background="#1E293B">
 
     <!-- Top Action Bar -->
     <RelativeLayout
+        android:id="@+id/topBarLayout"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="#1E293B"
@@ -33,60 +35,69 @@
             android:textStyle="bold" />
     </RelativeLayout>
 
-    <!-- Storage Usage Banner -->
+    <!-- Main Content Container -->
     <LinearLayout
-        android:id="@+id/layoutStorageBanner"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="#E2E8F0"
-        android:padding="12dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#F4F6F9">
 
-        <TextView
-            android:id="@+id/tvStorageInfo"
-            android:layout_width="0dp"
+        <!-- Storage Usage Banner -->
+        <LinearLayout
+            android:id="@+id/layoutStorageBanner"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Device Storage Used: 0% (Cleanup threshold: 70%)"
-            android:textColor="#334155"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#E2E8F0"
+            android:padding="12dp">
 
+            <TextView
+                android:id="@+id/tvStorageInfo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Device Storage Used: 0% (Cleanup threshold: 70%)"
+                android:textColor="#334155"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvStorageStatusBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="NORMAL"
+                android:textColor="#166534"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="#DCFCE7"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp" />
+        </LinearLayout>
+
+        <!-- RecyclerView for Session Videos -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSessionRecordings"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:padding="12dp" />
+
+        <!-- Empty State -->
         <TextView
-            android:id="@+id/tvStorageStatusBadge"
+            android:id="@+id/tvEmptyState"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="NORMAL"
-            android:textColor="#166534"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:background="#DCFCE7"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp" />
+            android:layout_gravity="center"
+            android:text="No session recordings found"
+            android:textColor="#64748B"
+            android:textSize="16sp"
+            android:visibility="gone"
+            android:layout_marginTop="60dp" />
+
     </LinearLayout>
-
-    <!-- RecyclerView for Session Videos -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvSessionRecordings"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:padding="12dp" />
-
-    <!-- Empty State -->
-    <TextView
-        android:id="@+id/tvEmptyState"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="No session recordings found"
-        android:textColor="#64748B"
-        android:textSize="16sp"
-        android:visibility="gone"
-        android:layout_marginTop="60dp" />
 
 </LinearLayout>

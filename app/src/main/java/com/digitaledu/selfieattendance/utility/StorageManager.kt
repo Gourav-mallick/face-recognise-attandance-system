@@ -6,11 +6,9 @@ import android.os.StatFs
 import android.util.Log
 import com.digitaledu.selfieattendance.db.dao.AppDatabase
 import com.digitaledu.selfieattendance.db.entity.SessionVideo
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
 import java.io.File
 
 object StorageManager {
@@ -42,7 +40,9 @@ object StorageManager {
     }
 
     /**
-     * Checks available storage and initiates oldest-first cleanup if storage usage >= 70%.
+     * Checks available storage and initiates oldest-first cleanup if storage usage >= threshold (90%).
+     * Deletes oldest local recordings sequentially until storage drops below threshold,
+     * ensuring new session recordings can always be saved cleanly.
      */
     suspend fun checkAndRunOldestFirstCleanup(context: Context) {
         withContext(Dispatchers.IO) {
@@ -50,7 +50,7 @@ object StorageManager {
             Log.d(TAG, "Current device storage usage: ${String.format("%.2f", stats.usedPercentage)}%")
 
             if (stats.usedPercentage < STORAGE_THRESHOLD_PERCENT) {
-                Log.d(TAG, "Storage usage is below ${STORAGE_THRESHOLD_PERCENT}%. No cleanup needed.")
+                Log.d(TAG, "Storage usage (${String.format("%.2f", stats.usedPercentage)}%) is below ${STORAGE_THRESHOLD_PERCENT}%. No cleanup needed.")
                 return@withContext
             }
 
@@ -61,42 +61,45 @@ object StorageManager {
             val oldestRecordings = dao.getOldestSessionVideos()
 
             if (oldestRecordings.isEmpty()) {
-                Log.w(TAG, "No session recordings available for cleanup.")
+                Log.w(TAG, "No session recordings available in database for cleanup.")
                 return@withContext
             }
 
             for (recording in oldestRecordings) {
-                // Check storage again to see if space is now available
+                // Check storage again to see if usage has dropped below threshold
                 stats = getDeviceStorageStats()
                 if (stats.usedPercentage < STORAGE_THRESHOLD_PERCENT) {
                     Log.d(TAG, "Storage usage reduced to ${String.format("%.2f", stats.usedPercentage)}%. Stopping cleanup.")
                     break
                 }
 
-                // SAFETY RULE: Never delete if local file doesn't exist
-                val encFile = File(recording.encVideoPath)
+                // Resolve encrypted file path (including external/internal fallbacks)
+                var encFile = File(recording.encVideoPath)
+                if (!encFile.exists()) {
+                    val baseDir1 = context.getExternalFilesDir(null) ?: context.filesDir
+                    val fallback1 = File(File(baseDir1, "session_recordings"), encFile.name)
+                    val fallback2 = File(File(context.filesDir, "session_recordings"), encFile.name)
+                    if (fallback1.exists()) {
+                        encFile = fallback1
+                    } else if (fallback2.exists()) {
+                        encFile = fallback2
+                    }
+                }
 
-                // If remote upload is enabled, upload first then delete
                 if (UploadManager.isServerUploadEnabled) {
                     if (recording.uploadStatus == SessionVideo.UPLOAD_STATUS_UPLOADED) {
                         deleteLocalEncryptedCopy(dao, recording, encFile)
                     } else {
-                        Log.d(TAG, "Attempting upload before cleanup for session: ${recording.sessionId}")
+                        Log.d(TAG, "Attempting server upload before cleanup for session: ${recording.sessionId}")
                         UploadManager.uploadSessionRecording(context, recording) { success ->
-                            if (success) {
-                                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                                    deleteLocalEncryptedCopy(dao, recording, encFile)
-                                }
-                            } else {
-                                Log.w(TAG, "SAFETY RULE ENFORCED: Upload failed for session ${recording.sessionId}. Keeping local copy.")
+                            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                deleteLocalEncryptedCopy(dao, recording, encFile)
                             }
                         }
-
                     }
                 } else {
-                    // Local-only mode: Server upload disabled.
-                    // Keep local copy to prevent data loss. Log warning.
-                    Log.w(TAG, "Storage usage HIGH (${String.format("%.2f", stats.usedPercentage)}%), but server upload is disabled. Preserving local session video: ${recording.sessionId}")
+                    // Local mode: Delete oldest encrypted video file to free up storage for new session
+                    deleteLocalEncryptedCopy(dao, recording, encFile)
                 }
             }
         }
@@ -109,9 +112,7 @@ object StorageManager {
     ) {
         if (encFile.exists()) {
             val deleted = encFile.delete()
-            if (deleted) {
-                Log.d(TAG, "Deleted local encrypted recording: ${recording.encVideoPath}")
-            }
+            Log.d(TAG, "Deleted oldest local encrypted recording: ${encFile.absolutePath} (Result: $deleted)")
         }
         dao.updateUploadStatus(recording.sessionId, SessionVideo.UPLOAD_STATUS_DELETED_LOCAL)
     }

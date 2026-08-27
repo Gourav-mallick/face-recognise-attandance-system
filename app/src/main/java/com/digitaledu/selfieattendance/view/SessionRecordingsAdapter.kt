@@ -82,14 +82,12 @@ class SessionRecordingsAdapter(
         private val tvTimeRange: TextView = itemView.findViewById(R.id.tvTimeRange)
         private val tvStudentsPresent: TextView = itemView.findViewById(R.id.tvStudentsPresent)
         private val btnViewRecording: Button = itemView.findViewById(R.id.btnViewRecording)
-        private val tvStatusBadge: TextView = itemView.findViewById(R.id.tvStatusBadge)
 
         fun bind(video: SessionVideo) {
             tvTeacherInfo.text = "teacher-${video.teacherName}(${video.teacherId})"
             tvSessionDate.text = video.date
             tvTimeRange.text = "${video.startTime} – ${video.endTime}"
             tvStudentsPresent.text = "Students Present: ${video.studentCount}"
-            tvStatusBadge.text = video.uploadStatus
 
             btnViewRecording.setOnClickListener {
                 onPlayClicked(video)

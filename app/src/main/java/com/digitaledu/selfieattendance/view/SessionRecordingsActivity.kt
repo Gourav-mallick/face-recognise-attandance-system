@@ -31,6 +31,13 @@ class SessionRecordingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_session_recordings)
 
+        val topBarLayout = findViewById<View>(R.id.topBarLayout)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(topBarLayout) { v, insets ->
+            val statusBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            v.setPadding(v.paddingLeft, statusBarInsets.top, v.paddingRight, v.paddingBottom)
+            insets
+        }
+
         findViewById<ImageView>(R.id.btnBack).setOnClickListener {
             finish()
         }
