@@ -25,6 +25,8 @@ import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
+import com.digitaledu.selfieattendance.utility.RecordingManager
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -141,11 +143,31 @@ class StudentScanFragment : Fragment() {
         if (allPermissionsGranted()) startCamera()
         else requestPermissions(REQUIRED_PERMISSIONS, 101)
 
+        RecordingManager.onRecordingStateChanged = {
+            activity?.runOnUiThread {
+                updateRecordingIndicator()
+            }
+        }
+
         updatePresentCountUI()
+        updateRecordingIndicator()
+    }
+
+    private fun updateRecordingIndicator() {
+        val layoutRecordingBadge = view?.findViewById<View>(R.id.layoutRecordingBadge)
+        if (RecordingManager.isRecordingActive) {
+            layoutRecordingBadge?.visibility = View.VISIBLE
+        } else {
+            layoutRecordingBadge?.visibility = View.GONE
+        }
     }
 
     override fun onDestroyView() {
+        // Only release VideoCapture reference (breaks GC chain).
+        // Session state is preserved for recording lifecycle.
+        RecordingManager.releaseVideoCapture()
         imageAnalysis?.clearAnalyzer()
+
         imageAnalysis = null
         cameraProvider?.unbindAll()
         cameraProvider = null
@@ -189,16 +211,32 @@ class StudentScanFragment : Fragment() {
 
             analysis.setAnalyzer(cameraExecutor) { proxy -> processFrame(proxy) }
 
+            val videoCapture = RecordingManager.createVideoCapture()
+
             provider.unbindAll()
-            provider.bindToLifecycle(
-                viewLifecycleOwner,
-                CameraSelector.DEFAULT_FRONT_CAMERA,
-                preview,
-                analysis
-            )
+            try {
+                provider.bindToLifecycle(
+                    viewLifecycleOwner,
+                    CameraSelector.DEFAULT_FRONT_CAMERA,
+                    preview,
+                    analysis,
+                    videoCapture
+                )
+                RecordingManager.onVideoCaptureReady(requireContext(), videoCapture)
+                updateRecordingIndicator()
+            } catch (e: Exception) {
+                Log.e("StudentScanFragment", "Failed to bind video capture with preview/analysis", e)
+                provider.bindToLifecycle(
+                    viewLifecycleOwner,
+                    CameraSelector.DEFAULT_FRONT_CAMERA,
+                    preview,
+                    analysis
+                )
+            }
 
         }, ContextCompat.getMainExecutor(requireContext()))
     }
+
 
     private fun processFrame(imageProxy: ImageProxy) {
         if (scanningPausedForDialog) {
@@ -631,15 +669,17 @@ class StudentScanFragment : Fragment() {
         prevFace = null
         landmarkOverlay.clear()
         imageAnalysis?.clearAnalyzer()
-        imageAnalysis = null
-        cameraProvider?.unbindAll()
     }
 
     private fun resumeCameraAfterDialog() {
         if (!isAdded || view == null) return
         scanningPausedForDialog = false
         done()
-        startCamera()
+        if (imageAnalysis == null || cameraProvider == null) {
+            startCamera()
+        } else {
+            imageAnalysis?.setAnalyzer(cameraExecutor) { proxy -> processFrame(proxy) }
+        }
     }
 
 
@@ -734,6 +774,9 @@ class StudentScanFragment : Fragment() {
     }
 
     private fun discardSessionAndExit(sessionId: String) {
+        // Cancel any active/pending recording without saving
+        RecordingManager.cancelPendingAndStopRecording()
+
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(requireContext())
             db.attendanceDao().deleteAttendanceForSession(sessionId)
@@ -767,10 +810,12 @@ class StudentScanFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        updateRecordingIndicator()
         if (allPermissionsGranted() && !scanningPausedForDialog) {
             startCamera()
         }
     }
+
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

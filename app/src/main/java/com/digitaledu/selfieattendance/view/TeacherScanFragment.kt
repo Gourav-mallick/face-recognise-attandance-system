@@ -110,9 +110,27 @@ class TeacherScanFragment : Fragment() {
         voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+        com.digitaledu.selfieattendance.utility.RecordingManager.onRecordingStateChanged = {
+            activity?.runOnUiThread {
+                updateRecordingIndicator()
+            }
+        }
+
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) startCamera() else requestPermissions(arrayOf(Manifest.permission.CAMERA), 1001)
+
+        updateRecordingIndicator()
+    }
+
+
+    private fun updateRecordingIndicator() {
+        val layoutRecordingBadge = view?.findViewById<View>(R.id.layoutRecordingBadge)
+        if (com.digitaledu.selfieattendance.utility.RecordingManager.isRecordingActive) {
+            layoutRecordingBadge?.visibility = View.VISIBLE
+        } else {
+            layoutRecordingBadge?.visibility = View.GONE
+        }
     }
 
     private fun startCamera() {
@@ -129,15 +147,31 @@ class TeacherScanFragment : Fragment() {
                 }
             imageAnalysis = analysis
 
+            val videoCapture = com.digitaledu.selfieattendance.utility.RecordingManager.createVideoCapture()
+
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                viewLifecycleOwner,
-                CameraSelector.DEFAULT_FRONT_CAMERA,
-                preview,
-                analysis
-            )
+            try {
+                cameraProvider.bindToLifecycle(
+                    viewLifecycleOwner,
+                    CameraSelector.DEFAULT_FRONT_CAMERA,
+                    preview,
+                    analysis,
+                    videoCapture
+                )
+                com.digitaledu.selfieattendance.utility.RecordingManager.onVideoCaptureReady(requireContext(), videoCapture)
+                updateRecordingIndicator()
+            } catch (e: Exception) {
+                Log.e("TeacherScanFragment", "Failed to bind videoCapture, fallback to preview/analysis", e)
+                cameraProvider.bindToLifecycle(
+                    viewLifecycleOwner,
+                    CameraSelector.DEFAULT_FRONT_CAMERA,
+                    preview,
+                    analysis
+                )
+            }
         }, ContextCompat.getMainExecutor(requireContext()))
     }
+
 
     private fun processFrame(imageProxy: ImageProxy) {
         if (scanningPaused) {
@@ -478,7 +512,13 @@ class TeacherScanFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Only release VideoCapture reference (breaks GC chain).
+        // DO NOT call resetSession() — pending session params must survive
+        // so StudentScanFragment can pick them up via onVideoCaptureReady().
+        com.digitaledu.selfieattendance.utility.RecordingManager.releaseVideoCapture()
         imageAnalysis?.clearAnalyzer()
+
+
         imageAnalysis = null
         cameraExecutor?.shutdown()
         faceEngine.close()
@@ -502,10 +542,12 @@ class TeacherScanFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        updateRecordingIndicator()
 
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {
+
             startCamera()
         }
 
@@ -518,7 +560,8 @@ class TeacherScanFragment : Fragment() {
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
-                    // ✅ Clear saved screen if no session started
+                    // ✅ Cancel pending recording & clear saved screen if no session started
+                    com.digitaledu.selfieattendance.utility.RecordingManager.cancelPendingAndStopRecording()
                     val prefs = requireContext().getSharedPreferences("APP_STATE", Context.MODE_PRIVATE)
                     prefs.edit().remove("CURRENT_SCREEN").apply()
 

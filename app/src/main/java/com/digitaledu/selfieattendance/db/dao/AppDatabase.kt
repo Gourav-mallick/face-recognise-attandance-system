@@ -24,6 +24,7 @@ import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 import com.digitaledu.selfieattendance.db.entity.TeacherInstituteMap
 import com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig
 import com.digitaledu.selfieattendance.db.entity.ClassInstituteMap
+import com.digitaledu.selfieattendance.db.entity.SessionVideo
 
 
 
@@ -49,9 +50,10 @@ import com.digitaledu.selfieattendance.db.entity.ClassInstituteMap
     ProgramConfig::class,
     GlobalAttendanceConfig::class,
     TeacherInstituteMap::class,
-    ClassInstituteMap::class
+    ClassInstituteMap::class,
+    SessionVideo::class
     ],
-    version = 9, exportSchema = true)
+    version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun studentsDao(): StudentsDao
@@ -66,6 +68,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activeClassCycleDao(): ActiveClassCycleDao
     abstract fun teacherClassMapDao(): TeacherClassMapDao
     abstract fun teacherInstituteMapDao(): TeacherInstituteMapDao
+    abstract fun sessionVideoDao(): SessionVideoDao
+
 
     abstract fun studentScheduleDao(): StudentScheduleDao
 
@@ -222,6 +226,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_videos` (
+                        `sessionId` TEXT NOT NULL,
+                        `teacherId` TEXT NOT NULL,
+                        `teacherName` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `startTime` TEXT NOT NULL,
+                        `endTime` TEXT NOT NULL,
+                        `durationMs` INTEGER NOT NULL,
+                        `studentCount` INTEGER NOT NULL,
+                        `encVideoPath` TEXT NOT NULL,
+                        `ivBase64` TEXT NOT NULL,
+                        `uploadStatus` TEXT NOT NULL,
+                        `createdAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -237,13 +265,15 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
-                    MIGRATION_8_9
+                    MIGRATION_8_9,
+                    MIGRATION_9_10
                 )
                 .build()
                 INSTANCE = instance
                 instance
             }
         }
+
 
     }
 }

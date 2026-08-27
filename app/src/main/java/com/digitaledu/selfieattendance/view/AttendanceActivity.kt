@@ -100,6 +100,8 @@ class AttendanceActivity : AppCompatActivity() {
         WorkManager.getInstance(this)
             .enqueue(OneTimeWorkRequest.from(AutoSyncWorker::class.java))
 
+
+
         // 🔹 Check camera permission on app start
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
@@ -165,9 +167,17 @@ class AttendanceActivity : AppCompatActivity() {
 
             if (!existingForClass) {
                 //  Start a new classroom cycle (no active session yet)
-                val cycle = AttendanceCycle(classroomId, classroomName)
-                // Note: No teacher yet, teacher will scan next.
+                val sessionId = java.util.UUID.randomUUID().toString()
+                val cycle = AttendanceCycle(classroomId, classroomName, sessionId = sessionId)
                 currentVisibleClassroomId = classroomId
+
+                // 🔹 START RECORDING IMMEDIATELY on "Capture Attendance" click
+                com.digitaledu.selfieattendance.utility.RecordingManager.startRecording(
+                    context = applicationContext,
+                    sessionId = sessionId,
+                    teacherId = "PENDING",
+                    teacherName = "Teacher"
+                )
 
                 Toast.makeText(
                     this@AttendanceActivity,
@@ -412,7 +422,8 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
     ) {
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@AttendanceActivity)
-            val sessionId = UUID.randomUUID().toString()
+            val activeRecSessionId = com.digitaledu.selfieattendance.utility.RecordingManager.activeSessionId
+            val sessionId = if (!activeRecSessionId.isNullOrEmpty()) activeRecSessionId else UUID.randomUUID().toString()
             val startTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(attendanceStartedAt)
             Log.d("SESSION_DEBUG", "Session start time: $startTime")
             val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(attendanceStartedAt)
@@ -451,6 +462,21 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             saveActiveSession(newCycle)
             currentTeacherId = teacherId
 
+            // 🔹 Update teacher info in active recording session
+            com.digitaledu.selfieattendance.utility.RecordingManager.updateTeacherInfo(
+                teacherId = teacherId,
+                teacherName = teacherName
+            )
+            // Ensure recording is active
+            if (!com.digitaledu.selfieattendance.utility.RecordingManager.isRecordingActive) {
+                com.digitaledu.selfieattendance.utility.RecordingManager.startRecording(
+                    context = applicationContext,
+                    sessionId = sessionId,
+                    teacherId = teacherId,
+                    teacherName = teacherName
+                )
+            }
+
             val frag = StudentScanFragment.newInstance(teacherName, sessionId)
             val transaction = supportFragmentManager.beginTransaction()
             transaction.replace(R.id.fragment_container, frag, TAG_STUDENT)
@@ -458,6 +484,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
             transaction.commitAllowingStateLoss()
         }
     }
+
 
 
 
@@ -656,11 +683,18 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 .setPositiveButton("Yes") { _, _ ->
                     lifecycleScope.launch {
                         cycle.sessionId?.let { db.sessionDao().updateSessionEnd(it, currentTime) }
-                        cycle.sessionId?.let{db.attendanceDao().updateAttendanceEndTime(it, currentTime)}
+                        cycle.sessionId?.let { db.attendanceDao().updateAttendanceEndTime(it, currentTime) }
+
+                        // 🔹 Stop Session Video Recording automatically & encrypt video
+                        com.digitaledu.selfieattendance.utility.RecordingManager.stopRecording(
+                            context = applicationContext,
+                            studentCount = presentCount
+                        )
 
                         // remove from ActiveClassCycle table
                         removeActiveSession(classroomId, teacherId)
                         activeSessions.remove(Pair(classroomId, teacherId))
+
 
 
                         val broadcastIntent  = Intent("UPDATE_UNSUBMITTED_COUNT")
@@ -1081,6 +1115,14 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
             cycle.sessionId?.let { db.sessionDao().updateSessionEnd(it, currentTime) }
             cycle.sessionId?.let { db.attendanceDao().updateAttendanceEndTime(it, currentTime) }
+
+            // 🔹 Stop Session Video Recording & save encrypted video
+            val presentCount = if (!cycle.sessionId.isNullOrEmpty())
+                db.attendanceDao().getAttendancesForClass(cycle.sessionId!!, classroomId).size else 0
+            com.digitaledu.selfieattendance.utility.RecordingManager.stopRecording(
+                context = applicationContext,
+                studentCount = presentCount
+            )
 
             // remove from ActiveClassCycle table
             removeActiveSession(classroomId, teacherId)

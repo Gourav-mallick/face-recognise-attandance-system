@@ -390,3 +390,29 @@ data class GlobalAttendanceConfig(
     /** N keeps manual selection; Y enables strict live-time automatic selection. */
     val enforcedManualPeriodSelection: String = "N"
 )
+
+@Entity(tableName = "session_videos")
+@Parcelize
+data class SessionVideo(
+    @PrimaryKey val sessionId: String,
+    val teacherId: String,
+    val teacherName: String,
+    val date: String,
+    val startTime: String,
+    val endTime: String,
+    val durationMs: Long,
+    val studentCount: Int,
+    val encVideoPath: String,
+    val ivBase64: String,
+    val uploadStatus: String = UPLOAD_STATUS_LOCAL_ONLY,
+    val createdAtMillis: Long = System.currentTimeMillis()
+) : Parcelable {
+    companion object {
+        const val UPLOAD_STATUS_LOCAL_ONLY = "LOCAL_ONLY"
+        const val UPLOAD_STATUS_UPLOADING = "UPLOADING"
+        const val UPLOAD_STATUS_UPLOADED = "UPLOADED"
+        const val UPLOAD_STATUS_UPLOAD_FAILED = "UPLOAD_FAILED"
+        const val UPLOAD_STATUS_DELETED_LOCAL = "DELETED_LOCAL"
+    }
+}
+

@@ -151,9 +151,15 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
+    implementation("androidx.camera:camera-video:1.3.4")
+
+    // Media3 ExoPlayer for encrypted video playback
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-ui:1.3.1")
 
     // LeakCanary for memory leak detection in debug builds
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+
 
 }
 

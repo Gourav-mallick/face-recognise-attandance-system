@@ -120,6 +120,13 @@ class ClassroomScanFragment : Fragment() {
                 .show()
         }
 
+        val btnSessionRecordingsHistory = view.findViewById<View>(R.id.btnSessionRecordingsHistory)
+        btnSessionRecordingsHistory?.setOnClickListener {
+            val intent = Intent(requireContext(), SessionRecordingsActivity::class.java)
+            startActivity(intent)
+        }
+
+
 //TODO for logout
 //        val ivMenu = view.findViewById<View>(R.id.ivMenu)
 //

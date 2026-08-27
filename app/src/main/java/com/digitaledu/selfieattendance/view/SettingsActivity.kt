@@ -77,9 +77,15 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        findViewById<LinearLayout>(R.id.btnSessionRecordings)?.setOnClickListener {
+            val intent = Intent(this, SessionRecordingsActivity::class.java)
+            startActivity(intent)
+        }
+
         findViewById<ImageView>(R.id.btnEditProfile).setOnClickListener {
             Toast.makeText(this, "Profile editing is managed by Administrator", Toast.LENGTH_LONG).show()
         }
+
 
         findViewById<LinearLayout>(R.id.btnLogout).setOnClickListener {
             showLogoutDialog()

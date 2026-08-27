@@ -467,10 +467,60 @@
                             android:textColor="#64748B"
                             android:textSize="11sp" />
                     </LinearLayout>
+                </LinearLayout>
 
+
+                <!-- Session Video Recordings History Card -->
+                <LinearLayout
+                    android:id="@+id/btnSessionRecordingsHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/bg_dashed_border"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="16dp">
+
+                    <FrameLayout
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_circle_icon_accent">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@android:drawable/ic_menu_slideshow"
+                            app:tint="#3B82F6" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Session Video Recordings"
+                            android:textColor="#0F172A"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="View encrypted session history videos"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- Hidden/fake tvSyncStatus button layout from original code to keep logic intact -->
+
                 <LinearLayout
                     android:id="@+id/tvSyncStatus"
                     android:layout_width="match_parent"

@@ -26,6 +26,8 @@ import com.digitaledu.selfieattendance.db.entity.AttendanceCode
 import com.digitaledu.selfieattendance.db.entity.ClassInstituteMap
 import com.digitaledu.selfieattendance.db.entity.ProgramConfig
 import com.digitaledu.selfieattendance.db.entity.GlobalAttendanceConfig
+import com.digitaledu.selfieattendance.db.entity.SessionVideo
+
 
 
 @Dao
@@ -698,3 +700,25 @@ interface GlobalAttendanceConfigDao {
     @Query("DELETE FROM global_attendance_config")
     suspend fun clear()
 }
+
+@Dao
+interface SessionVideoDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSessionVideo(video: SessionVideo)
+
+    @Query("SELECT * FROM session_videos WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getSessionVideoById(sessionId: String): SessionVideo?
+
+    @Query("SELECT * FROM session_videos ORDER BY createdAtMillis DESC")
+    suspend fun getAllSessionVideos(): List<SessionVideo>
+
+    @Query("SELECT * FROM session_videos ORDER BY createdAtMillis ASC")
+    suspend fun getOldestSessionVideos(): List<SessionVideo>
+
+    @Query("UPDATE session_videos SET uploadStatus = :status WHERE sessionId = :sessionId")
+    suspend fun updateUploadStatus(sessionId: String, status: String)
+
+    @Query("DELETE FROM session_videos WHERE sessionId = :sessionId")
+    suspend fun deleteSessionVideo(sessionId: String)
+}
+
