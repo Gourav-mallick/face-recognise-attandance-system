@@ -15,8 +15,8 @@ android {
         applicationId = "com.digitaledu.selfieattendance"
         minSdk = 21
         targetSdk = 36
-        versionCode = 13
-        versionName = "2.0.8"
+        versionCode = 14
+        versionName = "2.0.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

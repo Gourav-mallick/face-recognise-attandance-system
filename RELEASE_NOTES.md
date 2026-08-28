@@ -1,7 +1,7 @@
-# 🚀 Selfie Attendance System — Release Notes
+# 🚀 Selfie Attendance System v2.0.9 (Build 14) — Release Notes
 
 ## 📌 Executive Summary
-This major release introduces enterprise-grade **Face Liveness & Anti-Spoofing security**, **AES-256 GCM Encrypted Session Video Recording**, **Automated Storage Management**, enhanced **Visual Guidance Controls**, and **Interactive Student Identity Verification** for flawless classroom attendance tracking.
+This major **v2.0.9 (Build 14)** release introduces enterprise-grade **Face Liveness & Anti-Spoofing security**, **AES-256 GCM Encrypted Session Video Recording**, **Automated Storage Management**, enhanced **Visual Guidance Controls**, and **Interactive Student Identity Verification** for flawless classroom attendance tracking.
 
 ---
 
