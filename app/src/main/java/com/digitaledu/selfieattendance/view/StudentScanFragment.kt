@@ -588,37 +588,61 @@ class StudentScanFragment : Fragment() {
 
                 Log.d("STUDENT_CLASS_CHECK", "Student ${matchedStudent.studentName} class = ${matchedStudent.classId}")
 
+                // 🔹 Pause camera scanning while showing identity confirmation dialog
+                pauseCameraForDialog()
 
-                // Mark attendance through AttendanceActivity logic (preserve everything)
-                (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent) { result ->
-                    val spokenName = VoiceGuidance.speakableName(matchedStudent.studentName)
-                    when (result) {
-                        AttendanceActivity.StudentAttendanceResult.MARKED ->
-                            voiceGuidance.announce(
-                                "$spokenName, attendance marked.",
-                                "student_marked:${matchedStudent.studentId}"
-                            )
+                val spokenName = VoiceGuidance.speakableName(matchedStudent.studentName)
+                voiceGuidance.announce(
+                    "Are you $spokenName?",
+                    "confirm_student_${matchedStudent.studentId}"
+                )
 
-                        AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
-                            voiceGuidance.announce(
-                                "$spokenName, already marked.",
-                                "student_already_marked:${matchedStudent.studentId}"
-                            )
+                // 🔹 Show confirmation popup: "Are you [Student Name]?"
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Confirm Identity")
+                    .setMessage("Are you ${matchedStudent.studentName}?")
+                    .setCancelable(false)
+                    .setPositiveButton("YES") { dialog, _ ->
+                        dialog.dismiss()
+                        // Mark attendance through AttendanceActivity logic (preserve everything)
+                        (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent) { result ->
+                            when (result) {
+                                AttendanceActivity.StudentAttendanceResult.MARKED ->
+                                    voiceGuidance.announce(
+                                        "$spokenName, attendance marked.",
+                                        "student_marked:${matchedStudent.studentId}"
+                                    )
 
-                        AttendanceActivity.StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS ->
-                            voiceGuidance.announce(
-                                "Already marked in another class.",
-                                "student_other_class:${matchedStudent.studentId}"
-                            )
+                                AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
+                                    voiceGuidance.announce(
+                                        "$spokenName, already marked.",
+                                        "student_already_marked:${matchedStudent.studentId}"
+                                    )
 
-                        AttendanceActivity.StudentAttendanceResult.NO_ACTIVE_SESSION ->
-                            voiceGuidance.announce(
-                                "No active session.",
-                                "student_no_session"
-                            )
+                                AttendanceActivity.StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS ->
+                                    voiceGuidance.announce(
+                                        "Already marked in another class.",
+                                        "student_other_class:${matchedStudent.studentId}"
+                                    )
+
+                                AttendanceActivity.StudentAttendanceResult.NO_ACTIVE_SESSION ->
+                                    voiceGuidance.announce(
+                                        "No active session.",
+                                        "student_no_session"
+                                    )
+                            }
+                            resumeCameraAfterDialog()
+                        }
                     }
-                    done()
-                }
+                    .setNegativeButton("NO") { dialog, _ ->
+                        dialog.dismiss()
+                        voiceGuidance.announce(
+                            "Identity unconfirmed. Next student.",
+                            "student_declined_${matchedStudent.studentId}"
+                        )
+                        resumeCameraAfterDialog()
+                    }
+                    .show()
             }
         }
     }
