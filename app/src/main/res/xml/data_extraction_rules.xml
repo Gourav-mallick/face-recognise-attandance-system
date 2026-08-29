@@ -1,19 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
+   Data extraction rules for Android API 31+ (Android 12+).
+   Excludes authentication/session SharedPreferences and the Room database
+   from both cloud backup and device-to-device transfer so that login
+   state is never restored after uninstall/reinstall or device migration.
+
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Exclude authentication SharedPreferences -->
+        <exclude domain="sharedpref" path="LoginPrefs.xml"/>
+        <exclude domain="sharedpref" path="APP_STATE.xml"/>
+        <exclude domain="sharedpref" path="AttendancePrefs.xml"/>
+        <exclude domain="sharedpref" path="SyncPrefs.xml"/>
+        <exclude domain="sharedpref" path="app_prefs.xml"/>
+
+        <!-- Exclude Room database files -->
+        <exclude domain="database" path="app_database"/>
+        <exclude domain="database" path="app_database-shm"/>
+        <exclude domain="database" path="app_database-wal"/>
+        <exclude domain="database" path="app_database-journal"/>
     </cloud-backup>
-    <!--
+
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- Exclude authentication SharedPreferences -->
+        <exclude domain="sharedpref" path="LoginPrefs.xml"/>
+        <exclude domain="sharedpref" path="APP_STATE.xml"/>
+        <exclude domain="sharedpref" path="AttendancePrefs.xml"/>
+        <exclude domain="sharedpref" path="SyncPrefs.xml"/>
+        <exclude domain="sharedpref" path="app_prefs.xml"/>
+
+        <!-- Exclude Room database files -->
+        <exclude domain="database" path="app_database"/>
+        <exclude domain="database" path="app_database-shm"/>
+        <exclude domain="database" path="app_database-wal"/>
+        <exclude domain="database" path="app_database-journal"/>
     </device-transfer>
-    -->
 </data-extraction-rules>
