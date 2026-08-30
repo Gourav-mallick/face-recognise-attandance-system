@@ -1042,6 +1042,7 @@ class ClassroomScanFragment : Fragment() {
                             put("attCoLectureCpIds", att.attCoLectureCpIds ?: "")
                             put("toRemoveCoLecturerCpIds", att.toRemoveCoLecturerCpIds ?: "")
                             put("toAddCoLecturerCpIds", att.toAddCoLecturerCpIds ?: "")
+                            put("spoofing_percentage", att.spoofingPercentage ?: "")
                             put("status", "A")
                         }
                         attArray.put(attJson)

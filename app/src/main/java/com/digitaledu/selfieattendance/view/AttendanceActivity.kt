@@ -491,6 +491,7 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
     // ----------------- Scan: Student -----------------
     private fun handleStudentScan(
         student: Student,
+        spoofingPercentage: String? = null,
         onResult: (StudentAttendanceResult) -> Unit = {}
     ) {
         lifecycleScope.launch {
@@ -644,7 +645,8 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
                 teacherId = cycle.teacherId!!,
                 teacherName = cycle.teacherName!!,
                 attSchoolPeriodId = attSchoolPeriodId,
-                isFaceCaptured = true
+                isFaceCaptured = true,
+                spoofingPercentage = spoofingPercentage
             )
 
 
@@ -1091,9 +1093,10 @@ private fun handleTeacherScan(teacherId: String, teacherName: String) {
 
     fun simulateStudentScan(
         student: Student,
+        spoofingPercentage: String? = null,
         onResult: (StudentAttendanceResult) -> Unit = {}
     ) {
-        handleStudentScan(student, onResult)
+        handleStudentScan(student, spoofingPercentage, onResult)
     }
 
 

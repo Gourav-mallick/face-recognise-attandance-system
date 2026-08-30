@@ -247,6 +247,7 @@ data class Attendance(
     val attCoLectureCpIds: String? = null,
     val toRemoveCoLecturerCpIds: String? = null,
     val toAddCoLecturerCpIds: String? = null,
+    val spoofingPercentage: String? = null,
 ):Parcelable
 
 

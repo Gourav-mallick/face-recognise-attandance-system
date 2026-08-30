@@ -578,6 +578,7 @@ class AttendanceOverviewActivity : ComponentActivity() {
             put("attCoLectureCpIds", att.attCoLectureCpIds ?: "")
             put("toRemoveCoLecturerCpIds", att.toRemoveCoLecturerCpIds ?: "")
             put("toAddCoLecturerCpIds", att.attCoLectureCpIds ?: "")
+            put("spoofing_percentage", att.spoofingPercentage ?: "")
             put("status", "A")
 
         }

@@ -342,7 +342,8 @@ class StudentScanFragment : Fragment() {
                 temporalLivenessBuffer.reset()
                 isVerifying = true
                 val embedding = faceEngine.embedding(frame, face)
-                verifyFace(embedding)
+                val spoofingPercentage = String.format(java.util.Locale.US, "%.2f", antiSpoofResult.score * 100f)
+                verifyFace(embedding, spoofingPercentage)
                 faceStableStart = 0L
             }
         } catch (e: Exception) {
@@ -375,7 +376,7 @@ class StudentScanFragment : Fragment() {
     // -----------------------------------------------------------------------
     // FACE MATCHING LOGIC ( use teachers.embedding + students.embedding)
     // -----------------------------------------------------------------------
-    private fun verifyFace(faceEmbedding: FloatArray) {
+    private fun verifyFace(faceEmbedding: FloatArray, spoofingPercentage: String? = null) {
         viewLifecycleOwner.lifecycleScope.launch {
             val db = AppDatabase.getDatabase(requireContext())
 
@@ -605,7 +606,7 @@ class StudentScanFragment : Fragment() {
                     .setPositiveButton("YES") { dialog, _ ->
                         dialog.dismiss()
                         // Mark attendance through AttendanceActivity logic (preserve everything)
-                        (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent) { result ->
+                        (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent, spoofingPercentage) { result ->
                             when (result) {
                                 AttendanceActivity.StudentAttendanceResult.MARKED ->
                                     voiceGuidance.announce(
