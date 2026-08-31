@@ -98,14 +98,30 @@ class TemporalLivenessBuffer {
     ): TemporalResult {
         val windowSize = AntiSpoofConfig.temporalWindowSize
         val frameCount = scores.size
+        val latestScore = if (scores.isEmpty()) 0f else scores.last()
 
-        // Not enough frames yet — always fail
+        // 🚀 Fast-Pass Early Exit: If the latest frame score is exceptionally high (>= 0.90),
+        // pass immediately on frame 1 without waiting for full window.
+        if (latestScore >= 0.90f && frameCount >= 1) {
+            if (AntiSpoofConfig.debugLogging) {
+                Log.d(tag, "🚀 Fast-Pass triggered: latestScore=${"%.4f".format(latestScore)} >= 0.90")
+            }
+            return TemporalResult(
+                passed = true,
+                frameCount = frameCount,
+                windowSize = windowSize,
+                score = latestScore,
+                guidance = "Live face verified"
+            )
+        }
+
+        // Not enough frames yet — wait for window to fill
         if (frameCount < windowSize) {
             return TemporalResult(
                 passed = false,
                 frameCount = frameCount,
                 windowSize = windowSize,
-                score = if (scores.isEmpty()) 0f else scores.last(),
+                score = latestScore,
                 guidance = "Verifying liveness... ($frameCount/$windowSize)"
             )
         }

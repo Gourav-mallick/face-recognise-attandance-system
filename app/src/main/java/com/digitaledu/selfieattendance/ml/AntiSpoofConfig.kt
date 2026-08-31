@@ -84,15 +84,15 @@ object AntiSpoofConfig {
      * Larger windows are more robust against single-frame noise but
      * increase the time before a decision is reached.
      */
-    @Volatile var temporalWindowSize: Int = 5
+    @Volatile var temporalWindowSize: Int = 3
 
     /**
      * Fraction of frames within the window that must individually pass
      * the liveness threshold for the overall decision to be LIVE.
      *
-     * `0.80` means 4 out of 5 frames must pass.
+     * `0.67` means 2 out of 3 frames must pass.
      */
-    @Volatile var requiredPassPercentage: Float = 0.80f
+    @Volatile var requiredPassPercentage: Float = 0.67f
 
     /**
      * Aggregation strategy used to combine scores across the temporal window.

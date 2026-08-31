@@ -56,6 +56,12 @@ class MiniFASNetEngine(context: Context) : AutoCloseable {
             val modelBytes = context.assets.open(AntiSpoofConfig.modelAssetPath).use { it.readBytes() }
             val opts = OrtSession.SessionOptions().apply {
                 setIntraOpNumThreads(2)
+                try {
+                    addXnnpack(mapOf("intra_op_num_threads" to "2"))
+                    Log.i(tag, "✔ XNNPACK execution provider enabled for MiniFASNet V2-SE")
+                } catch (e: Exception) {
+                    Log.w(tag, "XNNPACK execution provider not supported, falling back to CPU", e)
+                }
             }
             ortEnv.createSession(modelBytes, opts).also {
                 Log.i(tag, "✔ MiniFASNet V2-SE loaded (${AntiSpoofConfig.modelAssetPath})")
