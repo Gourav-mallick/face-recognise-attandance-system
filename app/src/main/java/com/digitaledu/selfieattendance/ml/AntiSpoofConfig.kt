@@ -54,7 +54,7 @@ object AntiSpoofConfig {
     /**
      * Softmax "real" probability above which a single frame is considered LIVE.
      */
-    @Volatile var livenessThreshold: Float = 0.85f
+    @Volatile var livenessThreshold: Float = 0.70f
 
     /**
      * Optional override threshold for registration flow.
