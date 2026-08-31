@@ -95,6 +95,12 @@ object AntiSpoofConfig {
     @Volatile var requiredPassPercentage: Float = 0.67f
 
     /**
+     * Single-frame score threshold for instant Fast-Pass bypass.
+     * Scores >= [fastPassThreshold] pass on frame 1 without waiting for temporal window.
+     */
+    @Volatile var fastPassThreshold: Float = 0.90f
+
+    /**
      * Aggregation strategy used to combine scores across the temporal window.
      *
      * Supported values:
@@ -146,9 +152,6 @@ object AntiSpoofConfig {
 
     /**
      * Master toggle for voice/audio guidance throughout the application.
-     *
-     * - `true`  → Audio voice guidance enabled (default)
-     * - `false` → All TTS voice audio output is muted/disabled
      */
     var enableAudioGuidance: Boolean
         get() = com.digitaledu.selfieattendance.utility.VoiceGuidance.isVoiceGuidanceEnabled
@@ -160,78 +163,60 @@ object AntiSpoofConfig {
 
     /**
      * Parse a JSON object and overwrite any matching fields.
-     * Missing keys are silently skipped (partial update safe).
-     *
-     * Expected structure:
-     * ```json
-     * {
-     *   "antiSpoofing": {
-     *     "model": { "assetPath": "...", "cropScale": 2.7 },
-     *     "thresholds": {
-     *       "livenessThreshold": 0.90,
-     *       "registrationThresholdOverride": 0.93,
-     *       "attendanceThresholdOverride": null
-     *     },
-     *     "temporal": {
-     *       "windowSize": 5,
-     *       "requiredPassPercentage": 0.80,
-     *       "aggregationStrategy": "PASS_COUNT"
-     *     },
-     *     "quality": { "minBrightness": 40, "maxBrightness": 240 },
-     *     "debug": false
-     *   }
-     * }
-     * ```
+     * Supports both flat `antiSpoofing` objects and nested sub-objects.
      */
     fun loadFromJson(jsonString: String) {
         try {
             val root = JSONObject(jsonString)
             val as_ = root.optJSONObject("antiSpoofing") ?: return
 
-            // model
+            // 1) Direct flat fields under antiSpoofing object
+            as_.optStringNonEmpty("model")?.let { modelAssetPath = it }
+            as_.optPositiveFloat("livenessThreshold")?.let { livenessThreshold = it }
+            as_.optPositiveFloat("registrationThreshold")?.let { registrationThresholdOverride = it }
+            as_.optPositiveFloat("attendanceThreshold")?.let { attendanceThresholdOverride = it }
+            as_.optPositiveInt("temporalWindowSize")?.let { temporalWindowSize = it }
+            as_.optPositiveFloat("requiredPassPercentage")?.let { requiredPassPercentage = it }
+            as_.optPositiveFloat("fastPassThreshold")?.let { fastPassThreshold = it }
+
+            // 2) Nested sub-objects (model, thresholds, temporal, quality, etc.)
             as_.optJSONObject("model")?.let { m ->
                 m.optStringNonEmpty("assetPath")?.let { modelAssetPath = it }
                 m.optPositiveFloat("cropScale")?.let { cropScale = it }
             }
 
-            // thresholds
             as_.optJSONObject("thresholds")?.let { t ->
                 t.optPositiveFloat("livenessThreshold")?.let { livenessThreshold = it }
-                if (t.has("registrationThresholdOverride")) {
-                    registrationThresholdOverride =
-                        t.optPositiveFloat("registrationThresholdOverride")
+                if (t.has("registrationThresholdOverride") || t.has("registrationThreshold")) {
+                    registrationThresholdOverride = t.optPositiveFloat("registrationThresholdOverride")
+                        ?: t.optPositiveFloat("registrationThreshold")
                 }
-                if (t.has("attendanceThresholdOverride")) {
-                    attendanceThresholdOverride =
-                        t.optPositiveFloat("attendanceThresholdOverride")
+                if (t.has("attendanceThresholdOverride") || t.has("attendanceThreshold")) {
+                    attendanceThresholdOverride = t.optPositiveFloat("attendanceThresholdOverride")
+                        ?: t.optPositiveFloat("attendanceThreshold")
                 }
             }
 
-            // temporal
             as_.optJSONObject("temporal")?.let { tp ->
                 tp.optPositiveInt("windowSize")?.let { temporalWindowSize = it }
                 tp.optPositiveFloat("requiredPassPercentage")?.let { requiredPassPercentage = it }
                 tp.optStringNonEmpty("aggregationStrategy")?.let { aggregationStrategy = it }
             }
 
-            // quality
             as_.optJSONObject("quality")?.let { q ->
                 q.optPositiveInt("minBrightness")?.let { minBrightness = it }
                 q.optPositiveInt("maxBrightness")?.let { maxBrightness = it }
             }
 
-            // debug
             if (as_.has("debug")) {
                 debugLogging = as_.optBoolean("debug", false)
             }
 
-            // audio guidance toggle
             as_.optJSONObject("audio")?.let { a ->
                 if (a.has("enableAudio")) enableAudioGuidance = a.optBoolean("enableAudio", true)
                 if (a.has("enableAudioGuidance")) enableAudioGuidance = a.optBoolean("enableAudioGuidance", true)
             }
 
-            // timing
             as_.optJSONObject("timing")?.let { ti ->
                 ti.optPositiveLong("attendanceCooldownMs")?.let { attendanceCooldownMs = it }
                 ti.optPositiveInt("maxRetryCount")?.let { maxRetryCount = it }
@@ -241,14 +226,12 @@ object AntiSpoofConfig {
                 TAG,
                 "✔ AntiSpoofConfig applied successfully:\n" +
                 "  • modelAssetPath = $modelAssetPath\n" +
-                "  • cropScale = $cropScale\n" +
                 "  • livenessThreshold = $livenessThreshold\n" +
                 "  • registrationThreshold = $registrationThreshold\n" +
                 "  • attendanceThreshold = $attendanceThreshold\n" +
                 "  • temporalWindowSize = $temporalWindowSize\n" +
                 "  • requiredPassPercentage = $requiredPassPercentage\n" +
-                "  • aggregationStrategy = $aggregationStrategy\n" +
-                "  • debugLogging = $debugLogging"
+                "  • fastPassThreshold = $fastPassThreshold"
             )
 
         } catch (e: Exception) {

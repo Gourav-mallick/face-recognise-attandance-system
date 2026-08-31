@@ -693,10 +693,11 @@ Log.d(TAG, "CONFIG_API_PROGRAM_CONF_ID: $programConfId")
                 )
             )
 
-            // Update in-memory singleton immediately
+            // Update in-memory singletons immediately
             com.digitaledu.selfieattendance.ml.FaceDetectionConfig.loadFromJson(value)
+            com.digitaledu.selfieattendance.ml.AntiSpoofConfig.loadFromJson(value)
 
-            Log.i(TAG, "✔ Face detection config synced and applied (confId=$programConfId)")
+            Log.i(TAG, "✔ Face detection and Anti-Spoofing config synced and applied (confId=$programConfId)")
             true
 
         } catch (e: Exception) {

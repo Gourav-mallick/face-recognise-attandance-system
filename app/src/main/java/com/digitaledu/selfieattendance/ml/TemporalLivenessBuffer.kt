@@ -100,11 +100,12 @@ class TemporalLivenessBuffer {
         val frameCount = scores.size
         val latestScore = if (scores.isEmpty()) 0f else scores.last()
 
-        // 🚀 Fast-Pass Early Exit: If the latest frame score is exceptionally high (>= 0.90),
+        // 🚀 Fast-Pass Early Exit: If the latest frame score is exceptionally high (>= fastPassThreshold),
         // pass immediately on frame 1 without waiting for full window.
-        if (latestScore >= 0.90f && frameCount >= 1) {
+        val fastPassThreshold = AntiSpoofConfig.fastPassThreshold
+        if (latestScore >= fastPassThreshold && frameCount >= 1) {
             if (AntiSpoofConfig.debugLogging) {
-                Log.d(tag, "🚀 Fast-Pass triggered: latestScore=${"%.4f".format(latestScore)} >= 0.90")
+                Log.d(tag, "🚀 Fast-Pass triggered: latestScore=${"%.4f".format(latestScore)} >= $fastPassThreshold")
             }
             return TemporalResult(
                 passed = true,

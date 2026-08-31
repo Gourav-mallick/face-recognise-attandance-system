@@ -36,7 +36,8 @@ class MyApp : Application() {
                     .getValueByTitle("FaceDetectionThreshold")
                 if (!json.isNullOrBlank()) {
                     FaceDetectionConfig.loadFromJson(json)
-                    Log.i("MyApp", "✔ FaceDetectionConfig loaded from local DB")
+                    com.digitaledu.selfieattendance.ml.AntiSpoofConfig.loadFromJson(json)
+                    Log.i("MyApp", "✔ FaceDetectionConfig & AntiSpoofConfig loaded from local DB")
                 } else {
                     Log.i("MyApp", "No saved config found — using hardcoded defaults")
                 }
