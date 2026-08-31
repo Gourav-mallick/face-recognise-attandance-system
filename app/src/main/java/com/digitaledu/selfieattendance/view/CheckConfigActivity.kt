@@ -111,7 +111,7 @@ class CheckConfigActivity : AppCompatActivity() {
         // we make a lightweight auth call to confirm the session is
         // still valid on the backend.
         // ──────────────────────────────────────────────────────────────
-        statusText.text = "Validating session..."
+        statusText.text = "Validating Configuration..."
 
         if (!CheckNetworkAndInternetUtils.isNetworkAvailable(this)) {
             Log.d(TAG, "Offline — allowing access with existing local credentials")
@@ -140,11 +140,11 @@ class CheckConfigActivity : AppCompatActivity() {
 
                     is AuthSessionManager.ValidationResult.Invalid -> {
                         Log.w(TAG, "Server rejected credentials — clearing auth state")
-                        statusText.text = "Session expired. Please log in again."
+                        statusText.text = "configuration expired. Please log in again."
                         AuthSessionManager.clearAllAuthState(this@CheckConfigActivity)
                         Toast.makeText(
                             this@CheckConfigActivity,
-                            "Your session has expired. Please log in again.",
+                            "Your configuration has expired. Please log in again.",
                             Toast.LENGTH_LONG
                         ).show()
                         navigationHandler.postDelayed({
