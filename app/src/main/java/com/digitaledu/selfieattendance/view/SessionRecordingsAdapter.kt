@@ -15,7 +15,8 @@ sealed class SessionHistoryListItem {
 }
 
 class SessionRecordingsAdapter(
-    private val onPlayClicked: (SessionVideo) -> Unit
+    private val onPlayClicked: (SessionVideo) -> Unit,
+    private val onDeleteClicked: (SessionVideo) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -52,7 +53,7 @@ class SessionRecordingsAdapter(
             DateHeaderViewHolder(view)
         } else {
             val view = inflater.inflate(R.layout.item_session_recording_card, parent, false)
-            SessionCardViewHolder(view, onPlayClicked)
+            SessionCardViewHolder(view, onPlayClicked, onDeleteClicked)
         }
     }
 
@@ -74,13 +75,15 @@ class SessionRecordingsAdapter(
 
     class SessionCardViewHolder(
         itemView: View,
-        private val onPlayClicked: (SessionVideo) -> Unit
+        private val onPlayClicked: (SessionVideo) -> Unit,
+        private val onDeleteClicked: (SessionVideo) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
 
         private val tvTeacherInfo: TextView = itemView.findViewById(R.id.tvTeacherInfo)
         private val tvSessionDate: TextView = itemView.findViewById(R.id.tvSessionDate)
         private val tvTimeRange: TextView = itemView.findViewById(R.id.tvTimeRange)
         private val tvStudentsPresent: TextView = itemView.findViewById(R.id.tvStudentsPresent)
+        private val btnDeleteRecording: View = itemView.findViewById(R.id.btnDeleteRecording)
         private val btnViewRecording: Button = itemView.findViewById(R.id.btnViewRecording)
 
         fun bind(video: SessionVideo) {
@@ -88,6 +91,10 @@ class SessionRecordingsAdapter(
             tvSessionDate.text = video.date
             tvTimeRange.text = "${video.startTime} – ${video.endTime}"
             tvStudentsPresent.text = "Students Present: ${video.studentCount}"
+
+            btnDeleteRecording.setOnClickListener {
+                onDeleteClicked(video)
+            }
 
             btnViewRecording.setOnClickListener {
                 onPlayClicked(video)

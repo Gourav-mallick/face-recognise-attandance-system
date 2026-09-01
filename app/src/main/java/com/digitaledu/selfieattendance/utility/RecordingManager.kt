@@ -278,19 +278,24 @@ object RecordingManager {
 
             val baseDir = appContext.getExternalFilesDir(null) ?: appContext.filesDir
             val recordDir = File(baseDir, "session_recordings").apply { if (!exists()) mkdirs() }
-            val encFile = File(recordDir, "session_$sessionId.enc")
+            val mp4File = File(recordDir, "session_$sessionId.mp4")
 
-            // Encrypt raw file to AES-256 GCM
-            val ivBase64 = EncryptionManager.encryptFile(rawFile, encFile)
-
-            // CRITICAL SAFETY: Delete unencrypted raw video file immediately!
-            if (rawFile.exists()) {
-                val deletedRaw = rawFile.delete()
-                Log.d(TAG, "Deleted unencrypted temp video file: $deletedRaw")
+            // Move temp raw video file directly to final MP4 session file
+            val savedSuccess = if (rawFile.renameTo(mp4File)) {
+                true
+            } else {
+                try {
+                    rawFile.copyTo(mp4File, overwrite = true)
+                    rawFile.delete()
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to copy raw video file to final mp4 path", e)
+                    false
+                }
             }
 
-            if (ivBase64 == null || !encFile.exists()) {
-                Log.e(TAG, "Failed to create encrypted session recording for session: $sessionId")
+            if (!savedSuccess || !mp4File.exists() || mp4File.length() == 0L) {
+                Log.e(TAG, "Failed to save MP4 session recording for session: $sessionId")
                 onComplete?.invoke(null)
                 return@launch
             }
@@ -311,8 +316,8 @@ object RecordingManager {
                 endTime = endTimeStr,
                 durationMs = durationMs,
                 studentCount = studentCount,
-                encVideoPath = encFile.absolutePath,
-                ivBase64 = ivBase64,
+                encVideoPath = mp4File.absolutePath,
+                ivBase64 = "",
                 uploadStatus = SessionVideo.UPLOAD_STATUS_LOCAL_ONLY,
                 createdAtMillis = startTimeMs
             )

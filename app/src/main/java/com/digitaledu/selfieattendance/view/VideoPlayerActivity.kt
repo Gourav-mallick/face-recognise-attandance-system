@@ -3,6 +3,7 @@ package com.digitaledu.selfieattendance.view
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -37,6 +38,13 @@ class VideoPlayerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
 
+        val topBarLayout = findViewById<View>(R.id.topBarLayout)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(topBarLayout) { v, insets ->
+            val statusBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            v.setPadding(v.paddingLeft, statusBarInsets.top, v.paddingRight, v.paddingBottom)
+            insets
+        }
+
         playerView = findViewById(R.id.playerView)
         tvPlayerSessionTitle = findViewById(R.id.tvPlayerSessionTitle)
 
@@ -53,37 +61,50 @@ class VideoPlayerActivity : AppCompatActivity() {
 
         tvPlayerSessionTitle.text = "${sessionVideo.date} • ${sessionVideo.teacherName} (${sessionVideo.startTime} – ${sessionVideo.endTime})"
 
-        var encFile = File(sessionVideo.encVideoPath)
-        if (!encFile.exists()) {
+        var videoFile = File(sessionVideo.encVideoPath)
+        if (!videoFile.exists()) {
             val baseDir1 = getExternalFilesDir(null) ?: filesDir
-            val fallback1 = File(File(baseDir1, "session_recordings"), encFile.name)
-            val fallback2 = File(File(filesDir, "session_recordings"), encFile.name)
-            if (fallback1.exists()) {
-                encFile = fallback1
-            } else if (fallback2.exists()) {
-                encFile = fallback2
+            val fallback1 = File(File(baseDir1, "session_recordings"), videoFile.name)
+            val fallback2 = File(File(filesDir, "session_recordings"), videoFile.name)
+            val mp4FallbackName = videoFile.nameWithoutExtension + ".mp4"
+            val fallback3 = File(File(baseDir1, "session_recordings"), mp4FallbackName)
+            val fallback4 = File(File(filesDir, "session_recordings"), mp4FallbackName)
+
+            when {
+                fallback1.exists() -> videoFile = fallback1
+                fallback2.exists() -> videoFile = fallback2
+                fallback3.exists() -> videoFile = fallback3
+                fallback4.exists() -> videoFile = fallback4
             }
         }
 
-        if (!encFile.exists() || encFile.length() == 0L) {
-            Toast.makeText(this, "Encrypted video file not found or empty", Toast.LENGTH_LONG).show()
-            Log.e(TAG, "Encrypted file not found or empty: ${encFile.absolutePath}")
+        if (!videoFile.exists() || videoFile.length() == 0L) {
+            Toast.makeText(this, "Session video file not found or empty", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "Video file not found or empty: ${videoFile.absolutePath}")
             finish()
             return
         }
 
-        prepareAndPlayVideo(encFile, sessionVideo.ivBase64)
+        prepareAndPlayVideo(videoFile, sessionVideo.ivBase64)
     }
 
-    private fun prepareAndPlayVideo(encryptedFile: File, ivBase64: String) {
+    private fun prepareAndPlayVideo(videoFile: File, ivBase64: String) {
+        // Direct MP4 Playback (No Decryption needed!)
+        if (videoFile.name.endsWith(".mp4", ignoreCase = true) || ivBase64.isBlank()) {
+            Log.d(TAG, "Playing direct MP4 video file: ${videoFile.absolutePath}")
+            initializePlayer(videoFile)
+            return
+        }
+
+        // Legacy support for older encrypted .enc files
         lifecycleScope.launch(Dispatchers.IO) {
-            val tempFile = File(cacheDir, "temp_play_${encryptedFile.nameWithoutExtension}.mp4")
+            val tempFile = File(cacheDir, "temp_play_${videoFile.nameWithoutExtension}.mp4")
             if (tempFile.exists()) {
                 tempFile.delete()
             }
 
-            Log.d(TAG, "Decrypting encrypted video for playback to: ${tempFile.absolutePath}")
-            val success = EncryptionManager.decryptToFile(encryptedFile, tempFile, ivBase64)
+            Log.d(TAG, "Decrypting legacy encrypted video for playback to: ${tempFile.absolutePath}")
+            val success = EncryptionManager.decryptToFile(videoFile, tempFile, ivBase64)
 
             withContext(Dispatchers.Main) {
                 if (!isFinishing && !isDestroyed) {
@@ -91,7 +112,7 @@ class VideoPlayerActivity : AppCompatActivity() {
                         tempPlaybackFile = tempFile
                         initializePlayer(tempFile)
                     } else {
-                        Log.e(TAG, "Failed to decrypt video file for playback")
+                        Log.e(TAG, "Failed to decrypt legacy video file for playback")
                         Toast.makeText(
                             this@VideoPlayerActivity,
                             "Failed to decrypt video file",
@@ -100,7 +121,6 @@ class VideoPlayerActivity : AppCompatActivity() {
                         finish()
                     }
                 } else {
-                    // Clean up if activity finished before decryption completed
                     if (tempFile.exists()) tempFile.delete()
                 }
             }

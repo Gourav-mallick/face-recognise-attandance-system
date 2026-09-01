@@ -48,13 +48,24 @@ class SessionRecordingsActivity : AppCompatActivity() {
         rvSessionRecordings = findViewById(R.id.rvSessionRecordings)
 
         rvSessionRecordings.layoutManager = LinearLayoutManager(this)
-        adapter = SessionRecordingsAdapter { sessionVideo ->
-            openVideoPlayer(sessionVideo)
-        }
+        adapter = SessionRecordingsAdapter(
+            onPlayClicked = { sessionVideo ->
+                openVideoPlayer(sessionVideo)
+            },
+            onDeleteClicked = { sessionVideo ->
+                confirmAndDeleteRecording(sessionVideo)
+            }
+        )
         rvSessionRecordings.adapter = adapter
 
         updateStorageBanner()
         loadSessionRecordings()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadSessionRecordings()
+        updateStorageBanner()
     }
 
     private fun updateStorageBanner() {
@@ -86,6 +97,59 @@ class SessionRecordingsActivity : AppCompatActivity() {
                     tvEmptyState.visibility = View.GONE
                     rvSessionRecordings.visibility = View.VISIBLE
                     adapter.submitList(videos)
+                }
+            }
+        }
+    }
+
+    private fun confirmAndDeleteRecording(sessionVideo: SessionVideo) {
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Delete Session Recording")
+            .setMessage("Are you sure you want to delete the recording for ${sessionVideo.teacherName} (${sessionVideo.date})?")
+            .setPositiveButton("Delete") { _, _ ->
+                deleteRecording(sessionVideo)
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            ?.setTextColor(android.graphics.Color.parseColor("#DC2626"))
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE)
+            ?.setTextColor(android.graphics.Color.parseColor("#4B5563"))
+    }
+
+    private fun deleteRecording(sessionVideo: SessionVideo) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Delete physical video file on disk
+                val file = java.io.File(sessionVideo.encVideoPath)
+                if (file.exists()) file.delete()
+
+                val baseDir1 = getExternalFilesDir(null) ?: filesDir
+                val fallback1 = java.io.File(java.io.File(baseDir1, "session_recordings"), file.name)
+                val fallback2 = java.io.File(java.io.File(filesDir, "session_recordings"), file.name)
+                val mp4FallbackName = file.nameWithoutExtension + ".mp4"
+                val fallback3 = java.io.File(java.io.File(baseDir1, "session_recordings"), mp4FallbackName)
+                val fallback4 = java.io.File(java.io.File(filesDir, "session_recordings"), mp4FallbackName)
+
+                listOf(fallback1, fallback2, fallback3, fallback4).forEach { f ->
+                    if (f.exists()) f.delete()
+                }
+
+                // Delete DB record
+                val db = AppDatabase.getDatabase(applicationContext)
+                db.sessionVideoDao().deleteSessionVideo(sessionVideo.sessionId)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SessionRecordingsActivity, "Session recording deleted", Toast.LENGTH_SHORT).show()
+                    loadSessionRecordings()
+                    updateStorageBanner()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SessionRecordingsActivity, "Failed to delete: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
