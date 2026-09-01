@@ -66,6 +66,8 @@ class TeacherScanFragment : Fragment() {
     private var isVerifying = false
     private var isSpoofWarningShowing = false
     private var lastProcessTime = 0L
+    private var consecutiveSpoofFrames = 0
+    private val SPOOF_FRAMES_TO_WARN = 3  // Require 3 consecutive SPOOF frames before showing warning
     private var prevFace: YuNetFace? = null
 
 
@@ -250,6 +252,17 @@ class TeacherScanFragment : Fragment() {
                 now - faceStableStart >= 500 &&
                 !isVerifying
             ) {
+                // ── Lighting pre-check ── Do NOT flag spoof if lighting is too dark
+                if (brightness < 40) {
+                    consecutiveSpoofFrames = 0
+                    faceStableStart = 0L
+                    runOnViewThread {
+                        faceGuide.background.setTint(Color.YELLOW)
+                        tvStart.text = "Low lighting — please move to a brighter place"
+                    }
+                    return
+                }
+
                 // ── Anti-spoofing gate ──
                 val antiSpoofResult = antiSpoofEngine.classifyLiveness(
                     prepared, face.bounds, AntiSpoofConfig.attendanceThreshold
@@ -259,21 +272,26 @@ class TeacherScanFragment : Fragment() {
 
                 if (!temporalResult.passed) {
                     runOnViewThread {
-                        if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                        // Distinguish genuine screen attack (score < 0.30) from borderline lighting/angle (0.30 - 0.70)
+                        if (antiSpoofResult.score < 0.30f) {
+                            consecutiveSpoofFrames++
                             faceGuide.background.setTint(Color.RED)
-                            tvStart.text = antiSpoofResult.guidance
-                            showSpoofWarningDialog()
+                            tvStart.text = "Fake face detected — use a real face"
+                            if (consecutiveSpoofFrames >= SPOOF_FRAMES_TO_WARN) {
+                                showSpoofWarningDialog()
+                            }
                         } else {
+                            // Borderline score (lighting/angle fluctuation) — guide user to adjust, NO warning popup
+                            consecutiveSpoofFrames = 0
                             faceGuide.background.setTint(Color.rgb(30, 94, 255))
-                            tvStart.text = "Hold still — verifying live face..."
+                            tvStart.text = "Hold face steady in good light..."
                         }
                     }
-                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
-                        faceStableStart = 0L
-                    }
+                    faceStableStart = 0L
                     return
                 }
                 // ── Anti-spoofing passed — proceed to SFace ──
+                consecutiveSpoofFrames = 0
                 runOnViewThread {
                     faceGuide.background.setTint(Color.GREEN)
                     tvStart.text = "Live face verified"
@@ -332,6 +350,7 @@ class TeacherScanFragment : Fragment() {
                     temporalLivenessBuffer.reset()
                     isSpoofWarningShowing = false
                     isVerifying = false
+                    consecutiveSpoofFrames = 0
                 }
                 .show()
         }
