@@ -83,6 +83,7 @@ class SessionRecordingsAdapter(
         private val tvSessionDate: TextView = itemView.findViewById(R.id.tvSessionDate)
         private val tvTimeRange: TextView = itemView.findViewById(R.id.tvTimeRange)
         private val tvStudentsPresent: TextView = itemView.findViewById(R.id.tvStudentsPresent)
+        private val tvSpoofCount: TextView = itemView.findViewById(R.id.tvSpoofCount)
         private val btnDeleteRecording: View = itemView.findViewById(R.id.btnDeleteRecording)
         private val btnViewRecording: Button = itemView.findViewById(R.id.btnViewRecording)
 
@@ -91,6 +92,14 @@ class SessionRecordingsAdapter(
             tvSessionDate.text = video.date
             tvTimeRange.text = "${video.startTime} – ${video.endTime}"
             tvStudentsPresent.text = "Students Present: ${video.studentCount}"
+
+            if (video.spoofAttemptCount > 0) {
+                tvSpoofCount.text = "⚠️ Spoof Attempts: ${video.spoofAttemptCount}"
+                tvSpoofCount.setTextColor(android.graphics.Color.parseColor("#DC2626"))
+            } else {
+                tvSpoofCount.text = "🛡️ Spoof Attempts: 0"
+                tvSpoofCount.setTextColor(android.graphics.Color.parseColor("#166534"))
+            }
 
             btnDeleteRecording.setOnClickListener {
                 onDeleteClicked(video)

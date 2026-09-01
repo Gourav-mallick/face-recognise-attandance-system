@@ -406,7 +406,9 @@ data class SessionVideo(
     val encVideoPath: String,
     val ivBase64: String,
     val uploadStatus: String = UPLOAD_STATUS_LOCAL_ONLY,
-    val createdAtMillis: Long = System.currentTimeMillis()
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    @androidx.room.ColumnInfo(name = "spoofAttemptCount", defaultValue = "0")
+    val spoofAttemptCount: Int = 0
 ) : Parcelable {
     companion object {
         const val UPLOAD_STATUS_LOCAL_ONLY = "LOCAL_ONLY"

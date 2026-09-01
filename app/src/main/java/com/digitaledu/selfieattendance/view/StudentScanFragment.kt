@@ -383,6 +383,7 @@ class StudentScanFragment : Fragment() {
             if (isSpoofWarningShowing) return@runOnViewThread
             isSpoofWarningShowing = true
             isVerifying = true
+            RecordingManager.incrementSpoofCount()
 
             voiceGuidance.announce("Fake face detected. This session is recorded.", "spoof_warning_dialog")
 

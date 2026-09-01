@@ -42,6 +42,7 @@ object RecordingManager {
     private var currentSessionId: String? = null
     private var currentTeacherId: String? = null
     private var currentTeacherName: String? = null
+    private var currentSpoofAttemptCount: Int = 0
     private var sessionStartTimeMillis: Long = 0L
 
     var onRecordingStateChanged: ((Boolean) -> Unit)? = null
@@ -67,6 +68,14 @@ object RecordingManager {
         currentTeacherId = teacherId
         currentTeacherName = teacherName
         Log.d(TAG, "Updated teacher info for active recording: $teacherName ($teacherId)")
+    }
+
+    /**
+     * Increments the count of detected anti-spoof (screen replay/fake face) attempts for the active session.
+     */
+    fun incrementSpoofCount() {
+        currentSpoofAttemptCount++
+        Log.d(TAG, "Incremented session spoof attempt count: $currentSpoofAttemptCount")
     }
 
     /**
@@ -149,6 +158,7 @@ object RecordingManager {
         }
 
         try {
+            currentSpoofAttemptCount = 0
             val appContext = context.applicationContext
             val baseDir = appContext.getExternalFilesDir(null) ?: appContext.filesDir
             val recordDir = File(baseDir, "session_recordings").apply { if (!exists()) mkdirs() }
@@ -319,7 +329,8 @@ object RecordingManager {
                 encVideoPath = mp4File.absolutePath,
                 ivBase64 = "",
                 uploadStatus = SessionVideo.UPLOAD_STATUS_LOCAL_ONLY,
-                createdAtMillis = startTimeMs
+                createdAtMillis = startTimeMs,
+                spoofAttemptCount = currentSpoofAttemptCount
             )
 
             val db = AppDatabase.getDatabase(appContext)

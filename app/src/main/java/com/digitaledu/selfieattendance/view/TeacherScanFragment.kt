@@ -24,6 +24,7 @@ import com.digitaledu.selfieattendance.ml.TemporalLivenessBuffer
 import com.digitaledu.selfieattendance.ml.YuNetFace
 import com.digitaledu.selfieattendance.ml.YuNetSFaceEngine
 import com.digitaledu.selfieattendance.utility.VoiceGuidance
+import com.digitaledu.selfieattendance.utility.RecordingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -317,6 +318,7 @@ class TeacherScanFragment : Fragment() {
             if (isSpoofWarningShowing) return@runOnViewThread
             isSpoofWarningShowing = true
             isVerifying = true
+            RecordingManager.incrementSpoofCount()
 
             voiceGuidance.announce("Fake face detected. This session is recorded.", "spoof_warning_dialog")
 
