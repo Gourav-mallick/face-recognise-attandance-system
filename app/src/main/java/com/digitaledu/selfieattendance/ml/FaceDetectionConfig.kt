@@ -29,7 +29,7 @@ object FaceDetectionConfig {
     @Volatile var detectorInputSize: Int = 640
 
     /** Minimum detection confidence (geometric mean of cls × obj). */
-    @Volatile var detectionThreshold: Float = 0.85f
+    @Volatile var detectionThreshold: Float = 0.70f
 
     /** IoU threshold for Non-Maximum Suppression. */
     @Volatile var nmsThreshold: Float = 0.30f
@@ -37,8 +37,8 @@ object FaceDetectionConfig {
     /** Max candidates before NMS. */
     @Volatile var topK: Int = 1000
 
-    /** Minimum face bounding box size in pixels (px). Default 200 px. */
-    @Volatile var minFaceSize: Float = 200f
+    /** Minimum face bounding box size in pixels (px). Default 60 px for 640x480 analysis stream. */
+    @Volatile var minFaceSize: Float = 60f
 
     /** Maximum face bounding box size in pixels (px). Default 500 px. */
     @Volatile var maxFaceSize: Float = 500f
@@ -74,24 +74,24 @@ object FaceDetectionConfig {
     // ─────────────────── Quality gates (strict — registration) ──────
 
     /** Minimum inter-pupillary distance in pixels (registration). */
-    @Volatile var minEyeDistanceStrict: Float = 45f
+    @Volatile var minEyeDistanceStrict: Float = 25f
 
     /** Max nose-to-eye-midpoint offset as fraction of eye distance (registration). */
     @Volatile var symmetryLimitStrict: Float = 0.16f
 
     /** Minimum Laplacian-variance sharpness score (registration). */
-    @Volatile var minSharpnessStrict: Float = 90f
+    @Volatile var minSharpnessStrict: Float = 50f
 
     // ─────────────────── Quality gates (normal — recognition) ────────
 
     /** Minimum inter-pupillary distance in pixels (recognition). */
-    @Volatile var minEyeDistanceNormal: Float = 32f
+    @Volatile var minEyeDistanceNormal: Float = 18f
 
     /** Max nose-to-eye-midpoint offset as fraction of eye distance (recognition). */
     @Volatile var symmetryLimitNormal: Float = 0.23f
 
     /** Minimum Laplacian-variance sharpness score (recognition). */
-    @Volatile var minSharpnessNormal: Float = 55f
+    @Volatile var minSharpnessNormal: Float = 30f
 
     // ─────────────────── SFace alignment template points ────────────
 

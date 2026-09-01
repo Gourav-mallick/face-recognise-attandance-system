@@ -269,6 +269,7 @@ class StudentScanFragment : Fragment() {
             if (face == null) {
                 faceStableStart = 0L
                 temporalLivenessBuffer.reset()
+                livenessVerifier.reset()
                 prevFace = null
                 runOnViewThread {
                     landmarkOverlay.clear()
@@ -293,8 +294,9 @@ class StudentScanFragment : Fragment() {
                 landmarkOverlay.show(face.landmarks, frame.width, frame.height)
                 faceGuide.background.setTint(
                     when {
-                        !quality.accepted || !stable -> Color.YELLOW
-                        else -> Color.rgb(30, 94, 255) // BLUE while analyzing
+                        liveness.passed && quality.accepted && stable -> Color.rgb(38, 190, 96) // GREEN
+                        quality.accepted -> Color.rgb(30, 94, 255) // BLUE
+                        else -> Color.YELLOW
                     }
                 )
                 tvInstruction.text = if (!liveness.passed) liveness.guidance else if (!quality.accepted) quality.guidance else "Hold still — verifying..."

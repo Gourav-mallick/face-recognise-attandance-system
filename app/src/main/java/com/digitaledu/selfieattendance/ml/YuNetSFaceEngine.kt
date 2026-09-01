@@ -73,6 +73,12 @@ class YuNetSFaceEngine(context: Context) : AutoCloseable {
         setIntraOpNumThreads(2)
         setInterOpNumThreads(1)
         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        try {
+            addXnnpack(mapOf("intra_op_num_threads" to "2"))
+            Log.i("YuNetSFaceEngine", "✔ XNNPACK execution provider enabled")
+        } catch (e: Exception) {
+            Log.w("YuNetSFaceEngine", "XNNPACK execution provider not supported, using CPU", e)
+        }
     }
     private val detector = environment.createSession(
         context.assets.open(DETECTOR_ASSET).use { it.readBytes() },

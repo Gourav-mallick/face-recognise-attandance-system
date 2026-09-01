@@ -84,7 +84,7 @@ object AntiSpoofConfig {
      * Larger windows are more robust against single-frame noise but
      * increase the time before a decision is reached.
      */
-    @Volatile var temporalWindowSize: Int = 3
+    @Volatile var temporalWindowSize: Int = 1
 
     /**
      * Fraction of frames within the window that must individually pass
@@ -98,7 +98,7 @@ object AntiSpoofConfig {
      * Single-frame score threshold for instant Fast-Pass bypass.
      * Scores >= [fastPassThreshold] pass on frame 1 without waiting for temporal window.
      */
-    @Volatile var fastPassThreshold: Float = 0.90f
+    @Volatile var fastPassThreshold: Float = 0.75f
 
     /**
      * Aggregation strategy used to combine scores across the temporal window.
