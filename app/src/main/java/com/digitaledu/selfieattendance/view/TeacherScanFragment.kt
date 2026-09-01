@@ -63,6 +63,7 @@ class TeacherScanFragment : Fragment() {
 
     private var faceStableStart = 0L
     private var isVerifying = false
+    private var isSpoofWarningShowing = false
     private var lastProcessTime = 0L
     private var prevFace: YuNetFace? = null
 
@@ -260,6 +261,7 @@ class TeacherScanFragment : Fragment() {
                         if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
                             faceGuide.background.setTint(Color.RED)
                             tvStart.text = antiSpoofResult.guidance
+                            showSpoofWarningDialog()
                         } else {
                             faceGuide.background.setTint(Color.rgb(30, 94, 255))
                             tvStart.text = "Hold still — verifying live face..."
@@ -306,6 +308,30 @@ class TeacherScanFragment : Fragment() {
         val host = activity ?: return
         host.runOnUiThread {
             if (_viewFinder != null) action()
+        }
+    }
+
+    private fun showSpoofWarningDialog() {
+        val ctx = context ?: return
+        runOnViewThread {
+            if (isSpoofWarningShowing) return@runOnViewThread
+            isSpoofWarningShowing = true
+            isVerifying = true
+
+            voiceGuidance.announce("Fake face detected. This session is recorded.", "spoof_warning_dialog")
+
+            AlertDialog.Builder(ctx)
+                .setTitle("⚠️ Anti-Spoofing Warning")
+                .setMessage("Warning. Fake face detected. This attempt has been recorded. Any false or proxy attendance attempt may result in strict disciplinary action by the institution. Please scan your real face.")
+                .setCancelable(false)
+                .setPositiveButton("I Understand, Scan Again") { dialog, _ ->
+                    dialog.dismiss()
+                    faceStableStart = 0L
+                    temporalLivenessBuffer.reset()
+                    isSpoofWarningShowing = false
+                    isVerifying = false
+                }
+                .show()
         }
     }
 
