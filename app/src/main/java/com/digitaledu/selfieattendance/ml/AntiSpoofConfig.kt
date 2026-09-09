@@ -18,6 +18,18 @@ object AntiSpoofConfig {
 
     private const val TAG = "AntiSpoofConfig"
 
+    /**
+     * Master toggle for anti-spoofing detection layer.
+     * When `false`, the anti-spoofing engine (MiniFASNet), low-light spoof checks,
+     * and spoof warning dialog popups are completely bypassed (restoring `version_2.0.8_dev` behavior).
+     */
+    @Volatile var isAntiSpoofingEnabled: Boolean = false
+
+    /** Alias for [isAntiSpoofingEnabled] to match variable request `detectionEnable`. */
+    var detectionEnable: Boolean
+        get() = isAntiSpoofingEnabled
+        set(value) { isAntiSpoofingEnabled = value }
+
     // ─────────────────── Model metadata ─────────────────────────────
 
     /** ONNX model asset path for MiniFASNet V2-SE. */
@@ -171,6 +183,9 @@ object AntiSpoofConfig {
             val as_ = root.optJSONObject("antiSpoofing") ?: return
 
             // 1) Direct flat fields under antiSpoofing object
+            if (as_.has("enabled")) isAntiSpoofingEnabled = as_.optBoolean("enabled", false)
+            if (as_.has("detectionEnable")) isAntiSpoofingEnabled = as_.optBoolean("detectionEnable", false)
+            if (as_.has("isAntiSpoofingEnabled")) isAntiSpoofingEnabled = as_.optBoolean("isAntiSpoofingEnabled", false)
             as_.optStringNonEmpty("model")?.let { modelAssetPath = it }
             as_.optPositiveFloat("livenessThreshold")?.let { livenessThreshold = it }
             as_.optPositiveFloat("registrationThreshold")?.let { registrationThresholdOverride = it }

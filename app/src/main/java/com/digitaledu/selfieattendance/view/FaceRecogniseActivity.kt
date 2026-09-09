@@ -274,26 +274,28 @@ class FaceRecogniseActivity : AppCompatActivity() {
             }
 
             if (quality.accepted && stable && liveness.passed && now - stableSince >= LOCK_DURATION_MS) {
-                // ── Anti-spoofing gate ──
-                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
-                    frame, face.bounds, AntiSpoofConfig.attendanceThreshold
-                )
-                temporalLivenessBuffer.addScore(antiSpoofResult.score)
-                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+                if (AntiSpoofConfig.isAntiSpoofingEnabled) {
+                    // ── Anti-spoofing gate ──
+                    val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                        frame, face.bounds, AntiSpoofConfig.attendanceThreshold
+                    )
+                    temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                    val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
 
-                if (!temporalResult.passed) {
-                    runOnUiThread {
-                        faceGuide.background.setTint(Color.RED)
-                        tvScreenHint.text = temporalResult.guidance
-                        tvBottomHint.text = "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%"
-                        voiceGuidance.guide(temporalResult.guidance, "recognise_antispoof:${antiSpoofResult.status}")
+                    if (!temporalResult.passed) {
+                        runOnUiThread {
+                            faceGuide.background.setTint(Color.RED)
+                            tvScreenHint.text = temporalResult.guidance
+                            tvBottomHint.text = "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%"
+                            voiceGuidance.guide(temporalResult.guidance, "recognise_antispoof:${antiSpoofResult.status}")
+                        }
+                        if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                            stableSince = 0L
+                        }
+                        return
                     }
-                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
-                        stableSince = 0L
-                    }
-                    return
                 }
-                // ── Anti-spoofing passed — proceed to SFace ──
+                // ── Proceed to SFace ──
                 temporalLivenessBuffer.reset()
                 isVerifying = true
                 val embedding = engine.embedding(frame, face)

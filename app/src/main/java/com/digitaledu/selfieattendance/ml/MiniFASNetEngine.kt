@@ -113,6 +113,14 @@ class MiniFASNetEngine(context: Context) : AutoCloseable {
         faceBounds: RectF,
         threshold: Float = AntiSpoofConfig.livenessThreshold
     ): AntiSpoofResult {
+        if (!AntiSpoofConfig.isAntiSpoofingEnabled) {
+            return AntiSpoofResult(
+                status = Status.REAL,
+                score = 1.0f,
+                inferenceMs = 0,
+                guidance = "Anti-spoofing disabled"
+            )
+        }
         if (session == null) {
             return AntiSpoofResult(
                 status = Status.UNCERTAIN,

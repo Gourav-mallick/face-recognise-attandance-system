@@ -210,24 +210,26 @@ class CameraCaptureActivity : AppCompatActivity() {
                 now - stableSince >= LOCK_DURATION_MS &&
                 now - lastSampleAt >= SAMPLE_INTERVAL_MS
             ) {
-                // ── Anti-spoofing gate (registration uses stricter threshold) ──
-                val antiSpoofResult = antiSpoofEngine.classifyLiveness(
-                    frame, face.bounds, AntiSpoofConfig.registrationThreshold
-                )
-                temporalLivenessBuffer.addScore(antiSpoofResult.score)
-                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.registrationThreshold)
+                if (AntiSpoofConfig.isAntiSpoofingEnabled) {
+                    // ── Anti-spoofing gate (registration uses stricter threshold) ──
+                    val antiSpoofResult = antiSpoofEngine.classifyLiveness(
+                        frame, face.bounds, AntiSpoofConfig.registrationThreshold
+                    )
+                    temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                    val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.registrationThreshold)
 
-                if (!temporalResult.passed) {
-                    runOnUiThread {
-                        setGuide(Color.RED, temporalResult.guidance, "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%")
-                        voiceGuidance.guide(temporalResult.guidance, "registration_antispoof:${antiSpoofResult.status}")
+                    if (!temporalResult.passed) {
+                        runOnUiThread {
+                            setGuide(Color.RED, temporalResult.guidance, "Anti-spoof: ${"%.0f".format(antiSpoofResult.score * 100)}%")
+                            voiceGuidance.guide(temporalResult.guidance, "registration_antispoof:${antiSpoofResult.status}")
+                        }
+                        if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
+                            stableSince = 0L
+                        }
+                        return
                     }
-                    if (antiSpoofResult.status == MiniFASNetEngine.Status.SPOOF) {
-                        stableSince = 0L
-                    }
-                    return
                 }
-                // ── Anti-spoofing passed — proceed to sample capture ──
+                // ── Proceed to sample capture ──
                 temporalLivenessBuffer.reset()
                 captureEnrollmentObservation(frame, face, now)
             }
