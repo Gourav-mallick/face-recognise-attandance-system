@@ -284,6 +284,23 @@ class StudentScanFragment : Fragment() {
                 return
             }
 
+            val insideCircle = isFaceInsideCircle(face, frame.width, frame.height)
+            if (!insideCircle) {
+                faceStableStart = 0L
+                prevFace = null
+                runOnViewThread {
+                    landmarkOverlay.clear()
+                    faceGuide.background.setTint(Color.YELLOW)
+                    tvInstruction.text = "Position face inside the circle"
+                    tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+                    voiceGuidance.guide(
+                        "Face in oval",
+                        "student_face_outside_circle"
+                    )
+                }
+                return
+            }
+
             val quality = faceEngine.assessQuality(frame, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
@@ -770,6 +787,42 @@ class StudentScanFragment : Fragment() {
     private fun mirrorBitmap(src: Bitmap): Bitmap {
         val m = Matrix().apply { preScale(-1f, 1f) }
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+    }
+
+    private fun isFaceInsideCircle(face: YuNetFace, frameWidth: Int, frameHeight: Int): Boolean {
+        val vf = _viewFinder ?: return false
+        val guide = _faceGuide ?: return false
+
+        val vfWidth = vf.width.toFloat()
+        val vfHeight = vf.height.toFloat()
+        if (vfWidth <= 0f || vfHeight <= 0f || frameWidth <= 0 || frameHeight <= 0) return false
+
+        val scale = kotlin.math.max(vfWidth / frameWidth, vfHeight / frameHeight)
+        val offsetX = (vfWidth - frameWidth * scale) / 2f
+        val offsetY = (vfHeight - frameHeight * scale) / 2f
+
+        val faceCenterXOnScreen = face.bounds.centerX() * scale + offsetX
+        val faceCenterYOnScreen = face.bounds.centerY() * scale + offsetY
+
+        val guideLocation = IntArray(2)
+        guide.getLocationOnScreen(guideLocation)
+        val vfLocation = IntArray(2)
+        vf.getLocationOnScreen(vfLocation)
+
+        val guideLeft = (guideLocation[0] - vfLocation[0]).toFloat()
+        val guideTop = (guideLocation[1] - vfLocation[1]).toFloat()
+        val guideCenterX = guideLeft + guide.width / 2f
+        val guideCenterY = guideTop + guide.height / 2f
+
+        val radiusX = (guide.width / 2f) * 0.95f
+        val radiusY = (guide.height / 2f) * 0.95f
+
+        if (radiusX <= 0f || radiusY <= 0f) return false
+
+        val dx = (faceCenterXOnScreen - guideCenterX) / radiusX
+        val dy = (faceCenterYOnScreen - guideCenterY) / radiusY
+
+        return (dx * dx + dy * dy) <= 1.0f
     }
 
     private fun loadFaceEmbeddingCache() {

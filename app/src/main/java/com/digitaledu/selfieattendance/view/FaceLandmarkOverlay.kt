@@ -22,10 +22,13 @@ class FaceLandmarkOverlay @JvmOverloads constructor(
     private var sourceWidth = 0
     private var sourceHeight = 0
 
-    fun show(landmarks: List<PointF>, imageWidth: Int, imageHeight: Int) {
+    private var isFrontCamera = false
+
+    fun show(landmarks: List<PointF>, imageWidth: Int, imageHeight: Int, isFrontCamera: Boolean = false) {
         points = landmarks.map { PointF(it.x, it.y) }
         sourceWidth = imageWidth
         sourceHeight = imageHeight
+        this.isFrontCamera = isFrontCamera
         postInvalidateOnAnimation()
     }
 
@@ -43,7 +46,10 @@ class FaceLandmarkOverlay @JvmOverloads constructor(
         val offsetY = (height - sourceHeight * scale) / 2f
         val radius = 5f * resources.displayMetrics.density
         points.forEach { point ->
-            canvas.drawCircle(point.x * scale + offsetX, point.y * scale + offsetY, radius, dotPaint)
+            val mappedX = point.x * scale + offsetX
+            val drawX = if (isFrontCamera) width - mappedX else mappedX
+            val drawY = point.y * scale + offsetY
+            canvas.drawCircle(drawX, drawY, radius, dotPaint)
         }
     }
 }

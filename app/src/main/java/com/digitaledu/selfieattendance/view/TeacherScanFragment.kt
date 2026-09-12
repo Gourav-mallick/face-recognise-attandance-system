@@ -219,6 +219,23 @@ class TeacherScanFragment : Fragment() {
                 return
             }
 
+            val insideCircle = isFaceInsideCircle(face, prepared.width, prepared.height)
+            if (!insideCircle) {
+                faceStableStart = 0L
+                prevFace = null
+                runOnViewThread {
+                    landmarkOverlay.clear()
+                    faceGuide.background.setTint(Color.YELLOW)
+                    tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
+                    tvStart.text = "Position face inside the circle"
+                    voiceGuidance.guide(
+                        "Face in oval",
+                        "teacher_face_outside_circle"
+                    )
+                }
+                return
+            }
+
             val quality = faceEngine.assessQuality(prepared, face, strict = true)
             val stable = isStable(face)
             if (!quality.accepted || !stable || !liveness.passed) faceStableStart = 0L
@@ -523,6 +540,42 @@ class TeacherScanFragment : Fragment() {
         val w = min(bmp.width - x, halfW * 2)
         val h = min(bmp.height - y, halfH * 2)
         return Bitmap.createBitmap(bmp, x, y, w, h)
+    }
+
+    private fun isFaceInsideCircle(face: YuNetFace, frameWidth: Int, frameHeight: Int): Boolean {
+        val vf = _viewFinder ?: return false
+        val guide = _faceGuide ?: return false
+
+        val vfWidth = vf.width.toFloat()
+        val vfHeight = vf.height.toFloat()
+        if (vfWidth <= 0f || vfHeight <= 0f || frameWidth <= 0 || frameHeight <= 0) return false
+
+        val scale = kotlin.math.max(vfWidth / frameWidth, vfHeight / frameHeight)
+        val offsetX = (vfWidth - frameWidth * scale) / 2f
+        val offsetY = (vfHeight - frameHeight * scale) / 2f
+
+        val faceCenterXOnScreen = face.bounds.centerX() * scale + offsetX
+        val faceCenterYOnScreen = face.bounds.centerY() * scale + offsetY
+
+        val guideLocation = IntArray(2)
+        guide.getLocationOnScreen(guideLocation)
+        val vfLocation = IntArray(2)
+        vf.getLocationOnScreen(vfLocation)
+
+        val guideLeft = (guideLocation[0] - vfLocation[0]).toFloat()
+        val guideTop = (guideLocation[1] - vfLocation[1]).toFloat()
+        val guideCenterX = guideLeft + guide.width / 2f
+        val guideCenterY = guideTop + guide.height / 2f
+
+        val radiusX = (guide.width / 2f) * 0.95f
+        val radiusY = (guide.height / 2f) * 0.95f
+
+        if (radiusX <= 0f || radiusY <= 0f) return false
+
+        val dx = (faceCenterXOnScreen - guideCenterX) / radiusX
+        val dy = (faceCenterYOnScreen - guideCenterY) / radiusY
+
+        return (dx * dx + dy * dy) <= 1.0f
     }
 
     override fun onDestroyView() {
