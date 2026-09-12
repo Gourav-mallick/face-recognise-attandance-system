@@ -163,7 +163,6 @@
 
     </androidx.cardview.widget.CardView>
 
-    <!-- Instruction (same id) -->
     <TextView
         android:id="@+id/tvInstruction"
         android:layout_width="0dp"
@@ -171,8 +170,9 @@
         android:layout_marginTop="10dp"
         android:gravity="center"
         android:text="Align your face inside the oval"
-        android:textColor="@color/text_gray"
-        android:textSize="13sp"
+        android:textColor="@color/text_dark"
+        android:textSize="15sp"
+        android:textStyle="bold"
         app:layout_constraintTop_toBottomOf="@id/cameraCard"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

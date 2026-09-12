@@ -58,7 +58,6 @@ class TeacherScanFragment : Fragment() {
     private lateinit var livenessVerifier: ActiveLivenessVerifier
     private lateinit var antiSpoofEngine: MiniFASNetEngine
     private val temporalLivenessBuffer = TemporalLivenessBuffer()
-    private lateinit var voiceGuidance: VoiceGuidance
     private var cameraExecutor: ExecutorService? = null
     private var imageAnalysis: ImageAnalysis? = null
 
@@ -108,7 +107,6 @@ class TeacherScanFragment : Fragment() {
         faceEngine = YuNetSFaceEngine(requireContext().applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
         antiSpoofEngine = MiniFASNetEngine(requireContext().applicationContext)
-        voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         com.digitaledu.selfieattendance.utility.RecordingManager.onRecordingStateChanged = {
@@ -181,7 +179,7 @@ class TeacherScanFragment : Fragment() {
         }
 
         val now = System.currentTimeMillis()
-        if (now - lastProcessTime < 130) {
+        if (now - lastProcessTime < 80) {
             imageProxy.close(); return
         }
         lastProcessTime = now
@@ -211,10 +209,6 @@ class TeacherScanFragment : Fragment() {
                     faceGuide.background.setTint(Color.YELLOW)
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
                     tvStart.text = "Awaiting teacher face verification"
-                    voiceGuidance.guide(
-                        "Face in oval",
-                        "teacher_no_face"
-                    )
                 }
                 return
             }
@@ -228,10 +222,6 @@ class TeacherScanFragment : Fragment() {
                     faceGuide.background.setTint(Color.YELLOW)
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
                     tvStart.text = "Position face inside the circle"
-                    voiceGuidance.guide(
-                        "Face in oval",
-                        "teacher_face_outside_circle"
-                    )
                 }
                 return
             }
@@ -253,10 +243,6 @@ class TeacherScanFragment : Fragment() {
                 )
                 tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
                 tvStart.text = if (!liveness.passed) liveness.guidance else if (!quality.accepted) quality.guidance else "Hold still — verifying..."
-                voiceGuidance.guide(
-                    if (liveness.passed) quality.guidance else liveness.guidance,
-                    if (liveness.passed) "teacher_quality:${quality.guidance}" else "teacher_liveness:${liveness.guidance}"
-                )
             }
 
             if (
@@ -280,23 +266,25 @@ class TeacherScanFragment : Fragment() {
                 val antiSpoofResult = antiSpoofEngine.classifyLiveness(
                     prepared, face.bounds, AntiSpoofConfig.attendanceThreshold
                 )
-                temporalLivenessBuffer.addScore(antiSpoofResult.score)
-                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+                
+                val isFastPass = antiSpoofResult.score >= AntiSpoofConfig.attendanceThreshold
+                if (!isFastPass) {
+                    temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                    val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
 
-                if (!temporalResult.passed) {
-                    runOnViewThread {
-                        // Distinguish genuine screen attack (score < 0.30) from borderline lighting/angle (0.30 - 0.70)
-                        if (antiSpoofResult.score < 0.30f) {
-                            faceGuide.background.setTint(Color.RED)
-                            tvStart.text = "Fake face detected — use a real face"
-                        } else {
-                            // Borderline score (lighting/angle fluctuation) — guide user to adjust
-                            faceGuide.background.setTint(Color.rgb(30, 94, 255))
-                            tvStart.text = "Hold face steady in good light..."
+                    if (!temporalResult.passed) {
+                        runOnViewThread {
+                            if (antiSpoofResult.score < 0.30f) {
+                                faceGuide.background.setTint(Color.RED)
+                                tvStart.text = "Fake face detected — use a real face"
+                            } else {
+                                faceGuide.background.setTint(Color.rgb(30, 94, 255))
+                                tvStart.text = "Hold face steady in good light..."
+                            }
                         }
+                        faceStableStart = 0L
+                        return
                     }
-                    faceStableStart = 0L
-                    return
                 }
                 // ── Anti-spoofing passed — proceed to SFace ──
                 runOnViewThread {
@@ -345,10 +333,6 @@ class TeacherScanFragment : Fragment() {
             if (teachers.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(requireContext(), "No registered teachers found", Toast.LENGTH_SHORT).show()
-                    voiceGuidance.announce(
-                        "No teachers registered.",
-                        "no_registered_teachers"
-                    )
                     progress.visibility = View.GONE; isVerifying = false
                 }
                 return@launch
@@ -405,10 +389,6 @@ class TeacherScanFragment : Fragment() {
                                 isVerifying = false
                             }
                             .show()
-                        voiceGuidance.announce(
-                            "No class assigned.",
-                            "teacher_no_assigned_class"
-                        )
 
                         return@withContext
                     }
@@ -434,11 +414,6 @@ class TeacherScanFragment : Fragment() {
                         sessionDialogShown = true
                         scanningPaused = true  // stop analyzer while dialog is open
 
-                        val spokenName = VoiceGuidance.speakableName(bestName!!)
-                        voiceGuidance.announce(
-                            "$spokenName verified.",
-                            "teacher_verified:$bestId"
-                        )
                         showStartStudentAttendanceDialog(bestId!!, bestName!!)
                     }
 
@@ -453,10 +428,6 @@ class TeacherScanFragment : Fragment() {
                             "Face not recognized.\nFace may not be registered or you may not be enrolled in any class.\nPlease contact the authorities.",
                             Toast.LENGTH_LONG
                         ).show();
-                        voiceGuidance.announce(
-                            "Teacher not recognized.",
-                            "teacher_final_failure"
-                        )
 
 
                         // OPTIONAL: stop scanning for 3 seconds
@@ -476,10 +447,6 @@ class TeacherScanFragment : Fragment() {
                         "Face not matched. Adjust your face and try again.",
                         Toast.LENGTH_SHORT
                     ).show()
-                    voiceGuidance.announce(
-                        "No match. Try again.",
-                        "teacher_match_failed_$failCount"
-                    )
                 }
 
             }
@@ -591,7 +558,6 @@ class TeacherScanFragment : Fragment() {
         faceEngine.close()
         livenessVerifier.close()
         antiSpoofEngine.close()
-        voiceGuidance.close()
         _viewFinder = null
         _faceGuide = null
         _landmarkOverlay = null
@@ -704,14 +670,9 @@ class TeacherScanFragment : Fragment() {
             .setMessage("Teacher: $teacherName\n\nStart student attendance capturing now?")
             .setCancelable(false)
             .setPositiveButton("Yes") { _, _ ->
-                voiceGuidance.announceThen(
-                    message = "Session started.",
-                    key = "teacher_session_started"
-                ) {
-                    if (!isAdded) return@announceThen
-                    (requireActivity() as AttendanceActivity).simulateTeacherScan(teacherId)
-                    scanningPaused = false
-                }
+                if (!isAdded) return@setPositiveButton
+                (requireActivity() as AttendanceActivity).simulateTeacherScan(teacherId)
+                scanningPaused = false
             }
 //            .setNegativeButton("No") { _, _ ->
 //                // Keep teacher screen active, allow scanning again if needed

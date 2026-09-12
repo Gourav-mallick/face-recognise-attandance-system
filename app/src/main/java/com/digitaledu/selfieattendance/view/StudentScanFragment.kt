@@ -78,7 +78,6 @@ class StudentScanFragment : Fragment() {
     private lateinit var livenessVerifier: ActiveLivenessVerifier
     private lateinit var antiSpoofEngine: MiniFASNetEngine
     private val temporalLivenessBuffer = TemporalLivenessBuffer()
-    private lateinit var voiceGuidance: VoiceGuidance
     private val MIRROR_FRONT = true
 
     private var studentFailCount = 0
@@ -133,7 +132,6 @@ class StudentScanFragment : Fragment() {
         faceEngine = YuNetSFaceEngine(requireContext().applicationContext)
         livenessVerifier = ActiveLivenessVerifier()
         antiSpoofEngine = MiniFASNetEngine(requireContext().applicationContext)
-        voiceGuidance = VoiceGuidance(requireContext().applicationContext)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // ---------- LOAD CACHE ONCE ----------
@@ -175,7 +173,6 @@ class StudentScanFragment : Fragment() {
         faceEngine.close()
         livenessVerifier.close()
         antiSpoofEngine.close()
-        voiceGuidance.close()
         _viewFinder = null
         _faceGuide = null
         _landmarkOverlay = null
@@ -244,7 +241,7 @@ class StudentScanFragment : Fragment() {
             return
         }
         val now = System.currentTimeMillis()
-        if (now - lastProcessTime < 160 || isVerifying) {
+        if (now - lastProcessTime < 80 || isVerifying) {
             imageProxy.close()
             return
         }
@@ -276,10 +273,6 @@ class StudentScanFragment : Fragment() {
                     faceGuide.background.setTint(Color.YELLOW)
                     tvInstruction.text = "Place student face inside the oval"
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
-                    voiceGuidance.guide(
-                        "Face in oval",
-                        "student_no_face"
-                    )
                 }
                 return
             }
@@ -293,10 +286,6 @@ class StudentScanFragment : Fragment() {
                     faceGuide.background.setTint(Color.YELLOW)
                     tvInstruction.text = "Position face inside the circle"
                     tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
-                    voiceGuidance.guide(
-                        "Face in oval",
-                        "student_face_outside_circle"
-                    )
                 }
                 return
             }
@@ -317,10 +306,6 @@ class StudentScanFragment : Fragment() {
                     }
                 )
                 tvInstruction.text = if (!liveness.passed) liveness.guidance else if (!quality.accepted) quality.guidance else "Hold still — verifying..."
-                voiceGuidance.guide(
-                    if (liveness.passed) quality.guidance else liveness.guidance,
-                    if (liveness.passed) "student_quality:${quality.guidance}" else "student_liveness:${liveness.guidance}"
-                )
                 tvLightWarning.visibility = if (brightness < 40) View.VISIBLE else View.GONE
             }
 
@@ -345,23 +330,25 @@ class StudentScanFragment : Fragment() {
                 val antiSpoofResult = antiSpoofEngine.classifyLiveness(
                     frame, face.bounds, AntiSpoofConfig.attendanceThreshold
                 )
-                temporalLivenessBuffer.addScore(antiSpoofResult.score)
-                val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
+                
+                val isFastPass = antiSpoofResult.score >= AntiSpoofConfig.attendanceThreshold
+                if (!isFastPass) {
+                    temporalLivenessBuffer.addScore(antiSpoofResult.score)
+                    val temporalResult = temporalLivenessBuffer.evaluate(AntiSpoofConfig.attendanceThreshold)
 
-                if (!temporalResult.passed) {
-                    runOnViewThread {
-                        // Distinguish genuine screen attack (score < 0.30) from borderline lighting/angle (0.30 - 0.70)
-                        if (antiSpoofResult.score < 0.30f) {
-                            faceGuide.background.setTint(Color.RED)
-                            tvInstruction.text = "Fake face detected — use a real face"
-                        } else {
-                            // Borderline score (lighting/angle fluctuation) — guide user to adjust
-                            faceGuide.background.setTint(Color.rgb(30, 94, 255)) // Blue while buffering
-                            tvInstruction.text = "Hold face steady in good light..."
+                    if (!temporalResult.passed) {
+                        runOnViewThread {
+                            if (antiSpoofResult.score < 0.30f) {
+                                faceGuide.background.setTint(Color.RED)
+                                tvInstruction.text = "Fake face detected — use a real face"
+                            } else {
+                                faceGuide.background.setTint(Color.rgb(30, 94, 255))
+                                tvInstruction.text = "Hold face steady in good light..."
+                            }
                         }
+                        faceStableStart = 0L
+                        return
                     }
-                    faceStableStart = 0L
-                    return
                 }
                 // ── Anti-spoofing passed — proceed to SFace ──
                 runOnViewThread {
@@ -420,31 +407,27 @@ class StudentScanFragment : Fragment() {
             // 1. Get teacher from session
             val teacherId = session.teacherId
 
-
             var bestMatchName = "Unknown"
             var bestMatchId: String? = null
             var bestIsTeacher = false
             var bestSimilarity = -1f
 
-            Log.d("SFACE_MATCH", "=== Starting SFace comparison against ${cachedTeacherEmbeddings.size} teacher(s) and ${cachedStudentEmbeddings.size} student(s) (Threshold: ${com.digitaledu.selfieattendance.ml.FaceDetectionConfig.recognitionCosineThreshold}) ===")
-
-            // Compare faceEmbedding with teachers
+            // Compare faceEmbedding with session teacher (or cached teachers)
             for ((id, name, emb) in cachedTeacherEmbeddings) {
-                val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
-                Log.d("SFACE_MATCH", "  Candidate Teacher $name (ID: $id): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", similarity)}")
-                if (similarity > bestSimilarity) {
-                    bestSimilarity = similarity
-                    bestMatchName = name
-                    bestMatchId = id
-                    bestIsTeacher = true
+                if (id == teacherId) {
+                    val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
+                    if (similarity > bestSimilarity) {
+                        bestSimilarity = similarity
+                        bestMatchName = name
+                        bestMatchId = id
+                        bestIsTeacher = true
+                    }
                 }
             }
 
-
-            // Compare faceEmbedding with students
+            // Compare faceEmbedding with cached students
             for ((id, name, emb) in cachedStudentEmbeddings) {
                 val similarity = YuNetSFaceEngine.cosineSimilarity(emb, faceEmbedding)
-                Log.d("SFACE_MATCH", "  Candidate Student $name (ID: $id): cosine similarity = ${String.format(java.util.Locale.US, "%.4f", similarity)}")
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity
                     bestMatchName = name
@@ -452,6 +435,8 @@ class StudentScanFragment : Fragment() {
                     bestIsTeacher = false
                 }
             }
+
+            Log.d("SFACE_MATCH", "Best match evaluated: $bestMatchName (ID: $bestMatchId), isTeacher: $bestIsTeacher, similarity: ${String.format(java.util.Locale.US, "%.4f", bestSimilarity)}")
 
 
             // Evaluate result
@@ -474,10 +459,6 @@ class StudentScanFragment : Fragment() {
                             "You are not enrolled for this class.\nPlease contact the administration to complete your enrollment.",
                             Toast.LENGTH_LONG
                         ).show()
-                        voiceGuidance.announce(
-                            "Student not registered.",
-                            "student_not_enrolled"
-                        )
 
                         // Stop verification temporarily to prevent spam scanning
                         isVerifying = true
@@ -494,10 +475,6 @@ class StudentScanFragment : Fragment() {
                     }
 
                     toast("Face not matched. Adjust your face and try again.")
-                    voiceGuidance.announce(
-                        "No match. Try again.",
-                        "student_match_failed_$studentFailCount"
-                    )
                     done()
                     return@withContext
                 }
@@ -516,10 +493,6 @@ class StudentScanFragment : Fragment() {
 
                                 withContext(Dispatchers.Main) {
                                     if (attendanceCount == 0) {
-                                    voiceGuidance.announce(
-                                        "Teacher verified. Choose action.",
-                                        "teacher_end_empty_session"
-                                    )
                                     AlertDialog.Builder(requireContext())
                                         .setTitle("Empty Session")
                                         .setMessage("No students were scanned in this session.")
@@ -550,10 +523,6 @@ class StudentScanFragment : Fragment() {
                                         }
                                         .show()
                                     } else {
-                                        voiceGuidance.announce(
-                                            "Teacher verified. Complete session.",
-                                            "teacher_end_active_session"
-                                        )
                                         AlertDialog.Builder(requireContext())
                                             .setTitle("Session Completed")
                                             .setMessage("Students have been scanned in this session.\n\nChoose 'Proceed' to save and select periods, or 'Mistakenly Started' to discard this session.")
@@ -594,10 +563,6 @@ class StudentScanFragment : Fragment() {
                         }
                     } else {
                         toast("This face belongs to a different teacher.")
-                        voiceGuidance.announce(
-                            "Wrong teacher.",
-                            "different_teacher"
-                        )
                     }
 
                     if (!scanningPausedForDialog) done()
@@ -609,71 +574,16 @@ class StudentScanFragment : Fragment() {
                 val matchedStudent = db.studentsDao().getStudentById(bestMatchId!!)
                 if (matchedStudent == null) {
                     toast("Unable to identify the student. Please try again.")
-                    voiceGuidance.announce(
-                        "Student not found.",
-                        "student_lookup_failed"
-                    )
                     done()
                     return@withContext
                 }
 
                 Log.d("STUDENT_CLASS_CHECK", "Student ${matchedStudent.studentName} class = ${matchedStudent.classId}")
 
-                // 🔹 Pause camera scanning while showing identity confirmation dialog
-                pauseCameraForDialog()
-
-                val spokenName = VoiceGuidance.speakableName(matchedStudent.studentName)
-                voiceGuidance.announce(
-                    "Are you $spokenName?",
-                    "confirm_student_${matchedStudent.studentId}"
-                )
-
-                // 🔹 Show confirmation popup: "Are you [Student Name]?"
-                AlertDialog.Builder(requireContext())
-                    .setTitle("Confirm Identity")
-                    .setMessage("Are you ${matchedStudent.studentName}?")
-                    .setCancelable(false)
-                    .setPositiveButton("YES") { dialog, _ ->
-                        dialog.dismiss()
-                        // Mark attendance through AttendanceActivity logic (preserve everything)
-                        (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent, spoofingPercentage) { result ->
-                            when (result) {
-                                AttendanceActivity.StudentAttendanceResult.MARKED ->
-                                    voiceGuidance.announce(
-                                        "$spokenName, attendance marked.",
-                                        "student_marked:${matchedStudent.studentId}"
-                                    )
-
-                                AttendanceActivity.StudentAttendanceResult.ALREADY_MARKED ->
-                                    voiceGuidance.announce(
-                                        "$spokenName, already marked.",
-                                        "student_already_marked:${matchedStudent.studentId}"
-                                    )
-
-                                AttendanceActivity.StudentAttendanceResult.ACTIVE_IN_ANOTHER_CLASS ->
-                                    voiceGuidance.announce(
-                                        "Already marked in another class.",
-                                        "student_other_class:${matchedStudent.studentId}"
-                                    )
-
-                                AttendanceActivity.StudentAttendanceResult.NO_ACTIVE_SESSION ->
-                                    voiceGuidance.announce(
-                                        "No active session.",
-                                        "student_no_session"
-                                    )
-                            }
-                            resumeCameraAfterDialog()
-                        }
-                    }
-                    .setNegativeButton("NO") { dialog, _ ->
-                        dialog.dismiss()
-                        voiceGuidance.announce(
-                            "Identity unconfirmed. Next student.",
-                            "student_declined_${matchedStudent.studentId}"
-                        )
-                        resumeCameraAfterDialog()
-                    }
-                    .show()
+                // Mark attendance through AttendanceActivity logic (preserve everything)
+                (requireActivity() as AttendanceActivity).simulateStudentScan(matchedStudent, spoofingPercentage) { result ->
+                    done()
+                }
             }
         }
     }
@@ -713,7 +623,6 @@ class StudentScanFragment : Fragment() {
         isVerifying = scanningPausedForDialog
         livenessVerifier.reset()
         temporalLivenessBuffer.reset()
-        voiceGuidance.resetGuidance()
         prevFace = null           //  reset motion reference
     }
 
