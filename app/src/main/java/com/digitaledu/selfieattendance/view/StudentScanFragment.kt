@@ -70,12 +70,9 @@ class StudentScanFragment : Fragment() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalysis: ImageAnalysis? = null
     private var isVerifying = false
-    private var isSpoofWarningShowing = false
     private var scanningPausedForDialog = false
     private var faceStableStart = 0L
     private var lastProcessTime = 0L
-    private var consecutiveSpoofFrames = 0
-    private val SPOOF_FRAMES_TO_WARN = 3  // Require 3 consecutive SPOOF frames before showing warning
 
     private lateinit var faceEngine: YuNetSFaceEngine
     private lateinit var livenessVerifier: ActiveLivenessVerifier
@@ -319,7 +316,6 @@ class StudentScanFragment : Fragment() {
             ) {
                 // ── Lighting pre-check ── Do NOT flag spoof if lighting is too dark
                 if (brightness < 40) {
-                    consecutiveSpoofFrames = 0
                     faceStableStart = 0L
                     runOnViewThread {
                         faceGuide.background.setTint(Color.YELLOW)
@@ -339,15 +335,10 @@ class StudentScanFragment : Fragment() {
                     runOnViewThread {
                         // Distinguish genuine screen attack (score < 0.30) from borderline lighting/angle (0.30 - 0.70)
                         if (antiSpoofResult.score < 0.30f) {
-                            consecutiveSpoofFrames++
                             faceGuide.background.setTint(Color.RED)
                             tvInstruction.text = "Fake face detected — use a real face"
-                            if (consecutiveSpoofFrames >= SPOOF_FRAMES_TO_WARN) {
-                                showSpoofWarningDialog()
-                            }
                         } else {
-                            // Borderline score (lighting/angle fluctuation) — guide user to adjust, NO warning popup
-                            consecutiveSpoofFrames = 0
+                            // Borderline score (lighting/angle fluctuation) — guide user to adjust
                             faceGuide.background.setTint(Color.rgb(30, 94, 255)) // Blue while buffering
                             tvInstruction.text = "Hold face steady in good light..."
                         }
@@ -356,7 +347,6 @@ class StudentScanFragment : Fragment() {
                     return
                 }
                 // ── Anti-spoofing passed — proceed to SFace ──
-                consecutiveSpoofFrames = 0
                 runOnViewThread {
                     faceGuide.background.setTint(Color.GREEN)
                     tvInstruction.text = "Live face verified"
@@ -395,31 +385,6 @@ class StudentScanFragment : Fragment() {
         }
     }
 
-    private fun showSpoofWarningDialog() {
-        val ctx = context ?: return
-        runOnViewThread {
-            if (isSpoofWarningShowing) return@runOnViewThread
-            isSpoofWarningShowing = true
-            isVerifying = true
-            RecordingManager.incrementSpoofCount()
-
-            voiceGuidance.announce("Fake face detected. This session is recorded.", "spoof_warning_dialog")
-
-            AlertDialog.Builder(ctx)
-                .setTitle("⚠️ Anti-Spoofing Warning")
-                .setMessage("Warning. Fake face detected. This attempt has been recorded. Any false or proxy attendance attempt may result in strict disciplinary action by the institution. Please scan your real face.")
-                .setCancelable(false)
-                .setPositiveButton("I Understand, Scan Again") { dialog, _ ->
-                    dialog.dismiss()
-                    faceStableStart = 0L
-                    temporalLivenessBuffer.reset()
-                    isSpoofWarningShowing = false
-                    isVerifying = false
-                    consecutiveSpoofFrames = 0
-                }
-                .show()
-        }
-    }
 
     // -----------------------------------------------------------------------
     // FACE MATCHING LOGIC ( use teachers.embedding + students.embedding)
